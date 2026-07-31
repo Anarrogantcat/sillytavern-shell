@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         close: () => ipcRenderer.invoke('window:close'),
         isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
         onMaximizeChange: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('window:maximizeChange', h); return () => ipcRenderer.removeListener('window:maximizeChange', h); },
+        openExternal: url => ipcRenderer.invoke('shell:openExternal', url),
     },
     server: {
         onUrl: cb => { const h = (_e, u) => cb(u); ipcRenderer.on('server:url', h); return () => ipcRenderer.removeListener('server:url', h); },

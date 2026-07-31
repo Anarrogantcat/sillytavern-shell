@@ -204,6 +204,7 @@ function setupIPC() {
     ipcMain.handle('window:maximize', () => { if (w()?.isMaximizable()) w().isMaximized() ? w().unmaximize() : w().maximize(); });
     ipcMain.handle('window:close', () => w()?.close());
     ipcMain.handle('window:isMaximized', () => w()?.isMaximized() ?? false);
+    ipcMain.handle('shell:openExternal', (_e, url) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) require('electron').shell.openExternal(url); });
     w()?.on('maximize', () => w()?.webContents.send('window:maximizeChange', true));
     w()?.on('unmaximize', () => w()?.webContents.send('window:maximizeChange', false));
 
