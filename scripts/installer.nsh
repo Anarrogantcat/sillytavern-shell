@@ -33,7 +33,8 @@ FunctionEnd
     Goto Done
   ${EndIf}
   
-  MessageBox MB_YESNO|MB_ICONQUESTION "是否删除所有用户数据？$\n$\n将删除：$\n- $APPDATA\SillyTavern\Data$\n- $APPDATA\sillytavern-electron" IDNO Done
+  MessageBox MB_YESNO|MB_ICONQUESTION "是否删除所有用户数据？$\n$\n将删除：$\n- $INSTDIR\Data$\n- $APPDATA\SillyTavern\Data (旧版残留)$\n- $APPDATA\sillytavern-electron" IDNO Done
+  RMDir /r "$INSTDIR\Data"
   RMDir /r "$APPDATA\SillyTavern\Data"
   RMDir /r "$APPDATA\SillyTavern"
   RMDir /r "$APPDATA\sillytavern-electron"

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         save: obj => ipcRenderer.invoke('settings:save', obj),
         getServerPath: () => ipcRenderer.invoke('settings:getServerPath'),
         setServerPath: p => ipcRenderer.invoke('settings:setServerPath', p),
+        getDataRoot: () => ipcRenderer.invoke('settings:getDataRoot'),
     },
     app: { getVersion: () => ipcRenderer.invoke('app:getVersion'), getShellVersion: () => ipcRenderer.invoke('app:getShellVersion'), getChangelog: () => ipcRenderer.invoke('app:getChangelog') },
     update: {

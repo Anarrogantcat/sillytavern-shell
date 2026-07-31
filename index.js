@@ -38,6 +38,10 @@ if (settings.closeBehavior === undefined || settings.closeBehavior === 'tray') {
 }
 const sillyTavernRoot = cliArguments.serverPath || settings.serverPath
     || (app.isPackaged ? path.join(process.resourcesPath, 'sillytavern') : path.resolve(__dirname, '../..'));
+// User data lives OUTSIDE resources — upgrade/reinstall never touches it
+const dataRoot = settings.dataRoot || (app.isPackaged
+    ? path.join(path.dirname(process.resourcesPath), 'Data')
+    : path.join(path.resolve(__dirname, '../..'), 'Data'));
 if (!settings.serverPath) { settings.serverPath = sillyTavernRoot; saveSettings(settings); }
 
 // ── SillyTavern Setup (first launch) ─────────────────────────────────
@@ -201,6 +205,7 @@ function setupIPC() {
     ipcMain.handle('settings:save', (_e, s) => { Object.assign(settings, s); saveSettings(settings); });
     ipcMain.handle('settings:getServerPath', () => sillyTavernRoot);
     ipcMain.handle('settings:setServerPath', (_e, p) => { settings.serverPath = p; saveSettings(settings); });
+    ipcMain.handle('settings:getDataRoot', () => dataRoot);
 
     ipcMain.handle('terminal:getHistory', () => terminalLines.join('\n'));
     ipcMain.handle('terminal:exec', (_e, cmd) => new Promise(resolve => {
@@ -287,12 +292,24 @@ function setupIPC() {
 function copyDir(src, dest) { fs.mkdirSync(dest, { recursive: true }); for (const e of fs.readdirSync(src, { withFileTypes: true })) { const s = path.join(src, e.name), d = path.join(dest, e.name); e.isDirectory() ? copyDir(s, d) : fs.copyFileSync(s, d); } }
 
 // ── Server ───────────────────────────────────────────────────────────
+function migrateDataIfNeeded() {
+    const oldData = path.join(sillyTavernRoot, 'data');
+    if (!fs.existsSync(oldData) || fs.existsSync(dataRoot)) return;
+    try {
+        terminalWrite('\x1b[36m> Migrating user data to ' + dataRoot + ' ...\x1b[0m');
+        fs.mkdirSync(path.dirname(dataRoot), { recursive: true });
+        fs.cpSync(oldData, dataRoot, { recursive: true, force: true });
+        terminalWrite('\x1b[32mData migrated. Old copy kept as backup.\x1b[0m');
+    } catch (e) { terminalWrite('\x1b[31mData migration failed: ' + e.message + '\x1b[0m'); }
+}
+
 function startServer() {
     return new Promise((resolve, reject) => {
         const serverJs = path.join(sillyTavernRoot, 'server.js');
         if (!fs.existsSync(serverJs)) { reject(new Error(`server.js not found at ${serverJs}`)); return; }
-        terminalWrite('\x1b[36m> node server.js --no-browserLaunchEnabled\x1b[0m');
-        serverProcess = spawn('node', [serverJs, '--no-browserLaunchEnabled'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
+        migrateDataIfNeeded();
+        terminalWrite('\x1b[36m> node server.js --dataRoot "' + dataRoot + '" --no-browserLaunchEnabled\x1b[0m');
+        serverProcess = spawn('node', [serverJs, '--dataRoot', dataRoot, '--no-browserLaunchEnabled'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
         let started = false, stdoutBuffer = '';
         serverProcess.stdout.on('data', data => {
             stdoutBuffer += data.toString(); terminalWrite(data);
