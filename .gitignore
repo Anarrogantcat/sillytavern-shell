@@ -1,0 +1,9 @@
+node_modules/
+staging/
+dist-electron*
+*.exe
+*.blockmap
+latest.yml
+builder-debug.yml
+Start.bat
+start.sh
