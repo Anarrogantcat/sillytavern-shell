@@ -269,6 +269,8 @@ function setupIPC() {
     });
     ipcMain.handle('shell-update:download', async () => {
         try {
+            const check = await autoUpdater.checkForUpdates();
+            if (!check) return { error: '没有可用更新' };
             await autoUpdater.downloadUpdate();
             return { success: true };
         } catch (e) { return { error: e.message }; }
