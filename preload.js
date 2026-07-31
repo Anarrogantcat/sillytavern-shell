@@ -32,7 +32,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     shellUpdate: {
         check: () => ipcRenderer.invoke('shell-update:check'),
         download: () => ipcRenderer.invoke('shell-update:download'),
+        install: () => ipcRenderer.invoke('shell-update:install'),
         onProgress: cb => { const h = (_e, p) => cb(p); ipcRenderer.on('shell-update:progress', h); return () => ipcRenderer.removeListener('shell-update:progress', h); },
         onDownloaded: cb => { const h = () => cb(); ipcRenderer.on('shell-update:downloaded', h); return () => ipcRenderer.removeListener('shell-update:downloaded', h); },
+        onError: cb => { const h = (_e, e) => cb(e); ipcRenderer.on('shell-update:error', h); return () => ipcRenderer.removeListener('shell-update:error', h); },
     },
 });

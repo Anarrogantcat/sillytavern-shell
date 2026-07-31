@@ -259,11 +259,12 @@ function setupIPC() {
 
     // Shell auto-update
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
     ipcMain.handle('shell-update:check', async () => {
         try {
-            const result = await autoUpdater.checkForUpdates();
-            return { version: result?.updateInfo?.version, hasUpdate: !!result };
+            const result = await autoUpdater.checkForUpdatesAndNotify();
+            if (!result) return { hasUpdate: false };
+            return { version: result.updateInfo.version, hasUpdate: true };
         } catch (e) { return { error: e.message }; }
     });
     ipcMain.handle('shell-update:download', async () => {
@@ -272,8 +273,10 @@ function setupIPC() {
             return { success: true };
         } catch (e) { return { error: e.message }; }
     });
+    ipcMain.handle('shell-update:install', () => { autoUpdater.quitAndInstall(); });
     autoUpdater.on('download-progress', p => w()?.webContents.send('shell-update:progress', p));
     autoUpdater.on('update-downloaded', () => w()?.webContents.send('shell-update:downloaded'));
+    autoUpdater.on('error', e => w()?.webContents.send('shell-update:error', e.message));
 }
 
 function copyDir(src, dest) { fs.mkdirSync(dest, { recursive: true }); for (const e of fs.readdirSync(src, { withFileTypes: true })) { const s = path.join(src, e.name), d = path.join(dest, e.name); e.isDirectory() ? copyDir(s, d) : fs.copyFileSync(s, d); } }
