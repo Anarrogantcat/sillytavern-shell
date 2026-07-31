@@ -24,7 +24,7 @@ webview?.addEventListener('new-window',e=>e.preventDefault());
 
 // ── Terminal ─────────────────────────────────
 let termOpen=false,termHistory='';
-function toggleTerminal(){termOpen=!termOpen;termPanel.classList.toggle('hidden',!termOpen);btnTerm.classList.toggle('active',termOpen);if(termOpen){termInput?.focus();renderTermOutput(termHistory);}else updateWebviewSize();}
+function toggleTerminal(){termOpen=!termOpen;termPanel.classList.toggle('hidden',!termOpen);btnTerm.classList.toggle('active',termOpen);updateWebviewSize();if(termOpen){termInput?.focus();renderTermOutput(termHistory);}}
 function updateWebviewSize(){if(!webview)return;const b=termOpen?272:0;webview.style.bottom=b+'px';webview.style.height=`calc(100% - 38px - ${b}px)`;}
 async function loadTermHistory(){termHistory=(await T?.getHistory())||'';renderTermOutput(termHistory);}
 function renderTermOutput(text){if(!termOut)return;const c=text.replace(/\x1b\[\d+m/g,'');termOut.innerHTML+=('<div>'+c.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')+'</div>');termOut.scrollTop=termOut.scrollHeight;termHistory+=text;}

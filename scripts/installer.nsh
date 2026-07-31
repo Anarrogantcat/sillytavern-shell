@@ -11,20 +11,20 @@ Function .onVerifyInstDir
 FunctionEnd
 
 !macro customInit
-  ; Restore preserved SillyTavern from temp location (avoids re-download)
+  ; Restore preserved SillyTavern (recursive) to avoid re-download
   IfFileExists "$TEMP\sillytavern-preserve\server.js" 0 NoPreserve
     CreateDirectory "$INSTDIR\resources\sillytavern"
-    CopyFiles /SILENT "$TEMP\sillytavern-preserve\*.*" "$INSTDIR\resources\sillytavern"
+    nsExec::ExecToLog 'xcopy /E /I /Y /Q "$TEMP\sillytavern-preserve" "$INSTDIR\resources\sillytavern"'
     RMDir /r "$TEMP\sillytavern-preserve"
   NoPreserve:
 !macroend
 
 !macro customUnInstall
-  ; Move SillyTavern out of $INSTDIR to prevent uninstaller from deleting it
+  ; Move SillyTavern (recursive) out of $INSTDIR so uninstaller won't delete it
   RMDir /r "$TEMP\sillytavern-preserve"
   IfFileExists "$INSTDIR\resources\sillytavern\server.js" 0 NoMove
     CreateDirectory "$TEMP\sillytavern-preserve"
-    CopyFiles /SILENT "$INSTDIR\resources\sillytavern\*.*" "$TEMP\sillytavern-preserve"
+    nsExec::ExecToLog 'xcopy /E /I /Y /Q "$INSTDIR\resources\sillytavern" "$TEMP\sillytavern-preserve"'
   NoMove:
   
   ${GetParameters} $R0
