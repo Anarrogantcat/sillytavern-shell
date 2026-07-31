@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.5.3-b (2026-07-31)
+- 修复 下载报 "Please check update first" — 主进程状态机，不再依赖 electron-updater 内部状态
+- 新增 网络错误自动识别（断网/代理问题给出明确中文提示）
+
 ## v1.5.3-a (2026-07-31)
 - 修复 套壳更新误报旧版本（semver 严格比较，只有 remote > current 才提示）
 - 修复 完整性检测误报（统一 node 脚本，显示详细错误）

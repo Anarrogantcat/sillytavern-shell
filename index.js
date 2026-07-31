@@ -283,17 +283,18 @@ function setupIPC() {
     // Shell auto-update
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
+    let shellUpdateVersion = null;
     ipcMain.handle('shell-update:check', async () => {
         try {
             const result = await autoUpdater.checkForUpdates();
+            shellUpdateVersion = result?.updateInfo?.version || null;
             if (!result) return { hasUpdate: false };
             return { version: result.updateInfo.version, hasUpdate: true };
         } catch (e) { return { error: e.message }; }
     });
     ipcMain.handle('shell-update:download', async () => {
+        if (!shellUpdateVersion) return { error: '请先点击"检查套壳更新"，确认有新版本后再下载' };
         try {
-            const check = await autoUpdater.checkForUpdates();
-            if (!check) return { error: '没有可用更新' };
             await autoUpdater.downloadUpdate();
             return { success: true };
         } catch (e) { return { error: e.message }; }
