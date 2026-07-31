@@ -36,13 +36,19 @@ if (settings.closeBehavior === undefined || settings.closeBehavior === 'tray') {
     settings.closeBehavior = 'ask';
     saveSettings(settings);
 }
-const sillyTavernRoot = cliArguments.serverPath || settings.serverPath
-    || (app.isPackaged ? path.join(process.resourcesPath, 'sillytavern') : path.resolve(__dirname, '../..'));
+// ST lives as SIBLING of the shell install dir — shell upgrade/uninstall never touches it
+const defaultST = app.isPackaged ? path.join(path.dirname(process.resourcesPath), '..', 'SillyTavern') : path.resolve(__dirname, '../..');
+if (!settings.serverPath) { settings.serverPath = defaultST; saveSettings(settings); }
+else if (/[\\/]resources[\\/]sillytavern$/i.test(settings.serverPath)) {
+    // Old layout (ST inside shell resources) — migrate to sibling dir
+    settings.serverPath = path.join(path.dirname(settings.serverPath), '..', '..', 'SillyTavern');
+    saveSettings(settings);
+}
+const sillyTavernRoot = cliArguments.serverPath || settings.serverPath || defaultST;
 // User data lives OUTSIDE resources — upgrade/reinstall never touches it
 const dataRoot = settings.dataRoot || (app.isPackaged
-    ? path.join(path.dirname(process.resourcesPath), 'Data')
+    ? path.join(path.dirname(process.resourcesPath), '..', 'Data')
     : path.join(path.resolve(__dirname, '../..'), 'Data'));
-if (!settings.serverPath) { settings.serverPath = sillyTavernRoot; saveSettings(settings); }
 
 // ── SillyTavern Setup (first launch) ─────────────────────────────────
 function isSillyTavernInstalled() {
