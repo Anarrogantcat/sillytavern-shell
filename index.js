@@ -134,7 +134,7 @@ function createTrayIconRaw() {
 }
 let tray = null, isQuitting = false;
 function createTray() {
-    const iconPath = app.isPackaged ? path.join(process.resourcesPath, 'app.asar', 'assets/icon.png') : path.join(__dirname, 'assets/icon.png');
+    const iconPath = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, 'assets/icon.png');
     let icon;
     try { icon = nativeImage.createFromPath(iconPath); if (icon.isEmpty()) throw new Error(); } catch (_) { icon = createTrayIconRaw(); }
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
@@ -229,7 +229,8 @@ function setupIPC() {
                     const r = JSON.parse(body);
                     const cur = JSON.parse(fs.readFileSync(path.join(sillyTavernRoot, 'package.json'), 'utf-8')).version;
                     const latest = r.tag_name?.replace(/^v/, '') || '';
-                    resolve({ latest, current: cur, hasUpdate: latest && latest !== cur, url: r.html_url });
+                    const v2n = s => String(s).split('.').reduce((a, n) => a * 100 + (parseInt(n, 10) || 0), 0);
+                    resolve({ latest, current: cur, hasUpdate: latest && v2n(latest) > v2n(cur), url: r.html_url });
                 } catch (_) { resolve({ error: 'Failed to parse release info' }); }
             });
         });

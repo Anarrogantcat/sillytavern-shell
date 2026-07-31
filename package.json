@@ -38,7 +38,7 @@
       "assets/icon.png",
       "CHANGELOG.md"
     ],
-    "extraResources": [],
+    "extraResources": [{ "from": "assets/icon.png", "to": "icon.png" }],
     "afterPack": "./scripts/afterPack.js",
     "win": {
       "target": "nsis",
