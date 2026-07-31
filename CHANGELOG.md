@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.5.3-c (2026-07-31)
+- 修复 终端面板悬空导致输入框下大片空白 — 面板贴底，webview 缩进对齐
+- 修复 终端打开时悬浮按钮重叠
+
 ## v1.5.3-b (2026-07-31)
 - 修复 下载报 "Please check update first" — 主进程状态机，不再依赖 electron-updater 内部状态
 - 新增 网络错误自动识别（断网/代理问题给出明确中文提示）
