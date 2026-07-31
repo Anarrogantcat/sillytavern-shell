@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.5.1 (2026-07-31)
+- 改进 ST 更新：git pull 加 --rebase --autostash（对齐官方冲突处理方案）
+
 ## v1.5.0 (2026-07-31)
 - 重构 目录结构：套壳装主目录\Shell，ST 本体在兄弟目录，更新/卸载永不触碰
 - 移除 NSIS 备份/恢复机制（不再需要）

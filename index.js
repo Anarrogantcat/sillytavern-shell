@@ -253,12 +253,12 @@ function setupIPC() {
         stopServer();
         const isWin = process.platform === 'win32', npmCmd = isWin ? 'npm.cmd' : 'npm', shell = isWin;
         await new Promise((resolve, reject) => {
-            terminalWrite('\x1b[36m> git pull ...\x1b[0m');
-            const git = spawn('git', ['pull'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], shell });
+            terminalWrite('\x1b[36m> git pull --rebase --autostash ...\x1b[0m');
+            const git = spawn('git', ['pull', '--rebase', '--autostash'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], shell });
             git.stdout.on('data', d => terminalWrite(d));
             git.stderr.on('data', d => terminalWrite(d));
             git.on('error', reject);
-            git.on('exit', code => code === 0 ? resolve() : reject(new Error(`git pull exited with code ${code}`)));
+            git.on('exit', code => code === 0 ? resolve() : reject(new Error(`git pull exited with code ${code} — 如遇冲突请备份后执行: git reset --hard && git pull`)));
         });
         await new Promise((resolve, reject) => {
             terminalWrite('\x1b[36m> npm install --omit=dev ...\x1b[0m');
