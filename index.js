@@ -262,14 +262,14 @@ function setupIPC() {
     autoUpdater.autoInstallOnAppQuit = false;
     ipcMain.handle('shell-update:check', async () => {
         try {
-            const result = await autoUpdater.checkForUpdatesAndNotify();
+            const result = await autoUpdater.checkForUpdates();
             if (!result) return { hasUpdate: false };
             return { version: result.updateInfo.version, hasUpdate: true };
         } catch (e) { return { error: e.message }; }
     });
     ipcMain.handle('shell-update:download', async () => {
         try {
-            autoUpdater.downloadUpdate();
+            await autoUpdater.downloadUpdate();
             return { success: true };
         } catch (e) { return { error: e.message }; }
     });
