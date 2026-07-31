@@ -85,8 +85,16 @@ async function setupSillyTavern() {
 
     // Clean up non-empty directory before git clone (git requires empty dir)
     if (fs.existsSync(sillyTavernRoot)) {
+        // Safety: never delete user data if dataRoot is inside the ST dir
+        const dataInside = dataRoot.startsWith(sillyTavernRoot + path.sep);
         terminalWrite('\x1b[36m> Cleaning up old files...\x1b[0m');
+        if (dataInside) {
+            const tmp = path.join(path.dirname(sillyTavernRoot), '.data-tmp');
+            fs.rmSync(tmp, { recursive: true, force: true });
+            fs.cpSync(dataRoot, tmp, { recursive: true, force: true });
+        }
         fs.rmSync(sillyTavernRoot, { recursive: true, force: true });
+        if (dataInside) { fs.cpSync(path.join(path.dirname(sillyTavernRoot), '.data-tmp'), dataRoot, { recursive: true, force: true }); fs.rmSync(path.join(path.dirname(sillyTavernRoot), '.data-tmp'), { recursive: true, force: true }); }
     }
     fs.mkdirSync(sillyTavernRoot, { recursive: true });
 
