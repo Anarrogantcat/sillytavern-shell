@@ -223,7 +223,7 @@ function setupIPC() {
     });
 
     ipcMain.handle('update:check', () => new Promise(resolve => {
-        https.get({ hostname: 'api.github.com', path: '/repos/SillyTavern/SillyTavern/releases/latest', headers: { 'User-Agent': 'SillyTavern-Electron', Accept: 'application/vnd.github+json' } }, res => {
+        const req = https.get({ hostname: 'api.github.com', path: '/repos/SillyTavern/SillyTavern/releases/latest', headers: { 'User-Agent': 'SillyTavern-Electron', Accept: 'application/vnd.github+json' } }, res => {
             let body = ''; res.on('data', d => body += d); res.on('end', () => {
                 try {
                     const r = JSON.parse(body);
@@ -232,7 +232,9 @@ function setupIPC() {
                     resolve({ latest, current: cur, hasUpdate: latest && latest !== cur, url: r.html_url });
                 } catch (_) { resolve({ error: 'Failed to parse release info' }); }
             });
-        }).on('error', e => resolve({ error: e.message }));
+        });
+        req.on('error', e => resolve({ error: e.message }));
+        req.setTimeout(10000, () => { req.destroy(); resolve({ error: '连接 GitHub 超时 (10s)' }); });
     }));
 
     ipcMain.handle('update:sillytavern', async () => {
