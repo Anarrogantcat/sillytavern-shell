@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.4.3-alpha (2026-07-31)
+- 修复 套壳自动更新下载后需手动点击安装并重启
+- 修复 同版本仍提示更新
+- 新增 下载错误提示
+
 ## v1.4.0 (2026-07-31)
 - 新增 自动更新 (electron-updater + GitHub Releases)
 - 新增 便携版构建 (覆盖更新不删 ST)
