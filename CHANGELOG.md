@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.5.2 (2026-07-31)
+- 修复 完整版误打包 config.yaml（含 listen:true 等用户配置，安全隐患）— 改为首次启动生成默认配置
+
 ## v1.5.1 (2026-07-31)
 - 改进 ST 更新：git pull 加 --rebase --autostash（对齐官方冲突处理方案）
 
