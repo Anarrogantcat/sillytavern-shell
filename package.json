@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-electron",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
