@@ -65,15 +65,20 @@ function toggleTerminal(){
     }
 }
 // Terminal height: mouse-resizable via the handle at the panel top, persisted per-session
-const TERM_HEIGHT_MIN=120,TERM_HEIGHT_MAX=600;
-let termHeight=(()=>{const v=parseInt(localStorage.getItem('termHeight')||'260',10);return Math.min(TERM_HEIGHT_MAX,Math.max(TERM_HEIGHT_MIN,v));})();
+const TERM_HEIGHT_MIN=120,TERM_HEIGHT_BASE_MAX=600;
+// Dynamic ceiling: never squeeze the webview below 80px (titlebar 38 + panel bottom 12 + 80)
+const termMaxHeight=()=>Math.min(TERM_HEIGHT_BASE_MAX,Math.max(TERM_HEIGHT_MIN,window.innerHeight-38-12-80));
+let termHeight=(()=>{const v=parseInt(localStorage.getItem('termHeight')||'260',10);return Math.min(termMaxHeight(),Math.max(TERM_HEIGHT_MIN,v));})();
 function updateWebviewSize(){
     if(!webview)return;
+    termHeight=Math.min(termMaxHeight(),Math.max(TERM_HEIGHT_MIN,termHeight));
     if(termPanel)termPanel.style.height=termHeight+'px';
     const b=termOpen?termHeight+12:0;
     webview.style.bottom=b+'px';
     webview.style.height=`calc(100% - 38px - ${b}px)`;
 }
+// Window resize: re-clamp so the terminal never overflows the viewport
+window.addEventListener('resize',updateWebviewSize);
 (function initTermResize(){
     const handle=$('#term-resize-handle');if(!handle)return;
     let dragging=false,startY=0,startH=0;
@@ -86,7 +91,7 @@ function updateWebviewSize(){
     document.addEventListener('mousemove',e=>{
         if(!dragging)return;
         const dh=e.screenY-startY;
-        termHeight=Math.min(TERM_HEIGHT_MAX,Math.max(TERM_HEIGHT_MIN,startH+dh));
+        termHeight=Math.min(termMaxHeight(),Math.max(TERM_HEIGHT_MIN,startH+dh));
         updateWebviewSize();
     });
     document.addEventListener('mouseup',()=>{
@@ -170,7 +175,7 @@ webview?.addEventListener('ipc-message',e=>{
 
 // Integrity check
 $('#btn-check-integrity')?.addEventListener('click',async()=>{const s=$('#integrity-status');if(!s)return;s.textContent='检测中...';s.className='update-status info';try{
-const script=`const fs=require('fs');const git=require('child_process').execSync('git rev-parse --is-inside-work-tree',{stdio:'pipe'}).toString().trim()==='true';const out=[];if(git){const del=require('child_process').execSync('git ls-files --deleted',{stdio:'pipe'}).toString().trim().split('\\n').filter(l=>l&&!l.startsWith('data/'));del.forEach(l=>out.push('MISSING '+l));}else{['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}if(!fs.existsSync('node_modules'))out.push('MISSING node_modules');console.log(JSON.stringify({git,out}));`;
+const script=`const fs=require('fs');let git=false;try{git=require('child_process').execSync('git rev-parse --is-inside-work-tree',{stdio:'pipe'}).toString().trim()==='true';}catch(_){git=false;}const out=[];if(git){try{const del=require('child_process').execSync('git ls-files --deleted',{stdio:'pipe'}).toString().trim().split('\\\\n').filter(l=>l&&!l.startsWith('data/'));del.forEach(l=>out.push('MISSING '+l));}catch(_){out.push('git 检查失败（目录可能未信任，正在使用文件检查）');['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}}else{['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}if(!fs.existsSync('node_modules'))out.push('MISSING node_modules');console.log(JSON.stringify({git,out}));`;
 const r=await T?.exec('node -e "'+script.replace(/"/g,'\\"')+'"');
 if(r?.error&&!r.stdout){s.textContent='检测失败: '+(r.stderr||r.error);s.className='update-status error';return;}
 let data={git:false,out:[]};try{data=JSON.parse(r?.stdout||'{}');}catch(_){}

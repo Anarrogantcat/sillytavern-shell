@@ -1,5 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.9 (2026-08-02)
+- 修复 完整性检查报错：系统重装后（新用户 SID）git 拒绝访问旧属主目录（dubious ownership）→ 完整性脚本 git 命令崩溃
+  - 启动时自动把 ST 目录加入 `git safe.directory`（幂等，仅当目录是 git 仓库）
+  - 完整性脚本 git 检查失败时容错：回退文件存在性检查，不再整个报错
+- 修复 终端拖拽上限硬编码 600px：窗口较矮时会把 webview 挤成负高度
+  - 上限动态计算：`min(600, 窗口高 - 130)`，保证 webview 至少 80px
+  - 窗口 resize 时自动重新 clamp
+
 ## v1.6.8 (2026-08-02)
 - 修复 套壳更新安装到错误位置：electron-updater 默认不设置 installDirectory，NSIS 安装器会回退到默认路径（`%LOCALAPPDATA%\Programs\...`），导致更新装到 C 盘而非原安装目录 — 显式固定 `autoUpdater.installDirectory = 当前 exe 目录`，更新自动装回原位
 - 修复 更新安装弹出向导需手动点击：`quitAndInstall()` 默认非静默 — 改为 `quitAndInstall(true, true)`（静默安装 + 装完自动启动应用）

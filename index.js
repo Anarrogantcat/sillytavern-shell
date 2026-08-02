@@ -60,6 +60,24 @@ const dataRoot = settings.dataRoot || (app.isPackaged
     ? path.join(path.dirname(process.resourcesPath), '..', 'Data')
     : path.join(path.resolve(__dirname, '../..'), 'Data'));
 
+// ── Git safe.directory ────────────────────────────────────────────
+// After a Windows reinstall (new user SID) git refuses to touch repos owned
+// by the old account ("dubious ownership"), which breaks ST update (git pull)
+// and the integrity check (git ls-files). Add the ST root as safe once, at
+// startup, so both features keep working across reinstall/relocation.
+(function ensureGitSafeDir() {
+    try {
+        const cwd = sillyTavernRoot;
+        if (!fs.existsSync(path.join(cwd, '.git'))) return; // not a git repo — nothing to do
+        const existing = execSync('git config --global --get-all safe.directory', { stdio: ['ignore', 'pipe', 'ignore'] })
+            .toString().split('\n').map(s => s.trim()).filter(Boolean);
+        if (!existing.includes(cwd)) {
+            execSync(`git config --global --add safe.directory "${cwd}"`, { stdio: 'ignore' });
+            terminalWrite(`[git] added safe.directory ${cwd}\n`);
+        }
+    } catch (_) { /* non-fatal */ }
+})();
+
 // ── SillyTavern Setup (first launch) ─────────────────────────────────
 function isSillyTavernInstalled() {
     return fs.existsSync(path.join(sillyTavernRoot, 'server.js'));
