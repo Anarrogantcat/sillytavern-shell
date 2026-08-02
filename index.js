@@ -238,6 +238,7 @@ function setupIPC() {
         try { await startServer(); return { success: true }; }
         catch (e) { return { success: false, error: e.message }; }
     });
+    ipcMain.handle('server:getUrl', () => serverUrl);
 
     ipcMain.handle('terminal:getHistory', () => terminalLines.join('\n'));
     ipcMain.handle('terminal:exec', (_e, cmd) => new Promise(resolve => {

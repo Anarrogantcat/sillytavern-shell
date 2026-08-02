@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         onError: cb => { const h = (_e, m) => cb(m); ipcRenderer.on('server:error', h); return () => ipcRenderer.removeListener('server:error', h); },
         onSetupStarted: cb => { const h = () => cb(); ipcRenderer.on('setup:started', h); return () => ipcRenderer.removeListener('setup:started', h); },
         restart: () => ipcRenderer.invoke('server:restart'),
+        getUrl: () => ipcRenderer.invoke('server:getUrl'),
     },
     terminal: {
         onOutput: cb => { const h = (_e, t) => cb(t); ipcRenderer.on('terminal:output', h); return () => ipcRenderer.removeListener('terminal:output', h); },

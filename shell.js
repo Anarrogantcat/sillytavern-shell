@@ -16,6 +16,9 @@ W?.isMaximized().then(setMaxState);W?.onMaximizeChange(setMaxState);
 // ── Server → webview ─────────────────────────
 let serverReady=false;
 S?.onUrl(url=>{serverReady=true;if(webview&&url)webview.src=url;});
+// Pull fallback: if the server printed its URL before this page registered
+// its listener (fast-start server), the push event was lost — recover it.
+(async()=>{const u=await S?.getUrl();if(u&&!serverReady){serverReady=true;if(webview)webview.src=u;}})();
 S?.onError(msg=>{if(loading){loading.classList.remove('hidden');const t=loading.querySelector('.loading-text');if(t)t.textContent='启动失败';if(loadingLog){loadingLog.textContent=msg;loadingLog.classList.add('show');}}});
 S?.onSetupStarted?.(()=>{const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
 webview?.addEventListener('dom-ready',()=>{loading?.classList.add('hidden');webview.classList.remove('hidden');webview.focus();});

@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.3 (2026-08-02)
+- 修复 服务器启动竞态：ST 快速启动时（URL 在渲染进程注册监听前输出）`server:url` 事件丢失，webview 永远空白 — 新增 `server:getUrl` 拉取接口，渲染进程启动时主动补拉一次（实测发现：假服务器 100ms 启动即触发）
+- 新增 `scripts/smoke-test.cjs` 可复用 GUI 冒烟测试（CDP 驱动：页面/缩放/终端/ANSI 13 项断言）
+
 ## v1.6.2 (2026-08-02)
 - 重做 缩放：`body.style.zoom`（只缩放内容、不重排布局）→ `webview.setZoomFactor()` 视口级缩放（与浏览器 Ctrl+滚轮一致，整个页面+UI 重排）；新增 Ctrl+0 重置、Ctrl+± 缩放、右下角缩放百分比指示；webview-preload 上报滚轮事件（节流 80ms）
 - 修复 终端卡顿/卡死：`innerHTML +=` 全量重建 DOM（ST 日志刷屏时 O(n²) 冻结）→ 60ms 节流批量追加 textContent 节点，DOM 节点上限 800
