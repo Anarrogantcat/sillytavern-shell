@@ -23,20 +23,62 @@ webview?.addEventListener('will-navigate',e=>{try{const cur=webview.getURL?.()||
 webview?.addEventListener('new-window',e=>{e.preventDefault();const u=String(e.url||'');if(/^https?:\/\//i.test(u))W?.openExternal(u);});
 
 // ── Terminal ─────────────────────────────────
-let termOpen=false,termHistory='';
-function toggleTerminal(){termOpen=!termOpen;termPanel.classList.toggle('hidden',!termOpen);btnTerm.classList.toggle('active',termOpen);const fb=$('#float-buttons');if(fb)fb.style.display=termOpen?'none':'';updateWebviewSize();if(termOpen){termInput?.focus();renderTermOutput(termHistory);}}
+// Batched rendering: ST logs can flood — append via textContent nodes on a 60ms
+// throttle instead of rebuilding innerHTML on every line (was O(n²) → freeze).
+let termOpen=false,termHistory='',termBuf='',termTimer=null,termNodes=0;
+const TERM_MAX_NODES=800,TERM_HISTORY_MAX=2*1024*1024;
+function stripAnsi(t){return t.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g,'').replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g,'');}
+function termAppend(text){
+    if(!text)return;
+    termHistory+=text;
+    if(termHistory.length>TERM_HISTORY_MAX)termHistory=termHistory.slice(-TERM_HISTORY_MAX/2);
+    if(!termOpen)return;
+    termBuf+=text;
+    if(termTimer)return;
+    termTimer=setTimeout(flushTerm,60);
+}
+function flushTerm(){
+    termTimer=null;
+    if(!termBuf||!termOut)return;
+    const div=document.createElement('div');
+    div.textContent=stripAnsi(termBuf);
+    termBuf='';
+    termOut.appendChild(div);
+    termNodes++;
+    while(termNodes>TERM_MAX_NODES&&termOut.firstChild){termOut.firstChild.remove();termNodes--;}
+    termOut.scrollTop=termOut.scrollHeight;
+}
+function toggleTerminal(){
+    termOpen=!termOpen;
+    termPanel.classList.toggle('hidden',!termOpen);
+    btnTerm.classList.toggle('active',termOpen);
+    const fb=$('#float-buttons');if(fb)fb.style.display=termOpen?'none':'';
+    updateWebviewSize();
+    if(termOpen){
+        termInput?.focus();
+        termOut.textContent='';termNodes=0;
+        if(termHistory){const d=document.createElement('div');d.textContent=stripAnsi(termHistory);termOut.appendChild(d);termNodes=1;}
+        termOut.scrollTop=termOut.scrollHeight;
+    }
+}
 function updateWebviewSize(){if(!webview)return;const b=termOpen?272:0;webview.style.bottom=b+'px';webview.style.height=`calc(100% - 38px - ${b}px)`;}
-async function loadTermHistory(){termHistory=(await T?.getHistory())||'';renderTermOutput(termHistory);}
-function renderTermOutput(text){if(!termOut)return;const c=text.replace(/\x1b\[\d+m/g,'');termOut.innerHTML+=('<div>'+c.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')+'</div>');termOut.scrollTop=termOut.scrollHeight;termHistory+=text;}
+let loadBuf='',loadTimer=null;
+function loadingAppend(text){
+    if(!loadingLog)return;
+    loadBuf+=text;
+    loadingLog.classList.add('show');
+    if(loadTimer)return;
+    loadTimer=setTimeout(()=>{loadTimer=null;loadingLog.textContent+=loadBuf;loadBuf='';loadingLog.scrollTop=loadingLog.scrollHeight;},80);
+}
 
 btnTerm?.addEventListener('click',toggleTerminal);
 $('#btn-terminal-close')?.addEventListener('click',toggleTerminal);
-$('#btn-terminal-copy')?.addEventListener('click',async()=>{const t=termOut?.innerText||'';await navigator.clipboard.writeText(t);const b=$('#btn-terminal-copy');if(b){b.textContent='✅';setTimeout(()=>{b.textContent='📋';},1000);}});
+$('#btn-terminal-copy')?.addEventListener('click',async()=>{const t=stripAnsi(termHistory)||termOut?.innerText||'';await navigator.clipboard.writeText(t);const b=$('#btn-terminal-copy');if(b){b.textContent='✅';setTimeout(()=>{b.textContent='📋';},1000);}});
 termOut?.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='c'){const s=window.getSelection()?.toString();if(s){e.preventDefault();navigator.clipboard.writeText(s);}}});
-termInput?.addEventListener('keydown',async e=>{if(e.key!=='Enter'||!termInput.value.trim())return;const cmd=termInput.value.trim();termInput.value='';termInput.disabled=true;renderTermOutput(`> ${cmd}\n`);try{const r=await T?.exec(cmd);if(r.stdout)renderTermOutput(r.stdout);if(r.stderr)renderTermOutput(r.stderr);if(r.error)renderTermOutput(`Error: ${r.error}\n`);}catch(err){renderTermOutput(`${err.message}\n`);}termInput.disabled=false;termInput.focus();});
+termInput?.addEventListener('keydown',async e=>{if(e.key!=='Enter'||!termInput.value.trim())return;const cmd=termInput.value.trim();termInput.value='';termInput.disabled=true;termAppend(`> ${cmd}\n`);try{const r=await T?.exec(cmd);if(r.stdout)termAppend(r.stdout);if(r.stderr)termAppend(r.stderr);if(r.error)termAppend(`Error: ${r.error}\n`);}catch(err){termAppend(`${err.message}\n`);}termInput.disabled=false;termInput.focus();});
 
-T?.onOutput(text=>{if(!serverReady&&loadingLog){loadingLog.classList.add('show');loadingLog.textContent+=text;loadingLog.scrollTop=loadingLog.scrollHeight;}if(termOpen)renderTermOutput(text);else termHistory+=text;});
-(async()=>{const h=await T?.getHistory();if(h&&!serverReady&&loadingLog){loadingLog.classList.add('show');loadingLog.textContent=h;loadingLog.scrollTop=loadingLog.scrollHeight;}termHistory=h||'';})();
+T?.onOutput(text=>{if(!serverReady&&loadingLog)loadingAppend(text);termAppend(text);});
+(async()=>{const h=await T?.getHistory();if(h){termHistory=h;if(!serverReady&&loadingLog){loadingLog.classList.add('show');loadingLog.textContent=stripAnsi(h);loadingLog.scrollTop=loadingLog.scrollHeight;}}})();
 
 // ── Settings ─────────────────────────────────
 let settingsData={};
@@ -61,9 +103,35 @@ $('#btn-update')?.addEventListener('click',async()=>{openSettings();checkUpdate(
 async function checkUpdate(){const b=$('#btn-check-update'),s=$('#update-status');if(b)b.disabled=true;if(s){s.textContent='检查中...';s.className='update-status info';}updateData=await U?.check();if(updateData?.error){if(s){s.textContent='检查失败: '+updateData.error;s.className='update-status error';}}else if(updateData?.hasUpdate){if(s){s.innerHTML=`发现新版本 <b>v${updateData.latest}</b> (当前 v${updateData.current})`;s.className='update-status success';}let ub=$('#btn-do-update');if(!ub){ub=document.createElement('button');ub.id='btn-do-update';ub.className='btn-primary';ub.textContent='立即更新';ub.addEventListener('click',doUpdate);$('.update-section').appendChild(ub);}let vu=$('#btn-view-update');if(!vu&&updateData?.url){vu=document.createElement('button');vu.id='btn-view-update';vu.className='btn-secondary';vu.textContent='查看更新日志';vu.style.marginTop='6px';vu.addEventListener('click',()=>{window.open(updateData.url,'_blank');});$('.update-section').appendChild(vu);}}else{if(s){s.textContent='已是最新版本 (v'+updateData.current+')';s.className='update-status info';}}if(b)b.disabled=false;}
 async function doUpdate(){const s=$('#update-status'),p=$('#update-progress');$('#btn-do-update').disabled=true;$('#btn-check-update').disabled=true;s.textContent='更新中 (git pull + npm install)...';s.className='update-status info';p.classList.remove('hidden');$('#progress-fill').style.width='100%';$('#progress-text').textContent='更新完成后服务器将自动重启';try{const r=await U?.updateSillyTavern();if(r?.success){s.textContent='更新完成！';s.className='update-status success';p.classList.add('hidden');}else throw new Error(r?.error||'Update failed');}catch(e){s.textContent='更新失败: '+e.message;s.className='update-status error';p.classList.add('hidden');}}
 
-document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='`'){e.preventDefault();toggleTerminal();}});
+document.addEventListener('keydown',e=>{
+    if(e.ctrlKey&&e.key==='`'){e.preventDefault();toggleTerminal();return;}
+    if(e.ctrlKey&&e.key==='0'){e.preventDefault();zoomFactor=1;applyZoom();return;}
+    if(e.ctrlKey&&(e.key==='='||e.key==='+'||e.key==='-')){e.preventDefault();zoomFactor=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,zoomFactor+(e.key==='-'?-ZOOM_STEP:ZOOM_STEP)));applyZoom();}
+});
 $('#btn-refresh')?.addEventListener('click',()=>{webview?.reload();});
 $('#btn-toggle-fabs')?.addEventListener('click',()=>{$('#float-buttons').classList.toggle('collapsed');});
+
+// ── Zoom (viewport-level, browser-like) ──────
+// Ctrl+wheel reported by webview-preload.js → webview.setZoomFactor()
+// (real viewport zoom with layout reflow, unlike body.style.zoom).
+let zoomFactor=1;
+const ZOOM_MIN=0.5,ZOOM_MAX=3,ZOOM_STEP=0.1;
+function applyZoom(){try{webview?.setZoomFactor(zoomFactor);}catch(_){}showZoomHint();}
+function showZoomHint(){
+    let b=$('#zoom-badge');
+    if(!b){b=document.createElement('div');b.id='zoom-badge';document.body.appendChild(b);}
+    b.textContent=Math.round(zoomFactor*100)+'%';
+    b.classList.add('show');
+    clearTimeout(showZoomHint._t);
+    showZoomHint._t=setTimeout(()=>b.classList.remove('show'),900);
+}
+webview?.addEventListener('ipc-message',e=>{
+    if(e.channel==='zoom-wheel'&&typeof e.args?.[0]==='number'){
+        const dir=e.args[0];
+        zoomFactor=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,zoomFactor+dir*ZOOM_STEP));
+        applyZoom();
+    }
+});
 
 // Integrity check
 $('#btn-check-integrity')?.addEventListener('click',async()=>{const s=$('#integrity-status');if(!s)return;s.textContent='检测中...';s.className='update-status info';try{
@@ -75,9 +143,7 @@ if(data.out.length===0){s.textContent=data.git?'✅ 所有文件完整 (git 安�
 else{s.innerHTML='<pre style=margin:0;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto>缺失文件：\\n'+data.out.join('\\n')+'</pre>';s.className='update-status error';}
 }catch(e){s.textContent='检测失败: '+e.message;s.className='update-status error';}});
 
-// Ctrl+Scroll zoom — inject into webview content
-webview?.addEventListener('dom-ready',()=>{webview.executeJavaScript(`
-(function(){let z=0;document.addEventListener('wheel',function(e){if(e.ctrlKey){e.preventDefault();z=Math.min(2,Math.max(-3,z+(e.deltaY>0?-0.2:0.2)));document.body.style.zoom=(1+z*0.2);}},{passive:false});})();
-`);});
+// Ctrl+Scroll zoom — now handled via webview preload + setZoomFactor (see Zoom section above)
+
 $('#btn-check-shell-update')?.addEventListener('click',checkShellUpdate);
 async function checkShellUpdate(){const s=$('#shell-update-status');if(!s)return;s.textContent='检查中...';s.className='update-status info';const cur=await A?.getShellVersion();const SU=window.electronAPI?.shellUpdate;if(!SU){s.textContent='自动更新不可用';s.className='update-status error';return;}try{const r=await SU.check();const newer=r?.version&&cur&&String(r.version)!==String(cur)&&(String(r.version).localeCompare(String(cur),undefined,{numeric:true})>0);if(r?.hasUpdate&&newer){s.innerHTML=`发现新版本 <b>v${r.version}</b> (当前 v${cur})`;s.className='update-status success';let dl=$('#btn-dl-shell');if(!dl){dl=document.createElement('button');dl.id='btn-dl-shell';dl.className='btn-primary';dl.style.marginTop='6px';dl.textContent='下载并安装';dl.addEventListener('click',async()=>{dl.disabled=true;dl.textContent='下载中...';s.innerHTML='下载中...';s.className='update-status info';let cleanup=SU.onProgress(({percent})=>{dl.textContent=`下载中 ${Math.round(percent)}%`;});let dc=SU.onDownloaded(()=>{cleanup();dc();s.innerHTML='✅ 更新已下载！';s.className='update-status success';dl.textContent='安装并重启';dl.disabled=false;dl.addEventListener('click',()=>SU.install(),{once:true});});let ec=SU.onError(e=>{cleanup();dc();ec();s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';});try{await SU.download();}catch(e){cleanup();dc();ec();s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';}});s.appendChild(dl);}}else if(r?.error){s.textContent=(/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network|Network/i.test(r.error))?'⚠ 网络连接失败 — 请检查网络或代理 (127.0.0.1:7890)':'检查失败: '+r.error;s.className='update-status error';}else{s.textContent='已是最新版本 (v'+cur+')';s.className='update-status info';}}catch(e){s.textContent='检查失败: '+e.message;s.className='update-status error';}}

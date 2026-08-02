@@ -1,5 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.2 (2026-08-02)
+- 重做 缩放：`body.style.zoom`（只缩放内容、不重排布局）→ `webview.setZoomFactor()` 视口级缩放（与浏览器 Ctrl+滚轮一致，整个页面+UI 重排）；新增 Ctrl+0 重置、Ctrl+± 缩放、右下角缩放百分比指示；webview-preload 上报滚轮事件（节流 80ms）
+- 修复 终端卡顿/卡死：`innerHTML +=` 全量重建 DOM（ST 日志刷屏时 O(n²) 冻结）→ 60ms 节流批量追加 textContent 节点，DOM 节点上限 800
+- 修复 终端历史无上限增长（内存泄漏）— 渲染端 termHistory 上限 2MB
+- 修复 首次安装日志 `textContent +=` 全量拼接卡 UI — 改为 80ms 节流追加
+- 修复 ANSI 剥离只去颜色码（回车进度条/光标序列残留乱码）— 完整 CSI/OSC 序列剥离
+- 修复 主进程终端日志高频 IPC 刷屏 — 80ms 窗口合并发送
+
 ## v1.6.1 (2026-08-02)
 - 修复 完整版构建路径缺陷：prebuild.js 的 ROOT 硬编码 `../../..` 在仓库独立布局下会解析到盘根（灾难性复制整盘）— 改为 `--st-root` 参数 / `ST_ROOT` 环境变量 / 兄弟目录自动探测，并强制校验 server.js 存在
 - 修复 构建产物输出到仓库外（`../../dist-*` 会落到 D:\ 根）— 改为仓库内 `dist-electron-v3` / `dist-electron-v3-lite`（已被 .gitignore 覆盖）

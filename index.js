@@ -119,13 +119,20 @@ async function setupSillyTavern() {
     terminalWrite('\x1b[32mSillyTavern installed successfully!\x1b[0m');
 }
 
-// ── Terminal buffer ──────────────────────────────────────────────────
-let terminalLines = [];
+// ── Terminal buffer ──────────────────────────────────
+let terminalLines = [], termSendBuf = '', termSendTimer = null;
 function terminalWrite(text) {
     const lines = text.toString().split('\n');
     for (const line of lines) { if (line) terminalLines.push(line); }
     while (terminalLines.length > TERMINAL_RING_SIZE) terminalLines.shift();
-    mainWindow?.webContents.send('terminal:output', text.toString());
+    // Coalesce high-frequency log floods into one IPC message per 80ms window
+    termSendBuf += text.toString();
+    if (termSendTimer) return;
+    termSendTimer = setTimeout(() => {
+        termSendTimer = null;
+        const payload = termSendBuf; termSendBuf = '';
+        mainWindow?.webContents.send('terminal:output', payload);
+    }, 80);
 }
 
 // ── Window State ─────────────────────────────────────────────────────
