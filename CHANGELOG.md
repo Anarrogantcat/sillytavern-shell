@@ -1,5 +1,11 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.1 (2026-08-02)
+- 修复 完整版构建路径缺陷：prebuild.js 的 ROOT 硬编码 `../../..` 在仓库独立布局下会解析到盘根（灾难性复制整盘）— 改为 `--st-root` 参数 / `ST_ROOT` 环境变量 / 兄弟目录自动探测，并强制校验 server.js 存在
+- 修复 构建产物输出到仓库外（`../../dist-*` 会落到 D:\ 根）— 改为仓库内 `dist-electron-v3` / `dist-electron-v3-lite`（已被 .gitignore 覆盖）
+- 修复 完整版 artifactName 缺失导致 latest.yml url（连字符）与实际安装包名（空格）不一致，自动更新会 404 — 显式指定 `SillyTavern-Setup-${version}.exe`（lite 版同步修正）
+- 新增 prebuild.js 启动时打印 ST 源码根路径
+
 ## v1.6.0 (2026-08-02)
 - 修复 点击外部链接崩溃（ESM 模块中 require('electron') 未定义）— 外链打开功能真正生效
 - 修复 关闭行为选"最小化到托盘"后重启被强制重置为"首次询问"

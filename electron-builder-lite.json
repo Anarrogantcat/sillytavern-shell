@@ -3,7 +3,7 @@
   "appId": "com.sillytavern.desktop.lite",
   "productName": "SillyTavern",
   "publish": { "provider": "github", "owner": "Anarrogantcat", "repo": "sillytavern-shell" },
-  "artifactName": "SillyTavern Lite Setup ${version}.exe",
+  "artifactName": "SillyTavern-Lite-Setup-${version}.exe",
   "files": ["index.js","preload.js","shell.html","shell.css","shell.js","package.json","assets/icon.png","CHANGELOG.md"],
   "extraResources": [{ "from": "assets/icon.png", "to": "icon.png" }],
   "win": { "target": "nsis", "icon": "assets/icon.png" },

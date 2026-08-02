@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-electron",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
@@ -8,9 +8,9 @@
   "scripts": {
     "start": "electron .",
     "st-prep": "node scripts/prebuild.js",
-    "build:full": "node -e \"['../dist-electron','../dist-electron-v3'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch(_){}})\" && npm run st-prep && electron-builder --win nsis --config.directories.output='../../dist-electron-v3'",
-    "build:lite": "node -e \"['../dist-electron-lite','../dist-electron-v3-lite'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch(_){}})\" && electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='../../dist-electron-v3-lite'",
-    "build:portable": "electron-builder --win zip --config electron-builder-lite.json --config.directories.output='../../dist-electron-v3-lite'",
+    "build:full": "node -e \"['dist-electron','dist-electron-v3'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch(_){}})\" && npm run st-prep && electron-builder --win nsis --config.directories.output='dist-electron-v3'",
+    "build:lite": "node -e \"['dist-electron-lite','dist-electron-v3-lite'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch(_){}})\" && electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
+    "build:portable": "electron-builder --win zip --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
     "build": "npm run build:full"
   },
   "devDependencies": {
@@ -24,9 +24,10 @@
   "build": {
     "appId": "com.sillytavern.desktop",
     "productName": "SillyTavern",
+    "artifactName": "SillyTavern-Setup-${version}.exe",
     "publish": { "provider": "github", "owner": "Anarrogantcat", "repo": "sillytavern-shell" },
     "directories": {
-      "output": "../../dist-electron"
+      "output": "dist-electron"
     },
     "files": [
       "index.js",
