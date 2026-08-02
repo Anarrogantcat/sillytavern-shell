@@ -1,15 +1,16 @@
-{
+﻿{
   "name": "sillytavern-electron",
-  "version": "1.6.4",
-  "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
+  "version": "1.6.5",
+  "description": "SillyTavern Desktop Shell 鈥?Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "electron .",
     "st-prep": "node scripts/prebuild.js",
-    "build:full": "node -e \"['dist-electron','dist-electron-v3'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch(_){}})\" && npm run st-prep && electron-builder --win nsis --config.directories.output='dist-electron-v3'",
-    "build:lite": "node -e \"['dist-electron-lite','dist-electron-v3-lite'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch(_){}})\" && electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
+    "clean": "node scripts/clean-build.mjs",
+    "build:full": "npm run clean -- full && npm run st-prep && electron-builder --win nsis --config.directories.output='dist-electron-v3'",
+    "build:lite": "npm run clean -- lite && electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
     "build:portable": "electron-builder --win zip --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
     "build": "npm run build:full"
   },
