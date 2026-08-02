@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -31,8 +31,8 @@ const cliArguments = yargs(hideBin(process.argv))
     .parseSync();
 
 const settings = loadSettings();
-// Default closeBehavior to 'ask' — first close always asks
-if (settings.closeBehavior === undefined || settings.closeBehavior === 'tray') {
+// Default closeBehavior to 'ask' — first close always asks (only when never set)
+if (settings.closeBehavior === undefined) {
     settings.closeBehavior = 'ask';
     saveSettings(settings);
 }
@@ -206,13 +206,16 @@ function createWindow() {
 }
 
 // ── IPC ──────────────────────────────────────────────────────────────
+let ipcRegistered = false;
 function setupIPC() {
+    if (ipcRegistered) return;
+    ipcRegistered = true;
     const w = () => mainWindow;
     ipcMain.handle('window:minimize', () => w()?.minimize());
     ipcMain.handle('window:maximize', () => { if (w()?.isMaximizable()) w().isMaximized() ? w().unmaximize() : w().maximize(); });
     ipcMain.handle('window:close', () => w()?.close());
     ipcMain.handle('window:isMaximized', () => w()?.isMaximized() ?? false);
-    ipcMain.handle('shell:openExternal', (_e, url) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) require('electron').shell.openExternal(url); });
+    ipcMain.handle('shell:openExternal', (_e, url) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url); });
     w()?.on('maximize', () => w()?.webContents.send('window:maximizeChange', true));
     w()?.on('unmaximize', () => w()?.webContents.send('window:maximizeChange', false));
 
@@ -221,6 +224,13 @@ function setupIPC() {
     ipcMain.handle('settings:getServerPath', () => sillyTavernRoot);
     ipcMain.handle('settings:setServerPath', (_e, p) => { settings.serverPath = p; saveSettings(settings); });
     ipcMain.handle('settings:getDataRoot', () => dataRoot);
+    ipcMain.handle('shell:openPath', (_e, p) => { if (typeof p === 'string' && fs.existsSync(p)) shell.openPath(p); });
+
+    ipcMain.handle('server:restart', async () => {
+        stopServer();
+        try { await startServer(); return { success: true }; }
+        catch (e) { return { success: false, error: e.message }; }
+    });
 
     ipcMain.handle('terminal:getHistory', () => terminalLines.join('\n'));
     ipcMain.handle('terminal:exec', (_e, cmd) => new Promise(resolve => {
@@ -261,22 +271,28 @@ function setupIPC() {
     ipcMain.handle('update:sillytavern', async () => {
         stopServer();
         const isWin = process.platform === 'win32', npmCmd = isWin ? 'npm.cmd' : 'npm', shell = isWin;
-        await new Promise((resolve, reject) => {
-            terminalWrite('\x1b[36m> git pull --rebase --autostash ...\x1b[0m');
-            const git = spawn('git', ['pull', '--rebase', '--autostash'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], shell });
-            git.stdout.on('data', d => terminalWrite(d));
-            git.stderr.on('data', d => terminalWrite(d));
-            git.on('error', reject);
-            git.on('exit', code => code === 0 ? resolve() : reject(new Error(`git pull exited with code ${code} — 如遇冲突请备份后执行: git reset --hard && git pull`)));
-        });
-        await new Promise((resolve, reject) => {
-            terminalWrite('\x1b[36m> npm install --omit=dev ...\x1b[0m');
-            const npm = spawn(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], shell });
-            npm.stdout.on('data', d => terminalWrite(d));
-            npm.stderr.on('data', d => terminalWrite(d));
-            npm.on('error', reject);
-            npm.on('exit', code => code === 0 ? resolve() : reject(new Error(`npm install exited with code ${code}`)));
-        });
+        try {
+            await new Promise((resolve, reject) => {
+                terminalWrite('\x1b[36m> git pull --rebase --autostash ...\x1b[0m');
+                const git = spawn('git', ['pull', '--rebase', '--autostash'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], shell });
+                git.stdout.on('data', d => terminalWrite(d));
+                git.stderr.on('data', d => terminalWrite(d));
+                git.on('error', reject);
+                git.on('exit', code => code === 0 ? resolve() : reject(new Error(`git pull exited with code ${code} — 如遇冲突请备份后执行: git reset --hard && git pull`)));
+            });
+            await new Promise((resolve, reject) => {
+                terminalWrite('\x1b[36m> npm install --omit=dev ...\x1b[0m');
+                const npm = spawn(npmCmd, ['install', '--omit=dev', '--no-audit', '--no-fund', '--loglevel=error'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], shell });
+                npm.stdout.on('data', d => terminalWrite(d));
+                npm.stderr.on('data', d => terminalWrite(d));
+                npm.on('error', reject);
+                npm.on('exit', code => code === 0 ? resolve() : reject(new Error(`npm install exited with code ${code}`)));
+            });
+        } catch (e) {
+            // Never leave the server down after a failed update — try to bring it back
+            try { await startServer(); } catch (se) { terminalWrite('\x1b[31mFailed to restart server: ' + se.message + '\x1b[0m'); }
+            throw e;
+        }
         try { await startServer(); return { success: true }; } catch (e) { return { success: false, error: e.message }; }
     });
 
@@ -326,17 +342,23 @@ function startServer() {
         migrateDataIfNeeded();
         terminalWrite('\x1b[36m> node server.js --dataRoot "' + dataRoot + '" --no-browserLaunchEnabled\x1b[0m');
         serverProcess = spawn('node', [serverJs, '--dataRoot', dataRoot, '--no-browserLaunchEnabled'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
-        let started = false, stdoutBuffer = '';
+        let started = false, stdoutBuffer = '', timedOut = false;
+        const killOnTimeout = setTimeout(() => {
+            if (started) return;
+            timedOut = true;
+            try { serverProcess?.kill('SIGKILL'); } catch (_) {}
+            serverProcess = null;
+            reject(new Error('Server start timed out after 60s'));
+        }, 60000);
         serverProcess.stdout.on('data', data => {
             stdoutBuffer += data.toString(); terminalWrite(data);
             if (started) return;
             const m = stdoutBuffer.replace(/\x1b\[[0-9;]*m/g, '').match(/Go to:\s*(https?:\/\/[^\s]+)/);
-            if (m) { started = true; serverUrl = m[1]; mainWindow?.webContents.send('server:url', serverUrl); resolve(); }
+            if (m) { started = true; serverUrl = m[1]; clearTimeout(killOnTimeout); mainWindow?.webContents.send('server:url', serverUrl); resolve(); }
         });
         serverProcess.stderr.on('data', data => terminalWrite(data));
-        serverProcess.on('error', err => { if (!started) reject(err); });
-        serverProcess.on('exit', code => { if (!started && code !== 0) reject(new Error(`Server exited with code ${code}`)); serverProcess = null; });
-        setTimeout(() => { if (!started) reject(new Error('Server start timed out after 60s')); }, 60000);
+        serverProcess.on('error', err => { clearTimeout(killOnTimeout); if (!started) { serverProcess = null; reject(err); } });
+        serverProcess.on('exit', code => { clearTimeout(killOnTimeout); if (!started && !timedOut && code !== 0) { serverProcess = null; reject(new Error(`Server exited with code ${code}`)); } serverProcess = null; });
     });
 }
 

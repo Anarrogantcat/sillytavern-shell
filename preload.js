@@ -8,11 +8,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
         onMaximizeChange: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('window:maximizeChange', h); return () => ipcRenderer.removeListener('window:maximizeChange', h); },
         openExternal: url => ipcRenderer.invoke('shell:openExternal', url),
+        openPath: p => ipcRenderer.invoke('shell:openPath', p),
     },
     server: {
         onUrl: cb => { const h = (_e, u) => cb(u); ipcRenderer.on('server:url', h); return () => ipcRenderer.removeListener('server:url', h); },
         onError: cb => { const h = (_e, m) => cb(m); ipcRenderer.on('server:error', h); return () => ipcRenderer.removeListener('server:error', h); },
         onSetupStarted: cb => { const h = () => cb(); ipcRenderer.on('setup:started', h); return () => ipcRenderer.removeListener('setup:started', h); },
+        restart: () => ipcRenderer.invoke('server:restart'),
     },
     terminal: {
         onOutput: cb => { const h = (_e, t) => cb(t); ipcRenderer.on('terminal:output', h); return () => ipcRenderer.removeListener('terminal:output', h); },

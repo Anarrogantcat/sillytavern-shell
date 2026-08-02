@@ -46,7 +46,16 @@
 <div class="setting-row"><label>窗口高度</label><input type="number" id="setting-height" min="480" max="2160"></div>
 <div class="setting-row"><label>关闭窗口行为</label><select id="setting-close-behavior"><option value="ask">首次询问</option><option value="tray">最小化到托盘</option><option value="quit">直接退出</option></select></div>
 <div class="setting-row version-row"><label>SillyTavern 版本</label><span id="version-display">检测中...</span></div>
-<div class="setting-row"><label>套壳版本</label><span style="font-size:14px;color:var(--accent);font-weight:500">v1.5.5</span> <button id="btn-shell-changelog" class="btn-secondary" style="margin-top:4px;padding:4px 10px;font-size:11px">查看更新日志</button></div>
+<div class="setting-row version-row"><label>套壳版本</label><span id="shell-version-display" style="font-size:14px;color:var(--accent);font-weight:500">检测中...</span> <button id="btn-shell-changelog" class="btn-secondary" style="margin-top:4px;padding:4px 10px;font-size:11px">查看更新日志</button></div>
+<div class="update-section" style="margin-top:8px">
+<label style="font-size:12px;color:#9090a8;font-weight:500">服务器控制</label>
+<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+<button id="btn-restart-server" class="btn-primary">重启服务器</button>
+<button id="btn-open-st-dir" class="btn-secondary">打开 ST 目录</button>
+<button id="btn-open-data-dir" class="btn-secondary">打开数据目录</button>
+</div>
+<div id="server-ctl-status" class="update-status"></div>
+</div>
 <div class="update-section">
 <label style="font-size:12px;color:#9090a8;font-weight:500">SillyTavern 更新</label>
 <button id="btn-check-update" class="btn-primary">检查更新</button>
