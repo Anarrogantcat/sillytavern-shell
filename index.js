@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -195,7 +195,10 @@ function createWindow() {
         if (isQuitting) return;
         e.preventDefault();
         const behavior = settings.closeBehavior || 'ask';
-        if (behavior === 'tray') { mainWindow.hide(); }
+        if (behavior === 'tray') {
+            mainWindow.hide();
+            try { new Notification({ title: 'SillyTavern 仍在后台运行', body: '已最小化到系统托盘。点击托盘图标可恢复窗口,右键托盘图标选择"退出"可完全关闭。' }).show(); } catch (_) {}
+        }
         else if (behavior === 'quit') { isQuitting = true; app.quit(); }
         else {
             const choice = dialog.showMessageBoxSync(mainWindow, {
@@ -205,7 +208,7 @@ function createWindow() {
                 buttons: ['最小化到托盘', '直接退出', '取消'],
                 defaultId: 0, cancelId: 2,
             });
-            if (choice === 0) { settings.closeBehavior = 'tray'; saveSettings(settings); mainWindow.hide(); }
+            if (choice === 0) { settings.closeBehavior = 'tray'; saveSettings(settings); mainWindow.hide(); try { new Notification({ title: 'SillyTavern 仍在后台运行', body: '已最小化到系统托盘。点击托盘图标可恢复窗口,右键托盘图标选择"退出"可完全关闭。' }).show(); } catch (_) {} }
             else if (choice === 1) { settings.closeBehavior = 'quit'; saveSettings(settings); isQuitting = true; app.quit(); }
         }
     });
