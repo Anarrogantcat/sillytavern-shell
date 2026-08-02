@@ -64,7 +64,39 @@ function toggleTerminal(){
         termOut.scrollTop=termOut.scrollHeight;
     }
 }
-function updateWebviewSize(){if(!webview)return;const b=termOpen?272:0;webview.style.bottom=b+'px';webview.style.height=`calc(100% - 38px - ${b}px)`;}
+// Terminal height: mouse-resizable via the handle at the panel top, persisted per-session
+const TERM_HEIGHT_MIN=120,TERM_HEIGHT_MAX=600;
+let termHeight=(()=>{const v=parseInt(localStorage.getItem('termHeight')||'260',10);return Math.min(TERM_HEIGHT_MAX,Math.max(TERM_HEIGHT_MIN,v));})();
+function updateWebviewSize(){
+    if(!webview)return;
+    if(termPanel)termPanel.style.height=termHeight+'px';
+    const b=termOpen?termHeight+12:0;
+    webview.style.bottom=b+'px';
+    webview.style.height=`calc(100% - 38px - ${b}px)`;
+}
+(function initTermResize(){
+    const handle=$('#term-resize-handle');if(!handle)return;
+    let dragging=false,startY=0,startH=0;
+    handle.addEventListener('mousedown',e=>{
+        dragging=true;startY=e.screenY;startH=termHeight;
+        termPanel.classList.add('resizing');
+        e.preventDefault();
+        document.body.style.cursor='ns-resize';
+    });
+    document.addEventListener('mousemove',e=>{
+        if(!dragging)return;
+        const dh=e.screenY-startY;
+        termHeight=Math.min(TERM_HEIGHT_MAX,Math.max(TERM_HEIGHT_MIN,startH+dh));
+        updateWebviewSize();
+    });
+    document.addEventListener('mouseup',()=>{
+        if(!dragging)return;
+        dragging=false;
+        termPanel.classList.remove('resizing');
+        document.body.style.cursor='';
+        try{localStorage.setItem('termHeight',String(termHeight));}catch(_){}
+    });
+})();
 let loadBuf='',loadTimer=null;
 function loadingAppend(text){
     if(!loadingLog)return;

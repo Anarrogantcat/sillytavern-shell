@@ -29,6 +29,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
 #float-buttons.collapsed .float-toggle svg{transform:scaleX(-1)}
 #float-buttons.collapsed{gap:0}
 #terminal-panel{position:fixed;bottom:12px;left:12px;right:12px;height:260px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px;z-index:199;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4);transition:opacity .2s,transform .2s}
+#terminal-panel.resizing,#terminal-panel.resizing *{transition:none!important;user-select:none!important}
+.term-resize-handle{position:absolute;top:-5px;left:0;right:0;height:10px;cursor:ns-resize;z-index:5;background:transparent}
+.term-resize-handle::after{content:'';position:absolute;top:4px;left:50%;transform:translateX(-50%);width:48px;height:3px;border-radius:2px;background:rgba(124,92,191,.45);transition:background .15s,height .15s,top .15s}
+.term-resize-handle:hover::after{background:var(--accent);height:4px;top:3px}
+.term-resize-handle:active::after{background:var(--accent);height:5px;top:2px}
 #terminal-panel.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
 .panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;font-size:13px;font-weight:500;border-bottom:1px solid var(--border);flex-shrink:0}
 .panel-close,.panel-action{background:none;border:none;color:var(--fg);cursor:pointer;padding:0 4px;line-height:1;opacity:.6}

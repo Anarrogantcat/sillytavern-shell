@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.6 (2026-08-02)
+- 新增 终端面板高度鼠标拖拽调整（面板顶部手柄，120~600px，实时联动 webview 尺寸，高度自动记忆）
+
 ## v1.6.5 (2026-08-02)
 - 新增 构建前自动清理机制（`scripts/clean-build.mjs`）：构建前删除旧产物/旧缓存（staging、dist-*、旧安装包），`build:full` / `build:lite` 各自只清理自己的产物目录，双版本可顺序构建共存
 - 修复 仓库 README 重复问题：完整内容合并进 README.md（GitHub 默认展示），删除冗余的 README-gh.md
