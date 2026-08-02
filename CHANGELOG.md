@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.8 (2026-08-02)
+- 修复 套壳更新安装到错误位置：electron-updater 默认不设置 installDirectory，NSIS 安装器会回退到默认路径（`%LOCALAPPDATA%\Programs\...`），导致更新装到 C 盘而非原安装目录 — 显式固定 `autoUpdater.installDirectory = 当前 exe 目录`，更新自动装回原位
+- 修复 更新安装弹出向导需手动点击：`quitAndInstall()` 默认非静默 — 改为 `quitAndInstall(true, true)`（静默安装 + 装完自动启动应用）
+- 实测：`/S /D=D:\AI\SillyTavern\Shell` 静默安装退出码 0，Shell/ST/Data 三兄弟结构完整，数据保留
+
 ## v1.6.7 (2026-08-02)
 - 修复 套壳更新"下载完不安装"：electron-updater 默认 logger 写 stdout，在管道已断的环境（GUI 启动器/重定向）会抛 EPIPE → Uncaught Exception → 主进程崩溃，下载完成后永远走不到安装步骤
   - stdout/stderr 增加 error 监听（EPIPE 不再导致崩溃）

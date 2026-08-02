@@ -320,6 +320,10 @@ function setupIPC() {
     // Shell auto-update
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
+    // electron-updater does NOT set installDirectory by default → the NSIS
+    // installer would fall back to its default path (%LOCALAPPDATA%\Programs\...)
+    // instead of the CURRENT install dir. Pin it so updates install back in place.
+    try { autoUpdater.installDirectory = path.dirname(app.getPath('exe')); } catch (_) {}
     // Route updater logs to the terminal panel instead of stdout —
     // console/stdout writes can throw EPIPE on broken pipes and crash the app.
     autoUpdater.logger = {
@@ -344,7 +348,7 @@ function setupIPC() {
             return { success: true };
         } catch (e) { return { error: e.message }; }
     });
-    ipcMain.handle('shell-update:install', () => { autoUpdater.quitAndInstall(); });
+    ipcMain.handle('shell-update:install', () => { autoUpdater.quitAndInstall(true, true); });
     autoUpdater.on('download-progress', p => w()?.webContents.send('shell-update:progress', p));
     autoUpdater.on('update-downloaded', () => w()?.webContents.send('shell-update:downloaded'));
     autoUpdater.on('error', e => w()?.webContents.send('shell-update:error', e.message));

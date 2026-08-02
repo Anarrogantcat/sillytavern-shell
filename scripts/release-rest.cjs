@@ -3,17 +3,12 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 
 const TOKEN = process.env.GH_TOKEN;
-const OWNER = 'Anarrogantcat', REPO = 'sillytavern-shell', TAG = 'v1.6.7';
+const VERSION = process.argv[2] || '1.6.8';
+const OWNER = 'Anarrogantcat', REPO = 'sillytavern-shell', TAG = `v${VERSION}`;
 const BASE = `https://api.github.com/repos/${OWNER}/${REPO}`;
-const BODY = `## SillyTavern Desktop Shell v1.6.7
+const BODY = `## SillyTavern Desktop Shell v${VERSION}
 
 双版本安装包：完整版内置 SillyTavern（离线可用）；轻量版首次启动自动下载。
-
-### 本次更新（重要修复）
-- 修复 套壳更新「下载完不安装」：electron-updater 默认 logger 写 stdout，在管道已断的环境（GUI 启动器/重定向）会抛 EPIPE 导致主进程崩溃，下载完成后永远走不到安装步骤
-  - stdout/stderr 增加 error 监听（EPIPE 不再导致崩溃）
-  - autoUpdater 日志改接终端面板（[updater] 前缀），不再写 stdout
-- 新增 更新链路测试脚本（本地更新服务器 + GitHub provider 全链路实测验证）
 
 详见 CHANGELOG.md`;
 
@@ -36,11 +31,11 @@ try {
 
 // 2. Upload assets
 const assets = [
-    'dist-electron-v3/SillyTavern-Setup-1.6.7.exe',
-    'dist-electron-v3/SillyTavern-Setup-1.6.7.exe.blockmap',
+    `dist-electron-v3/SillyTavern-Setup-${VERSION}.exe`,
+    `dist-electron-v3/SillyTavern-Setup-${VERSION}.exe.blockmap`,
     'dist-electron-v3/latest.yml',
-    'dist-electron-v3-lite/SillyTavern-Lite-Setup-1.6.7.exe',
-    'dist-electron-v3-lite/SillyTavern-Lite-Setup-1.6.7.exe.blockmap',
+    `dist-electron-v3-lite/SillyTavern-Lite-Setup-${VERSION}.exe`,
+    `dist-electron-v3-lite/SillyTavern-Lite-Setup-${VERSION}.exe.blockmap`,
 ];
 const relId = fs.readFileSync('.gh-release-id.txt', 'utf8').trim();
 for (const a of assets) {
