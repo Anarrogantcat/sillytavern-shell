@@ -1,0 +1,2 @@
+# Dev-mode update config for electron-updater tests (no publisherName → signature check skipped)
+updaterCacheDirName: sillytavern-electron-updater

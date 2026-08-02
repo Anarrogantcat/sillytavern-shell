@@ -1,5 +1,11 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.6.7 (2026-08-02)
+- 修复 套壳更新"下载完不安装"：electron-updater 默认 logger 写 stdout，在管道已断的环境（GUI 启动器/重定向）会抛 EPIPE → Uncaught Exception → 主进程崩溃，下载完成后永远走不到安装步骤
+  - stdout/stderr 增加 error 监听（EPIPE 不再导致崩溃）
+  - autoUpdater 日志改接终端面板（`[updater]` 前缀，可诊断），不再写 stdout
+- 新增 更新链路测试脚本：`test-upd-server.cjs`（本地 generic 更新服务器）+ `test-updater.cjs` / `test-updater-github.cjs`（真实 GitHub provider 全链路：check→下载 201MB→update-downloaded 事件已验证）
+
 ## v1.6.6 (2026-08-02)
 - 新增 终端面板高度鼠标拖拽调整（面板顶部手柄，120~600px，实时联动 webview 尺寸，高度自动记忆）
 

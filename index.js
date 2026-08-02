@@ -9,6 +9,16 @@ import yargs from 'yargs';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
+// ── Stream safety ──────────────────────────────────────────────────
+// electron-updater's default logger writes to console (stdout). When the
+// app is launched with a closed/broken stdout pipe (GUI launchers, redirects),
+// that write throws EPIPE and — without a handler — becomes an Uncaught
+// Exception that kills the app before update-downloaded can install.
+// Swallow stream errors so a dead pipe can never crash the main process.
+for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', () => { /* EPIPE etc. — never crash the app */ });
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
 const TERMINAL_RING_SIZE = 5000;
@@ -310,6 +320,14 @@ function setupIPC() {
     // Shell auto-update
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
+    // Route updater logs to the terminal panel instead of stdout —
+    // console/stdout writes can throw EPIPE on broken pipes and crash the app.
+    autoUpdater.logger = {
+        info: m => terminalWrite(`[updater] ${m}\n`),
+        warn: m => terminalWrite(`[updater] ${m}\n`),
+        error: m => terminalWrite(`[updater] ${m}\n`),
+        debug: m => terminalWrite(`[updater] ${m}\n`),
+    };
     let shellUpdateVersion = null;
     ipcMain.handle('shell-update:check', async () => {
         try {
