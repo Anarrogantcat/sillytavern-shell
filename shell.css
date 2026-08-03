@@ -35,6 +35,20 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
 .term-resize-handle:hover::after{background:var(--accent);height:4px;top:3px}
 .term-resize-handle:active::after{background:var(--accent);height:5px;top:2px}
 #terminal-panel.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
+/* ── Model Benchmark panel (bottom-right, hideable) ── */
+#bench-panel{position:fixed;right:16px;bottom:60px;width:340px;max-height:70vh;overflow-y:auto;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px;z-index:199;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4);transition:opacity .2s,transform .2s}
+#bench-panel.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
+#bench-panel .bench-body{padding:10px 14px 12px;font-size:12px}
+#bench-panel .bench-row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+#bench-panel .bench-row label{color:#9090a8;flex-shrink:0;padding-top:1px}
+#bench-panel .bench-val{color:var(--fg);word-break:break-all;text-align:right;line-height:1.5}
+#bench-panel .bench-detail{margin-top:6px;padding:6px 8px;background:rgba(0,0,0,.25);border-radius:6px;font-size:11px;line-height:1.7;color:#a8a8c0;white-space:pre-wrap}
+#bench-panel .bench-actions{display:flex;gap:8px;margin-top:10px}
+#bench-panel .bench-result{margin-top:10px;font-size:12px;line-height:1.7}
+#bench-panel .bench-result .sugg-big{font-size:15px;font-weight:600;color:var(--accent);margin:2px 0}
+#bench-panel .bench-result .sugg-note{color:#8080a0;font-size:11px;white-space:pre-wrap}
+#bench-panel .bench-result .bench-err{color:#e06c75}
+#bench-panel .bench-result .bench-ok{color:#98c379}
 .panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;font-size:13px;font-weight:500;border-bottom:1px solid var(--border);flex-shrink:0}
 .panel-close,.panel-action{background:none;border:none;color:var(--fg);cursor:pointer;padding:0 4px;line-height:1;opacity:.6}
 .panel-close{font-size:18px}.panel-action{font-size:14px}

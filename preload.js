@@ -42,4 +42,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         onDownloaded: cb => { const h = () => cb(); ipcRenderer.on('shell-update:downloaded', h); return () => ipcRenderer.removeListener('shell-update:downloaded', h); },
         onError: cb => { const h = (_e, e) => cb(e); ipcRenderer.on('shell-update:error', h); return () => ipcRenderer.removeListener('shell-update:error', h); },
     },
+    bench: {
+        status: () => ipcRenderer.invoke('bench:status'),
+        benchmark: () => ipcRenderer.invoke('bench:benchmark'),
+        reset: () => ipcRenderer.invoke('bench:reset'),
+    },
 });

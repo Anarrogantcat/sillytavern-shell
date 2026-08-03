@@ -1,5 +1,16 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.7.0 (2026-08-02)
+- 新增 模型生成速度检测（右下角 ⚡ 按钮，可隐藏）
+  - 实测当前模型生成速度：本地 Ollama 用 `/api/generate` 精确计量（3 次取中位数），远程 API 走 chat/completions 估算
+  - 自动识别当前角色卡（active_character），只读聊天记录
+  - 自动记录 3 次对话（监听聊天文件增量，10 分钟窗口分组；每次记录总 Token 与角色卡回复 Token，Ollama 用模型真实 tokenizer 精确统计）
+  - 结合电脑配置（nvidia-smi 显存 / 内存 / CPU）给出建议：
+    - 建议上下文长度 = min(对话需求×1.25, 模型上限×75%, 显存KV预算)
+    - 建议最大回复长度 = min(最高回复×1.1, tok/s×60s, 上下文÷8)
+  - 显示完整推导过程，一键复制建议，由用户自行填入 ST 本体
+  - 零写入 ST：只读 settings.json / 聊天记录，不依赖 ST 内部 API，ST 更新不受影响
+
 ## v1.6.9 (2026-08-02)
 - 修复 完整性检查报错：系统重装后（新用户 SID）git 拒绝访问旧属主目录（dubious ownership）→ 完整性脚本 git 命令崩溃
   - 启动时自动把 ST 目录加入 `git safe.directory`（幂等，仅当目录是 git 仓库）

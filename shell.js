@@ -185,5 +185,81 @@ else{s.innerHTML='<pre style=margin:0;font-size:11px;line-height:1.6;max-height:
 
 // Ctrl+Scroll zoom — now handled via webview preload + setZoomFactor (see Zoom section above)
 
+// ── Model Benchmark panel ─────────────────────────────────────────
+const benchEl = {
+    panel: $('#bench-panel'), btn: $('#btn-bench'), model: $('#bench-model'), char: $('#bench-char'),
+    hw: $('#bench-hw'), progress: $('#bench-progress'), sessions: $('#bench-sessions'),
+    result: $('#bench-result'), run: $('#btn-bench-run'), copy: $('#btn-bench-copy'),
+    reset: $('#btn-bench-reset'), close: $('#btn-bench-close'),
+};
+const B = () => window.electronAPI?.bench;
+function fmtNum(n) { return (n ?? 0).toLocaleString('en-US'); }
+async function renderBench() {
+    if (!B()) return;
+    const st = await B().status();
+    if (!st) return;
+    const m = st.model || {};
+    benchEl.model.textContent = m.model ? `${m.model}` : '(未检测到模型)';
+    benchEl.char.textContent = st.activeCharacter || '-';
+    const hw = st.hardware || {};
+    benchEl.hw.textContent = hw.gpu ? `${hw.gpu} ${hw.vramGB ? hw.vramGB + 'GB' : ''} / ${hw.memGB}GB 内存` : `${hw.memGB}GB 内存 / ${hw.cpu}`;
+    const sessions = st.sessions || [];
+    const done = sessions.filter(s => !s.active).length;
+    const cur = sessions.find(s => s.active);
+    let prog = `已记录 ${done}/3 次对话`;
+    if (cur) prog += `，当前对话进行中 (总 ${fmtNum(cur.total)} Tok${cur.reply ? ` / 回复 ${fmtNum(cur.reply)}` : ''})`;
+    if (sessions.length === 0) prog = '等待对话…聊天 3 次后自动给出建议';
+    benchEl.progress.textContent = prog;
+    if (sessions.length) {
+        benchEl.sessions.style.display = '';
+        benchEl.sessions.textContent = sessions.map((s, i) =>
+            `第${i + 1}次对话${s.active ? '(进行中)' : ''}: 总 ${fmtNum(s.total)} Tok / 角色卡回复 ${fmtNum(s.reply)} Tok`
+        ).join('\n');
+    } else benchEl.sessions.style.display = 'none';
+    // benchmark + suggestion
+    const bm = st.benchmark, sg = st.suggestion;
+    if (sg) {
+        const lines = [
+            `建议上下文长度: <span class="sugg-big">${fmtNum(sg.suggestCtx)}</span>`,
+            `建议最大回复长度: <span class="sugg-big">${fmtNum(sg.suggestResp)}</span>`,
+            `<span class="sugg-note">推导: 对话总 ${fmtNum(sg.totalHistory)} + 最高回复 ${fmtNum(sg.maxReply)} + 固定开销 ${sg.baseOverhead} = 需求 ${fmtNum(sg.totalHistory + sg.maxReply + sg.baseOverhead)}, ×1.25 → ${fmtNum(sg.ctxByNeed)}；受模型上限 ${sg.ctxByModel === Infinity ? '未知' : fmtNum(sg.ctxByModel)}、显存预算 ${sg.ctxByVram === Infinity ? '未知' : fmtNum(sg.ctxByVram)} 约束</span>`,
+            `<span class="sugg-note">回复长度: 最高回复 ×1.1 → ${fmtNum(sg.respByUsage)}；受速度 ${bm ? bm.tokPerSec + ' tok/s ×60s → ' + fmtNum(sg.respBySpeed) : '待测速'}、上下文/8 → ${fmtNum(sg.respByCtx)} 约束</span>`,
+        ];
+        benchEl.result.innerHTML = lines.join('<br>');
+        benchEl.copy.style.display = '';
+    } else if (bm) {
+        benchEl.result.innerHTML = `<span class="bench-ok">✅ 测速完成: ${bm.tokPerSec} tok/s</span> (首 token ${bm.ttftMs}ms, 3 次: ${(bm.runs || []).join(', ')})<br><span class="sugg-note">还需 ${Math.max(0, 3 - done)} 次对话数据才能给出建议</span>`;
+        benchEl.copy.style.display = 'none';
+    } else {
+        benchEl.result.innerHTML = '<span class="sugg-note">点击「开始测速」实测生成速度；正常聊天 3 次后自动给出建议。</span>';
+        benchEl.copy.style.display = 'none';
+    }
+}
+benchEl.btn?.addEventListener('click', () => {
+    if (!benchEl.panel) return;
+    const open = benchEl.panel.classList.toggle('hidden');
+    if (!open) renderBench();
+});
+benchEl.close?.addEventListener('click', () => benchEl.panel?.classList.add('hidden'));
+benchEl.run?.addEventListener('click', async () => {
+    if (!B()) return;
+    benchEl.run.disabled = true;
+    benchEl.run.textContent = '测速中...';
+    benchEl.result.innerHTML = '<span class="sugg-note">正在向模型发送 3 次测试生成请求…</span>';
+    const r = await B().benchmark();
+    if (r?.error) { benchEl.result.innerHTML = `<span class="bench-err">测速失败: ${r.error}</span>`; }
+    else { await renderBench(); }
+    benchEl.run.disabled = false;
+    benchEl.run.textContent = '重新测速';
+});
+benchEl.copy?.addEventListener('click', async () => {
+    const st = await B().status();
+    const sg = st?.suggestion;
+    if (!sg) return;
+    const text = `建议上下文长度: ${fmtNum(sg.suggestCtx)}\n建议最大回复长度: ${fmtNum(sg.suggestResp)}`;
+    try { await navigator.clipboard.writeText(text); benchEl.copy.textContent = '已复制 ✓'; setTimeout(() => benchEl.copy.textContent = '复制建议', 1500); } catch (_) {}
+});
+benchEl.reset?.addEventListener('click', async () => { await B()?.reset(); benchEl.result.innerHTML = ''; await renderBench(); });
+
 $('#btn-check-shell-update')?.addEventListener('click',checkShellUpdate);
 async function checkShellUpdate(){const s=$('#shell-update-status');if(!s)return;s.textContent='检查中...';s.className='update-status info';const cur=await A?.getShellVersion();const SU=window.electronAPI?.shellUpdate;if(!SU){s.textContent='自动更新不可用';s.className='update-status error';return;}try{const r=await SU.check();const newer=r?.version&&cur&&String(r.version)!==String(cur)&&(String(r.version).localeCompare(String(cur),undefined,{numeric:true})>0);if(r?.hasUpdate&&newer){s.innerHTML=`发现新版本 <b>v${r.version}</b> (当前 v${cur})`;s.className='update-status success';let dl=$('#btn-dl-shell');if(!dl){dl=document.createElement('button');dl.id='btn-dl-shell';dl.className='btn-primary';dl.style.marginTop='6px';dl.textContent='下载并安装';dl.addEventListener('click',async()=>{if(dl.dataset.done)return;dl.disabled=true;dl.textContent='下载中...';s.innerHTML='下载中...';s.className='update-status info';const sp=$('#shell-update-progress'),sf=$('#shell-progress-fill'),st=$('#shell-progress-text');if(sp){sp.classList.remove('hidden');if(sf)sf.style.width='0%';if(st)st.textContent='0%';}let cleanup=SU.onProgress(({percent})=>{if(sf)sf.style.width=`${Math.round(percent||0)}%`;if(st)st.textContent=`${Math.round(percent||0)}%`;dl.textContent=`下载中 ${Math.round(percent||0)}%`;});let dc=SU.onDownloaded(()=>{cleanup();dc();if(sp)sp.classList.add('hidden');dl.dataset.done='1';s.innerHTML='✅ 下载完成，正在安装...';s.className='update-status success';dl.textContent='安装中...';setTimeout(()=>SU.install(),800);});let ec=SU.onError(e=>{cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';});try{await SU.download();}catch(e){cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';}});s.appendChild(dl);}}else if(r?.error){s.textContent=(/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network|Network/i.test(r.error))?'⚠ 网络连接失败 — 请检查网络或代理 (127.0.0.1:7890)':'检查失败: '+r.error;s.className='update-status error';}else{s.textContent='已是最新版本 (v'+cur+')';s.className='update-status info';}}catch(e){s.textContent='检查失败: '+e.message;s.className='update-status error';}}
