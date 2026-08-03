@@ -93,8 +93,7 @@ const benchState = {
     current: null,       // 进行中的对话 {total, reply, lastTs}
     benchmark: null,     // 最近测速结果
     suggestion: null,    // 最近建议
-    watcherDir: null,
-    watcher: null,
+    benchTimer: null,    // 10s 轮询扫描定时器
     fileBytes: new Map(),
     tokenQueue: Promise.resolve(),
 };
@@ -119,21 +118,26 @@ function benchDetectModel() {
 }
 function benchOllamaBase(url) { return String(url || '').replace(/\/v1\/?$/, '').replace(/\/+$/, ''); }
 function benchIsOllama(url) { return /(localhost|127\.0\.0\.1):11434/i.test(String(url || '')); }
-function benchGetHardware() {
-    const memGB = Math.round((os.totalmem() / 2 ** 30) * 10) / 10;
-    const cpu = (os.cpus()[0]?.model || 'Unknown CPU').trim();
-    let gpu = '', vramGB = 0;
-    try {
-        const out = execSync('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader', { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-        const [name, mem] = out.split(',').map(x => x.trim());
-        gpu = name || ''; vramGB = Math.round((parseFloat(mem) / 1024) * 10) / 10;
-    } catch (_) {
-        try {
-            const out = execSync('powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Where-Object {$_.Name -match \'NVIDIA|AMD|RTX|Radeon\'} | Select-Object -First 1).Name"', { timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-            gpu = out || '';
-        } catch (_) {}
-    }
-    return { cpu, memGB, gpu, vramGB };
+function benchGetHardware(cb) {
+    // ASYNC: never block the main process (execSync nvidia-smi/powershell can stall 5-13s)
+    const result = {
+        cpu: (os.cpus()[0]?.model || 'Unknown CPU').trim(),
+        memGB: Math.round((os.totalmem() / 2 ** 30) * 10) / 10,
+        gpu: '', vramGB: 0,
+    };
+    const finish = () => { benchState.hardware = result; cb?.(result); };
+    exec('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader', { timeout: 5000, windowsHide: true }, (err, stdout) => {
+        if (!err && stdout) {
+            const [name, mem] = stdout.trim().split(',').map(x => x.trim());
+            result.gpu = name || '';
+            result.vramGB = Math.round((parseFloat(mem) / 1024) * 10) / 10;
+            return finish();
+        }
+        exec('powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Where-Object {$_.Name -match \'NVIDIA|AMD|RTX|Radeon\'} | Select-Object -First 1).Name"', { timeout: 8000, windowsHide: true }, (err2, out2) => {
+            if (!err2 && out2) result.gpu = out2.trim();
+            finish();
+        });
+    });
 }
 async function benchTokenize(text) {
     const { url, model } = benchState.model || {};
@@ -233,40 +237,44 @@ function benchLatestChatFile(dir) {
     files.sort((a, b) => fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs);
     return path.join(dir, files[0]);
 }
+function benchScanOnce() {
+    // Poll-based watcher: resilient to fs.watch quirks (non-recursive dirs, missed events,
+    // rename storms) and automatically follows active-character / new-chat changes.
+    const { char, dir } = benchActiveCharDir();
+    if (char !== benchState.activeCharacter) {
+        benchState.activeCharacter = char || null;
+        benchState.fileBytes.clear();
+        benchState.sessions = [];
+        benchState.current = null;
+    }
+    if (!dir) return;
+    const f = benchLatestChatFile(dir);
+    if (!f) return;
+    let buf;
+    try { buf = fs.readFileSync(f); } catch (_) { return; }
+    const prev = benchState.fileBytes.get(f);
+    if (prev === undefined || buf.length <= prev) {
+        // First sight, or file rewritten (new chat) — reset baseline, count nothing
+        benchState.fileBytes.set(f, buf.length);
+        return;
+    }
+    benchState.fileBytes.set(f, buf.length);
+    for (const line of buf.slice(prev).toString('utf8').split('\n')) {
+        if (!line.trim()) continue;
+        let msg = null;
+        try { msg = JSON.parse(line); } catch (_) { continue; }
+        if (!msg || msg.chat_metadata || !msg.mes) continue;
+        benchQueueTokenize(msg);
+    }
+}
 function benchStartWatcher() {
     benchStopWatcher();
-    const { char, dir } = benchActiveCharDir();
-    benchState.activeCharacter = char || null;
-    if (!dir) return;
-    benchState.watcherDir = dir;
-    const scan = () => {
-        const f = benchLatestChatFile(dir);
-        if (!f) return;
-        try { benchState.fileBytes.set(f, fs.statSync(f).size); } catch (_) {}
-    };
-    scan();
-    try {
-        benchState.watcher = fs.watch(dir, { persistent: false }, (evt) => {
-            if (evt === 'rename') { scan(); return; }
-            const f = benchLatestChatFile(dir);
-            if (!f) return;
-            let buf;
-            try { buf = fs.readFileSync(f); } catch (_) { return; }
-            const prev = benchState.fileBytes.get(f);
-            if (prev === undefined || buf.length <= prev) { benchState.fileBytes.set(f, buf.length); return; }
-            benchState.fileBytes.set(f, buf.length);
-            // Byte-aligned slice: appended messages always start at a whole-byte boundary
-            for (const line of buf.slice(prev).toString('utf8').split('\n')) {
-                if (!line.trim()) continue;
-                let msg = null;
-                try { msg = JSON.parse(line); } catch (_) { continue; }
-                if (!msg || msg.chat_metadata || !msg.mes) continue;
-                benchQueueTokenize(msg);
-            }
-        });
-    } catch (_) {}
+    benchScanOnce();
+    benchState.benchTimer = setInterval(benchScanOnce, 10000);
 }
-function benchStopWatcher() { try { benchState.watcher?.close(); } catch (_) {} benchState.watcher = null; }
+function benchStopWatcher() {
+    if (benchState.benchTimer) { clearInterval(benchState.benchTimer); benchState.benchTimer = null; }
+}
 function benchQueueTokenize(msg) {
     benchState.tokenQueue = benchState.tokenQueue.then(async () => {
         const count = await benchTokenize(msg.mes);
@@ -289,8 +297,9 @@ function benchQueueTokenize(msg) {
     }).catch(() => {});
 }
 function benchGetStatus() {
-    if (!benchState.hardware) benchState.hardware = benchGetHardware();
+    if (!benchState.hardware) benchGetHardware(); // async — never blocks
     if (!benchState.model) benchState.model = benchDetectModel();
+    benchScanOnce(); // pick up character/chat changes immediately when the panel opens
     const sessions = [...benchState.sessions];
     if (benchState.current && benchState.current.total > 0) sessions.push({ ...benchState.current, active: true });
     return {

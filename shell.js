@@ -202,7 +202,7 @@ async function renderBench() {
     benchEl.model.textContent = m.model ? `${m.model}` : '(未检测到模型)';
     benchEl.char.textContent = st.activeCharacter || '-';
     const hw = st.hardware || {};
-    benchEl.hw.textContent = hw.gpu ? `${hw.gpu} ${hw.vramGB ? hw.vramGB + 'GB' : ''} / ${hw.memGB}GB 内存` : `${hw.memGB}GB 内存 / ${hw.cpu}`;
+    benchEl.hw.textContent = hw.gpu ? `${hw.gpu} ${hw.vramGB ? hw.vramGB + 'GB' : ''} / ${hw.memGB}GB 内存` : (hw.memGB ? `${hw.memGB}GB 内存 / ${hw.cpu}` : '检测中…');
     const sessions = st.sessions || [];
     const done = sessions.filter(s => !s.active).length;
     const cur = sessions.find(s => s.active);
@@ -238,7 +238,7 @@ async function renderBench() {
 benchEl.btn?.addEventListener('click', () => {
     if (!benchEl.panel) return;
     const open = benchEl.panel.classList.toggle('hidden');
-    if (!open) renderBench();
+    if (!open) { renderBench(); setTimeout(renderBench, 2000); } // hardware fills async → refresh once
 });
 benchEl.close?.addEventListener('click', () => benchEl.panel?.classList.add('hidden'));
 benchEl.run?.addEventListener('click', async () => {
