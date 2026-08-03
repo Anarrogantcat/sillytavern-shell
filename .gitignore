@@ -7,3 +7,4 @@ latest.yml
 builder-debug.yml
 Start.bat
 start.sh
+.smoke/*/
