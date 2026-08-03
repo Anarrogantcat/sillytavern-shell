@@ -23,6 +23,14 @@ try {
     const rel = JSON.parse(out);
     console.log('release created:', rel.id, rel.html_url);
     fs.writeFileSync('.gh-release-id.txt', String(rel.id));
+    // Some API calls create releases as draft — publish if so (draft releases are invisible to users/updaters)
+    if (rel.draft === true) {
+        fs.writeFileSync('.gh-publish.json', '{"draft": false}');
+        const pub = sh(`curl.exe -s -X PATCH -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" -H "Content-Type: application/json" --data-binary @.gh-publish.json ${BASE}/releases/${rel.id}`);
+        fs.unlinkSync('.gh-publish.json');
+        const pr = JSON.parse(pub);
+        console.log('release was draft → published:', pr.draft === false ? 'OK' : 'FAILED');
+    }
 } catch (e) {
     const msg = e.stderr ? e.stderr.toString() : e.message;
     console.log('create failed:', msg.slice(0, 500));
