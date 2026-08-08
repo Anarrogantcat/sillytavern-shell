@@ -59,10 +59,7 @@
 <div class="bench-body" style="font-size:12px">
 
 <div class="tool-sec">📁 数据备份</div>
-<div class="tool-row"><label>目标目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"></div>
-<div class="tool-row"><label>自动备份</label><label class="tool-switch"><input type="checkbox" id="t-backup-auto"><span class="tool-slider"></span></label><select id="t-backup-interval" class="tool-input" style="width:110px;flex:none"><option value="24">每 24 小时</option><option value="48">每 48 小时</option><option value="72">每 72 小时</option></select></div>
-<div class="tool-row"><label>保留份数</label><input type="number" id="t-backup-keep" class="tool-input" min="1" max="20" value="5" style="width:70px"></div>
-<div class="tool-actions"><button id="t-backup-now" class="btn-primary" style="padding:4px 10px;font-size:11px">立即备份</button><span id="t-backup-info" class="tool-note"></span></div>
+<div class="tool-actions"><button id="t-backup-now" class="btn-primary" style="padding:4px 10px;font-size:11px">立即备份</button><span id="t-backup-now-res" class="tool-note"></span></div>
 
 <div class="tool-sec">🔍 聊天全文搜索</div>
 <div class="tool-row"><input type="text" id="t-search-kw" class="tool-input" placeholder="输入关键词，回车搜索（跨全部角色卡）"></div>
@@ -96,14 +93,8 @@
 <div class="tool-sec">💬 独立对话助手</div>
 <div class="tool-actions"><button id="t-chat" class="btn-primary" style="padding:4px 10px;font-size:11px">打开独立对话窗口</button></div>
 
-<div class="tool-sec">⚙️ 设置</div>
-<div class="tool-row"><label>开机自启</label><select id="t-autostart" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
-<div class="tool-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
-<div class="tool-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button></div>
-<div class="tool-row"><label>沉浸模式</label><button id="t-immerse" class="btn-secondary" style="padding:3px 8px;font-size:11px">切换全屏 (F11)</button></div>
-<div class="tool-row"><label>生成完成通知</label><select id="t-notify" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
-<div class="tool-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
-<div id="t-rollback-list" class="tool-detail"></div>
+<div class="tool-sec">🖥 界面</div>
+<div class="tool-actions"><button id="t-immerse" class="btn-secondary" style="padding:4px 10px;font-size:11px">沉浸模式 (F11)</button></div>
 
 </div>
 </div>
@@ -127,6 +118,19 @@
 <div class="setting-row"><label>关闭窗口行为</label><select id="setting-close-behavior"><option value="ask">首次询问</option><option value="tray">最小化到托盘</option><option value="quit">直接退出</option></select></div>
 <div class="setting-row version-row"><label>SillyTavern 版本</label><span id="version-display">检测中...</span></div>
 <div class="setting-row version-row"><label>套壳版本</label><span id="shell-version-display" style="font-size:14px;color:var(--accent);font-weight:500">检测中...</span> <button id="btn-shell-changelog" class="btn-secondary" style="margin-top:4px;padding:4px 10px;font-size:11px">查看更新日志</button></div>
+<div class="update-section" style="margin-top:8px">
+<label style="font-size:12px;color:#9090a8;font-weight:500">🧰 工具设置</label>
+<div class="setting-row"><label>备份目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"></div>
+<div class="setting-row"><label>自动备份</label><label class="tool-switch"><input type="checkbox" id="t-backup-auto"><span class="tool-slider"></span></label><select id="t-backup-interval" class="tool-input" style="width:110px;flex:none"><option value="24">每 24 小时</option><option value="48">每 48 小时</option><option value="72">每 72 小时</option></select></div>
+<div class="setting-row"><label>保留份数</label><input type="number" id="t-backup-keep" class="tool-input" min="1" max="20" value="5" style="width:70px"></div>
+<div id="t-backup-info" class="tool-note" style="margin:2px 0 6px"></div>
+<div class="setting-row"><label>开机自启</label><select id="t-autostart" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
+<div class="setting-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
+<div class="setting-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button></div>
+<div class="setting-row"><label>生成通知</label><select id="t-notify" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
+<div class="setting-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
+<div id="t-rollback-list" class="tool-detail"></div>
+</div>
 <div class="update-section" style="margin-top:8px">
 <label style="font-size:12px;color:#9090a8;font-weight:500">服务器控制</label>
 <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">

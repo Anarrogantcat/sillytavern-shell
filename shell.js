@@ -122,7 +122,7 @@ T?.onOutput(text=>{if(!serverReady&&loadingLog)loadingAppend(text);termAppend(te
 
 // ── Settings ─────────────────────────────────
 let settingsData={};
-async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();}
+async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
 btnSettings?.addEventListener('click',openSettings);
 $('#btn-settings-close')?.addEventListener('click',closeSettings);
@@ -266,7 +266,7 @@ const TL = () => window.electronAPI?.tools;
 const tEl = {
     panel: $('#tools-panel'), btn: $('#btn-tools'), close: $('#btn-tools-close'),
     backupDir: $('#t-backup-dir'), backupAuto: $('#t-backup-auto'), backupInterval: $('#t-backup-interval'), backupKeep: $('#t-backup-keep'),
-    backupNow: $('#t-backup-now'), backupInfo: $('#t-backup-info'),
+    backupNow: $('#t-backup-now'), backupNowRes: $('#t-backup-now-res'), backupInfo: $('#t-backup-info'),
     searchKw: $('#t-search-kw'), searchRes: $('#t-search-res'),
     stats: $('#t-stats'), statsRes: $('#t-stats-res'),
     exportCards: $('#t-export-cards'), summarize: $('#t-summarize'), portable: $('#t-portable'), exportRes: $('#t-export-res'),
@@ -317,9 +317,9 @@ tEl.close?.addEventListener('click', () => tEl.panel?.classList.add('hidden'));
 // 备份
 tEl.backupNow?.addEventListener('click', async () => {
     if (!TL()) return;
-    setNote(tEl.backupInfo, '备份中…');
+    setNote(tEl.backupNowRes, '备份中…');
     const r = await TL().backupNow();
-    setNote(tEl.backupInfo, r?.ok ? `✅ ${r.dest}` : `❌ ${r?.error || '失败'}`);
+    setNote(tEl.backupNowRes, r?.ok ? `✅ ${r.dest}` : `❌ ${r?.error || '失败'}`);
     await renderTools();
 });
 tEl.backupDir?.addEventListener('change', async () => {
