@@ -434,7 +434,7 @@ tEl.pinSet?.addEventListener('click', async () => {
     tEl.pin.value = '';
     setNote(tEl.pin, code ? '✅ PIN 已设置' : '✅ PIN 已清除');
 });
-tEl.immerse?.addEventListener('click', async () => { await TL()?.immerseSet(true); });
+tEl.immerse?.addEventListener('click', async () => { await TL()?.immerseSet(); });
 tEl.notify?.addEventListener('change', async () => {
     const s = await window.electronAPI?.settings?.get?.() || {};
     s.notifyGenerated = tEl.notify.value === '1';
@@ -443,7 +443,7 @@ tEl.notify?.addEventListener('change', async () => {
 // 深夜模式监听
 TL()?.onNight?.(v => document.body.classList.toggle('night', !!v));
 // F11 沉浸
-document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); TL()?.immerseSet(true); } });
+document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); TL()?.immerseSet(); } });
 // PIN 锁屏（启动时如有 PIN 则锁定）
 (async () => {
     if (!TL()) return;

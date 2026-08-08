@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.4 (2026-08-03)
+- 修复 🧰 工具箱默认打开且按钮无效：隐藏规则从 `#bench-panel.hidden`（仅按 id 匹配）改为通用 `.bench-panel.hidden`（同时覆盖测速/工具箱面板）；面板基础样式改为共享类
+- 修复 沉浸模式（F11/按钮）打开后关不掉：`immerseSet` 改为 toggle 语义（`setFullScreen(!isFullScreen)`），F11 与按钮均可开可关
+
 ## v1.8.3 (2026-08-03)
 - 修复 🧰 工具箱面板打不开的根因：tools-panel 缺少 position:fixed，导致面板渲染到屏幕左上角（被忽略）而非右下角；与测速面板同款定位修复
 
