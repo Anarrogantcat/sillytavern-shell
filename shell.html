@@ -31,6 +31,7 @@
 <button id="btn-update" class="float-btn" title="检查更新"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
 <button id="btn-refresh" class="float-btn" title="刷新页面 (F5)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
 <button id="btn-bench" class="float-btn" title="模型测速"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></button>
+<button id="btn-tools" class="float-btn" title="工具箱"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
 </div>
 <div id="terminal-panel" class="panel hidden">
 <div class="term-resize-handle" id="term-resize-handle" title="拖动调整高度"></div>
@@ -51,6 +52,68 @@
 <button id="btn-bench-copy" class="btn-secondary" style="display:none">复制建议</button>
 </div>
 <div id="bench-result" class="bench-result"></div>
+</div>
+</div>
+<div id="tools-panel" class="bench-panel hidden">
+<div class="panel-header"><span>🧰 工具箱</span><button class="panel-close" id="btn-tools-close">&times;</button></div>
+<div class="bench-body" style="font-size:12px">
+
+<div class="tool-sec">📁 数据备份</div>
+<div class="tool-row"><label>目标目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"></div>
+<div class="tool-row"><label>自动备份</label><select id="t-backup-auto" class="tool-input"><option value="0">关</option><option value="24">每 24 小时</option><option value="48">每 48 小时</option><option value="72">每 72 小时</option></select></div>
+<div class="tool-row"><label>保留份数</label><input type="number" id="t-backup-keep" class="tool-input" min="1" max="20" value="5" style="width:70px"></div>
+<div class="tool-actions"><button id="t-backup-now" class="btn-primary" style="padding:4px 10px;font-size:11px">立即备份</button><span id="t-backup-info" class="tool-note"></span></div>
+
+<div class="tool-sec">🔍 聊天全文搜索</div>
+<div class="tool-row"><input type="text" id="t-search-kw" class="tool-input" placeholder="输入关键词，回车搜索（跨全部角色卡）"></div>
+<div id="t-search-res" class="tool-detail"></div>
+
+<div class="tool-sec">📊 聊天统计</div>
+<div class="tool-actions"><button id="t-stats" class="btn-secondary" style="padding:4px 10px;font-size:11px">统计</button><span id="t-stats-res" class="tool-note"></span></div>
+
+<div class="tool-sec">📤 导出</div>
+<div class="tool-actions">
+<button id="t-export-cards" class="btn-secondary" style="padding:4px 10px;font-size:11px">导出角色卡</button>
+<button id="t-summarize" class="btn-secondary" style="padding:4px 10px;font-size:11px">剧情总结</button>
+<button id="t-portable" class="btn-secondary" style="padding:4px 10px;font-size:11px">便携包导出</button>
+<span id="t-export-res" class="tool-note"></span>
+</div>
+
+<div class="tool-sec">🖥 环境 / Ollama</div>
+<div class="tool-actions">
+<button id="t-env" class="btn-secondary" style="padding:4px 10px;font-size:11px">环境体检</button>
+<button id="t-ollama" class="btn-secondary" style="padding:4px 10px;font-size:11px">Ollama 模型</button>
+<button id="t-gpu" class="btn-secondary" style="padding:4px 10px;font-size:11px">显存/温度</button>
+<button id="t-clash" class="btn-secondary" style="padding:4px 10px;font-size:11px">Clash 状态</button>
+</div>
+<div id="t-env-res" class="tool-detail"></div>
+
+<div class="tool-sec">✏️ 草稿生成器（直连模型）</div>
+<div class="tool-row"><input type="text" id="t-draft-prompt" class="tool-input" placeholder="输入生成要求，如：写一段雨夜相遇的场景描写"></div>
+<div class="tool-actions"><button id="t-draft" class="btn-primary" style="padding:4px 10px;font-size:11px">生成</button><button id="t-draft-copy" class="btn-secondary" style="padding:4px 10px;font-size:11px">复制</button></div>
+<div id="t-draft-res" class="tool-detail"></div>
+
+<div class="tool-sec">💬 独立对话助手</div>
+<div class="tool-actions"><button id="t-chat" class="btn-primary" style="padding:4px 10px;font-size:11px">打开独立对话窗口</button></div>
+
+<div class="tool-sec">⚙️ 设置</div>
+<div class="tool-row"><label>开机自启</label><select id="t-autostart" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
+<div class="tool-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
+<div class="tool-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button></div>
+<div class="tool-row"><label>沉浸模式</label><button id="t-immerse" class="btn-secondary" style="padding:3px 8px;font-size:11px">切换全屏 (F11)</button></div>
+<div class="tool-row"><label>生成完成通知</label><select id="t-notify" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
+<div class="tool-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
+<div id="t-rollback-list" class="tool-detail"></div>
+
+</div>
+</div>
+<div id="lock-overlay" class="lock-overlay hidden">
+<div class="lock-box">
+<div style="font-size:28px;margin-bottom:8px">🔒</div>
+<div class="lock-title">已锁定</div>
+<input type="password" id="lock-pin" class="lock-input" placeholder="输入 PIN 解锁" autocomplete="off">
+<div id="lock-err" class="lock-err"></div>
+<button id="lock-unlock" class="btn-primary">解锁</button>
 </div>
 </div>
 <div id="settings-overlay" class="overlay hidden">

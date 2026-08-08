@@ -261,5 +261,199 @@ benchEl.copy?.addEventListener('click', async () => {
 });
 benchEl.reset?.addEventListener('click', async () => { await B()?.reset(); benchEl.result.innerHTML = ''; await renderBench(); });
 
+// ── Tools 工具箱 ─────────────────────────────────────────────────
+const TL = () => window.electronAPI?.tools;
+const tEl = {
+    panel: $('#tools-panel'), btn: $('#btn-tools'), close: $('#btn-tools-close'),
+    backupDir: $('#t-backup-dir'), backupAuto: $('#t-backup-auto'), backupKeep: $('#t-backup-keep'),
+    backupNow: $('#t-backup-now'), backupInfo: $('#t-backup-info'),
+    searchKw: $('#t-search-kw'), searchRes: $('#t-search-res'),
+    stats: $('#t-stats'), statsRes: $('#t-stats-res'),
+    exportCards: $('#t-export-cards'), summarize: $('#t-summarize'), portable: $('#t-portable'), exportRes: $('#t-export-res'),
+    env: $('#t-env'), ollama: $('#t-ollama'), gpu: $('#t-gpu'), clash: $('#t-clash'), envRes: $('#t-env-res'),
+    draftPrompt: $('#t-draft-prompt'), draft: $('#t-draft'), draftCopy: $('#t-draft-copy'), draftRes: $('#t-draft-res'),
+    chat: $('#t-chat'),
+    autostart: $('#t-autostart'), night: $('#t-night'), pin: $('#t-pin'), pinSet: $('#t-pin-set'),
+    immerse: $('#t-immerse'), notify: $('#t-notify'), rollbackInfo: $('#t-rollback-info'), rollbackList: $('#t-rollback-list'),
+};
+function setNote(el, text) { if (el) el.textContent = text; }
+function setDetail(el, html) { if (el) el.innerHTML = html; }
+async function renderTools() {
+    if (!TL()) return;
+    // 备份配置
+    const bc = await TL().backupConfig();
+    if (bc) {
+        tEl.backupDir.value = bc.dir || '';
+        tEl.backupAuto.value = bc.auto ? String(bc.intervalH || 24) : '0';
+        tEl.backupKeep.value = bc.keep || 5;
+        const list = await TL().backupList();
+        setNote(tEl.backupInfo, list.length ? `已有 ${list.length} 份备份` : '');
+    }
+    // 设置项
+    tEl.autostart.value = (await TL().autostartGet()) ? '1' : '0';
+    const ng = await TL().nightGet();
+    if (ng) tEl.night.value = ng.enabled ? '1' : '0';
+    const pg = await TL().pinGet();
+    if (pg) setNote(tEl.pin, pg.hasPin ? '已设置' : '');
+    const s = await window.electronAPI?.settings?.get?.();
+    if (s) tEl.notify.value = s.notifyGenerated === false ? '0' : '1';
+    // 回滚列表
+    const rl = await TL().rollbackList();
+    setNote(tEl.rollbackInfo, rl.length ? `可用 ${rl.length} 个回滚包` : '无回滚包');
+    setDetail(tEl.rollbackList, rl.length ? rl.map(r => `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="${r.version}">回滚到 v${r.version}</button>`).join('') : '');
+    tEl.rollbackList.querySelectorAll('[data-rollback]').forEach(b => b.addEventListener('click', async () => {
+        if (confirm(`确定回滚到 v${b.dataset.rollback}？应用将退出并安装旧版。`)) {
+            await TL().rollbackInstall(b.dataset.rollback);
+        }
+    }));
+}
+tEl.btn?.addEventListener('click', () => {
+    if (!tEl.panel) return;
+    const open = tEl.panel.classList.toggle('hidden');
+    if (!open) { renderTools(); }
+});
+tEl.close?.addEventListener('click', () => tEl.panel?.classList.add('hidden'));
+// 备份
+tEl.backupNow?.addEventListener('click', async () => {
+    if (!TL()) return;
+    setNote(tEl.backupInfo, '备份中…');
+    const r = await TL().backupNow();
+    setNote(tEl.backupInfo, r?.ok ? `✅ ${r.dest}` : `❌ ${r?.error || '失败'}`);
+    await renderTools();
+});
+tEl.backupDir?.addEventListener('change', async () => {
+    await TL()?.backupSave({ dir: tEl.backupDir.value.trim() });
+    setNote(tEl.backupInfo, '已保存目标目录');
+});
+tEl.backupAuto?.addEventListener('change', async () => {
+    const h = Number(tEl.backupAuto.value) || 0;
+    await TL()?.backupSave({ auto: h > 0, intervalH: h || 24 });
+    setNote(tEl.backupInfo, h > 0 ? `已开启自动备份（每 ${h} 小时）` : '已关闭自动备份');
+});
+tEl.backupKeep?.addEventListener('change', async () => { await TL()?.backupSave({ keep: Number(tEl.backupKeep.value) || 5 }); });
+// 搜索
+async function doSearch() {
+    const kw = tEl.searchKw.value.trim();
+    if (!kw) return;
+    const r = await TL()?.searchChats(kw);
+    if (!r) return;
+    const res = r.results || [];
+    if (!res.length) { setDetail(tEl.searchRes, `未找到「${kw}」相关消息（扫描 ${r.totalFiles} 个聊天文件）`); return; }
+    setDetail(tEl.searchRes, `找到 ${res.length} 条${r.truncated ? '（已截断）' : ''}（扫描 ${r.totalFiles} 个文件）：\n` +
+        res.map(h => `<span class="hit">[${h.char}] ${h.name}: ${h.snippet.replace(/</g, '&lt;')}</span>`).join(''));
+}
+tEl.searchKw?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+// 统计
+tEl.stats?.addEventListener('click', async () => {
+    const s = await TL()?.chatStats();
+    if (!s) return;
+    setNote(tEl.statsRes, `✅ ${s.chars} 个角色卡 / ${s.totalMessages} 条消息 / ${Math.round(s.totalChars / 10000) / 100} 万字（回复 ${s.replyChars} 字符）`);
+    setDetail(tEl.searchRes, '各角色卡：\n' + s.perChar.slice(0, 12).map(c => `${c.char}: ${c.messages} 条 / ${c.chars} 字 / 回复 ${c.replyChars} 字`).join('\n'));
+});
+// 导出
+tEl.exportCards?.addEventListener('click', async () => {
+    const r = await TL()?.exportCharacters();
+    setNote(tEl.exportRes, r?.error ? `❌ ${r.error}` : r?.canceled ? '' : `✅ 已导出 ${r.count} 张卡 → ${r.dest}`);
+});
+tEl.summarize?.addEventListener('click', async () => {
+    setNote(tEl.exportRes, '总结中…（调用当前模型）');
+    const r = await TL()?.summarizeChat();
+    setNote(tEl.exportRes, r?.error ? `❌ ${r.error}` : `✅ 已导出 → ${r.dest}`);
+    if (r?.summary) setDetail(tEl.searchRes, r.summary.slice(0, 800));
+});
+tEl.portable?.addEventListener('click', async () => {
+    const r = await TL()?.portablePick();
+    setNote(tEl.exportRes, r?.error ? `❌ ${r.error}` : r?.canceled ? '' : `✅ 便携包已生成 → ${r.dest}`);
+});
+// 环境
+tEl.env?.addEventListener('click', async () => {
+    setDetail(tEl.envRes, '体检中…');
+    const checks = await TL()?.envCheck();
+    if (!checks) return;
+    setDetail(tEl.envRes, checks.map(c => `${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail}`).join('\n'));
+});
+tEl.ollama?.addEventListener('click', async () => {
+    setDetail(tEl.envRes, '加载中…');
+    const r = await TL()?.ollamaModels();
+    if (r?.error) { setDetail(tEl.envRes, '❌ ' + r.error); return; }
+    const ps = await TL()?.ollamaPs();
+    const loaded = new Set((ps?.models || []).map(m => m.name));
+    setDetail(tEl.envRes, `Ollama 在线，${r.models.length} 个模型：\n` + r.models.map(m =>
+        `${loaded.has(m.name) ? '🟢' : '⚪'} ${m.name} (${m.sizeGB}GB ${m.params} ${m.quant})` +
+        `<br><button class="btn-secondary" style="padding:1px 6px;font-size:10px" data-oa="load|${m.name}">加载</button>` +
+        `<button class="btn-secondary" style="padding:1px 6px;font-size:10px" data-oa="unload|${m.name}">卸载</button>`
+    ).join('\n'));
+    tEl.envRes.querySelectorAll('[data-oa]').forEach(b => b.addEventListener('click', async () => {
+        const [a, m] = b.dataset.oa.split('|');
+        await TL()?.ollamaAction(a, m);
+        tEl.ollama.click();
+    }));
+});
+tEl.gpu?.addEventListener('click', async () => {
+    const g = await TL()?.gpuStats();
+    setDetail(tEl.envRes, g ? `🖥 ${g.usedGB}/${g.totalGB} GB 显存 | ${g.temp}°C | 利用率 ${g.util}%` : '无法读取 nvidia-smi');
+});
+tEl.clash?.addEventListener('click', async () => {
+    const ok = await TL()?.clashCheck();
+    setDetail(tEl.envRes, ok ? '✅ Clash 代理 7890 在线' : '❌ Clash 代理 7890 不可达');
+});
+// 草稿
+tEl.draft?.addEventListener('click', async () => {
+    const p = tEl.draftPrompt.value.trim();
+    if (!p) return;
+    tEl.draft.disabled = true; tEl.draft.textContent = '生成中…';
+    const r = await TL()?.draftGenerate(p, 512);
+    setDetail(tEl.draftRes, r?.error ? '❌ ' + r.error : r?.text || '(空)');
+    tEl.draft.disabled = false; tEl.draft.textContent = '生成';
+});
+tEl.draftCopy?.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(tEl.draftRes.textContent || ''); tEl.draftCopy.textContent = '已复制 ✓'; setTimeout(() => tEl.draftCopy.textContent = '复制', 1500); } catch (_) {}
+});
+// 独立对话
+tEl.chat?.addEventListener('click', () => TL()?.chatOpen());
+// 设置
+tEl.autostart?.addEventListener('change', async () => {
+    const on = tEl.autostart.value === '1';
+    const r = await TL()?.autostartSet(on);
+    setNote(tEl.rollbackInfo, r ? '✅ 开机自启已' + (on ? '开启' : '关闭') : '❌ 设置失败');
+});
+tEl.night?.addEventListener('change', async () => {
+    await TL()?.nightSave({ enabled: tEl.night.value === '1', start: '22:00', end: '07:00' });
+});
+tEl.pinSet?.addEventListener('click', async () => {
+    const code = tEl.pin.value.trim();
+    await TL()?.pinSet(code || '');
+    tEl.pin.value = '';
+    setNote(tEl.pin, code ? '✅ PIN 已设置' : '✅ PIN 已清除');
+});
+tEl.immerse?.addEventListener('click', async () => { await TL()?.immerseSet(true); });
+tEl.notify?.addEventListener('change', async () => {
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    s.notifyGenerated = tEl.notify.value === '1';
+    await window.electronAPI?.settings?.save?.(s);
+});
+// 深夜模式监听
+TL()?.onNight?.(v => document.body.classList.toggle('night', !!v));
+// F11 沉浸
+document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); TL()?.immerseSet(true); } });
+// PIN 锁屏（启动时如有 PIN 则锁定）
+(async () => {
+    if (!TL()) return;
+    const pg = await TL().pinGet();
+    if (pg?.hasPin) {
+        const ov = $('#lock-overlay');
+        ov?.classList.remove('hidden');
+        const inp = $('#lock-pin'), err = $('#lock-err'), btn = $('#lock-unlock');
+        const tryUnlock = async () => {
+            const ok = await TL().pinVerify(inp.value);
+            if (ok) { ov.classList.add('hidden'); inp.value = ''; }
+            else { err.textContent = 'PIN 错误'; inp.value = ''; inp.focus(); }
+        };
+        btn?.addEventListener('click', tryUnlock);
+        inp?.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+        setTimeout(() => inp?.focus(), 100);
+    }
+})();
+
 $('#btn-check-shell-update')?.addEventListener('click',checkShellUpdate);
 async function checkShellUpdate(){const s=$('#shell-update-status');if(!s)return;s.textContent='检查中...';s.className='update-status info';const cur=await A?.getShellVersion();const SU=window.electronAPI?.shellUpdate;if(!SU){s.textContent='自动更新不可用';s.className='update-status error';return;}try{const r=await SU.check();const newer=r?.version&&cur&&String(r.version)!==String(cur)&&(String(r.version).localeCompare(String(cur),undefined,{numeric:true})>0);if(r?.hasUpdate&&newer){s.innerHTML=`发现新版本 <b>v${r.version}</b> (当前 v${cur})`;s.className='update-status success';let dl=$('#btn-dl-shell');if(!dl){dl=document.createElement('button');dl.id='btn-dl-shell';dl.className='btn-primary';dl.style.marginTop='6px';dl.textContent='下载并安装';dl.addEventListener('click',async()=>{if(dl.dataset.done)return;dl.disabled=true;dl.textContent='下载中...';s.innerHTML='下载中...';s.className='update-status info';const sp=$('#shell-update-progress'),sf=$('#shell-progress-fill'),st=$('#shell-progress-text');if(sp){sp.classList.remove('hidden');if(sf)sf.style.width='0%';if(st)st.textContent='0%';}let cleanup=SU.onProgress(({percent})=>{if(sf)sf.style.width=`${Math.round(percent||0)}%`;if(st)st.textContent=`${Math.round(percent||0)}%`;dl.textContent=`下载中 ${Math.round(percent||0)}%`;});let dc=SU.onDownloaded(()=>{cleanup();dc();if(sp)sp.classList.add('hidden');dl.dataset.done='1';s.innerHTML='✅ 下载完成，正在安装...';s.className='update-status success';dl.textContent='安装中...';setTimeout(()=>SU.install(),800);});let ec=SU.onError(e=>{cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';});try{await SU.download();}catch(e){cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';}});s.appendChild(dl);}}else if(r?.error){s.textContent=(/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network|Network/i.test(r.error))?'⚠ 网络连接失败 — 请检查网络或代理 (127.0.0.1:7890)':'检查失败: '+r.error;s.className='update-status error';}else{s.textContent='已是最新版本 (v'+cur+')';s.className='update-status info';}}catch(e){s.textContent='检查失败: '+e.message;s.className='update-status error';}}

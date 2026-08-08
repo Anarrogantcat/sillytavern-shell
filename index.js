@@ -9,6 +9,10 @@ import { hideBin } from 'yargs/helpers';
 import yargs from 'yargs';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
+import { registerAppTools } from './lib/tools-app.js';
+import { registerDataTools, detectModel as dataDetectModel, chatOnce as dataChatOnce } from './lib/tools-data.js';
+import { registerEnvTools } from './lib/tools-env.js';
+import { registerChatTools } from './lib/tools-chat.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
 // electron-updater's default logger writes to console (stdout). When the
@@ -85,6 +89,10 @@ const dataRoot = settings.dataRoot || (app.isPackaged
 // 10 分钟窗口分组为"一次对话"，记满 3 次后结合硬件与实测速度给建议。
 const BENCH_SESSION_WINDOW_MS = 10 * 60 * 1000;
 const BENCH_MAX_SESSIONS = 3;
+// Tools 工具箱实例（setupIPC 时赋值，托盘/监听回调共用）
+let toolsApp = null;
+let toolsData = null;
+let lastNotifyTs = 0;
 const benchState = {
     activeCharacter: null,
     model: null,
@@ -289,7 +297,15 @@ function benchQueueTokenize(msg) {
             benchState.current = { total: 0, reply: 0, lastTs: sendTs };
         }
         benchState.current.total += count;
-        if (!msg.is_user) benchState.current.reply += count;
+        if (!msg.is_user) {
+            benchState.current.reply += count;
+            // B9: 生成完成通知（10s 节流）
+            const now = Date.now();
+            if (now - lastNotifyTs > 10000) {
+                lastNotifyTs = now;
+                try { toolsData?.notifyGenerated(benchState.activeCharacter || '角色', count); } catch (_) {}
+            }
+        }
         benchState.current.lastTs = Math.max(benchState.current.lastTs, sendTs);
         if (benchState.sessions.length + (benchState.current ? 1 : 0) >= BENCH_MAX_SESSIONS) {
             benchState.suggestion = benchComputeSuggestion(benchState.benchmark?.tokPerSec || 0, benchState.benchmark?.modelCtx ?? null);
@@ -428,6 +444,13 @@ function createTray() {
     tray.setToolTip('SillyTavern');
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: '显示窗口', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+        { type: 'separator' },
+        { label: '立即备份数据', click: () => { try { const d = toolsApp?.doBackup(); terminalWrite(`[tray] ${d}\n`); } catch (e) { terminalWrite(`[tray] 备份失败: ${e.message}\n`); } } },
+        { type: 'separator' },
+        { label: '打开数据目录', click: () => shell.openPath(dataRoot) },
+        { label: '打开角色卡目录', click: () => shell.openPath(path.join(dataRoot, 'default-user', 'characters')) },
+        { label: '打开 ST 目录', click: () => shell.openPath(sillyTavernRoot) },
+        { label: '打开 Ollama 目录', click: () => shell.openPath(process.env.OLLAMA_MODELS ? path.dirname(process.env.OLLAMA_MODELS) : 'D:\\AI\\ollama-models') },
         { type: 'separator' },
         { label: '退出', click: () => { isQuitting = true; app.quit(); } },
     ]));
@@ -585,6 +608,23 @@ function setupIPC() {
         debug: m => terminalWrite(`[updater] ${m}\n`),
     };
     let shellUpdateVersion = null;
+    // ── Tools 工具箱注册（A/B/C/D 档，全部只读/套壳层）─────────────
+    toolsApp = registerAppTools({
+        ipcMain, app, dialog, shell, dataRoot, getSettings: loadSettings, saveSettings, terminalWrite,
+        win: () => mainWindow,
+    });
+    toolsData = registerDataTools({
+        ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite,
+        win: () => mainWindow, getSettings: loadSettings,
+    });
+    registerEnvTools({ ipcMain, terminalWrite });
+    registerChatTools({ ipcMain, dataRoot });
+    // 更新下载完成后保留回滚包
+    autoUpdater.on('update-downloaded', () => {
+        if (shellUpdateVersion) {
+            try { toolsApp.saveRollbackPackage(shellUpdateVersion, autoUpdater.downloadedUpdateHelper?.installerPath || ''); } catch (_) {}
+        }
+    });
     // ── Model Benchmark IPC ──────────────────────────────────────────
     ipcMain.handle('bench:status', () => benchGetStatus());
     ipcMain.handle('bench:benchmark', async () => {
