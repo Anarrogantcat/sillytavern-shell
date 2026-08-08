@@ -62,6 +62,13 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
 .tool-detail{margin-top:4px;padding:6px 8px;background:rgba(0,0,0,.25);border-radius:6px;font-size:11px;line-height:1.6;color:#a8a8c0;white-space:pre-wrap;max-height:180px;overflow-y:auto}
 .tool-detail .hit{display:block;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
 .tool-detail .hit b{color:var(--accent)}
+/* 开关样式 */
+.tool-switch{position:relative;display:inline-block;width:36px;height:20px;flex:none}
+.tool-switch input{opacity:0;width:0;height:0}
+.tool-slider{position:absolute;cursor:pointer;inset:0;background:#2a2a42;border-radius:20px;transition:.2s}
+.tool-slider::before{content:'';position:absolute;height:14px;width:14px;left:3px;top:3px;background:#9090a8;border-radius:50%;transition:.2s}
+.tool-switch input:checked + .tool-slider{background:var(--accent)}
+.tool-switch input:checked + .tool-slider::before{transform:translateX(16px);background:#fff}
 /* ── 深夜模式（暖色滤镜）── */
 body.night #sillytavern-webview{filter:sepia(.18) brightness(.92) contrast(.95)}
 body.night #titlebar,body.night #terminal-panel,body.night #bench-panel,body.night #tools-panel{background:#1a1430}

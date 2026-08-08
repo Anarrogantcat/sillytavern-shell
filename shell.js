@@ -265,7 +265,7 @@ benchEl.reset?.addEventListener('click', async () => { await B()?.reset(); bench
 const TL = () => window.electronAPI?.tools;
 const tEl = {
     panel: $('#tools-panel'), btn: $('#btn-tools'), close: $('#btn-tools-close'),
-    backupDir: $('#t-backup-dir'), backupAuto: $('#t-backup-auto'), backupKeep: $('#t-backup-keep'),
+    backupDir: $('#t-backup-dir'), backupAuto: $('#t-backup-auto'), backupInterval: $('#t-backup-interval'), backupKeep: $('#t-backup-keep'),
     backupNow: $('#t-backup-now'), backupInfo: $('#t-backup-info'),
     searchKw: $('#t-search-kw'), searchRes: $('#t-search-res'),
     stats: $('#t-stats'), statsRes: $('#t-stats-res'),
@@ -284,7 +284,8 @@ async function renderTools() {
     const bc = await TL().backupConfig();
     if (bc) {
         tEl.backupDir.value = bc.dir || '';
-        tEl.backupAuto.value = bc.auto ? String(bc.intervalH || 24) : '0';
+        tEl.backupAuto.checked = !!bc.auto;
+        tEl.backupInterval.value = String(bc.intervalH || 24);
         tEl.backupKeep.value = bc.keep || 5;
         const list = await TL().backupList();
         setNote(tEl.backupInfo, list.length ? `已有 ${list.length} 份备份` : '');
@@ -326,9 +327,16 @@ tEl.backupDir?.addEventListener('change', async () => {
     setNote(tEl.backupInfo, '已保存目标目录');
 });
 tEl.backupAuto?.addEventListener('change', async () => {
-    const h = Number(tEl.backupAuto.value) || 0;
-    await TL()?.backupSave({ auto: h > 0, intervalH: h || 24 });
-    setNote(tEl.backupInfo, h > 0 ? `已开启自动备份（每 ${h} 小时）` : '已关闭自动备份');
+    const on = tEl.backupAuto.checked;
+    const h = Number(tEl.backupInterval.value) || 24;
+    await TL()?.backupSave({ auto: on, intervalH: h });
+    setNote(tEl.backupInfo, on ? `✅ 已开启自动备份（每 ${h} 小时）` : '已关闭自动备份');
+});
+tEl.backupInterval?.addEventListener('change', async () => {
+    const h = Number(tEl.backupInterval.value) || 24;
+    const on = tEl.backupAuto.checked;
+    await TL()?.backupSave({ auto: on, intervalH: h });
+    setNote(tEl.backupInfo, on ? `✅ 自动备份频率改为每 ${h} 小时` : '自动备份未开启');
 });
 tEl.backupKeep?.addEventListener('change', async () => { await TL()?.backupSave({ keep: Number(tEl.backupKeep.value) || 5 }); });
 // 搜索
