@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         setServerPath: p => ipcRenderer.invoke('settings:setServerPath', p),
         getDataRoot: () => ipcRenderer.invoke('settings:getDataRoot'),
     },
-    app: { getVersion: () => ipcRenderer.invoke('app:getVersion'), getShellVersion: () => ipcRenderer.invoke('app:getShellVersion'), getChangelog: () => ipcRenderer.invoke('app:getChangelog') },
+    app: { getVersion: () => ipcRenderer.invoke('app:getVersion'), getShellVersion: () => ipcRenderer.invoke('app:getShellVersion'), getChangelog: () => ipcRenderer.invoke('app:getChangelog'), contextMenu: opts => ipcRenderer.send('app:contextMenu', opts), onCtxCmd: cb => { const h = (_e, cmd) => cb(cmd); ipcRenderer.on('ctx:cmd', h); return () => ipcRenderer.removeListener('ctx:cmd', h); }, onShellAction: cb => { const h = (_e, a) => cb(a); ipcRenderer.on('shell:action', h); return () => ipcRenderer.removeListener('shell:action', h); } },
     update: {
         check: () => ipcRenderer.invoke('update:check'),
         updateSillyTavern: () => ipcRenderer.invoke('update:sillytavern'),

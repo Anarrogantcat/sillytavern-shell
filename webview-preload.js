@@ -13,3 +13,14 @@ window.addEventListener('wheel', (e) => {
     last = now;
     ipcRenderer.sendToHost('zoom-wheel', e.deltaY > 0 ? -1 : 1);
 }, { passive: false });
+
+// Right-click: report position + selection state to the host so it can
+// show a context menu (Electron webview has no default context menu).
+window.addEventListener('contextmenu', (e) => {
+    let hasSelection = false;
+    try {
+        const s = window.getSelection();
+        hasSelection = !!(s && s.toString() && s.toString().trim());
+    } catch (_) {}
+    ipcRenderer.sendToHost('ctxmenu', { x: e.clientX, y: e.clientY, hasSelection });
+});

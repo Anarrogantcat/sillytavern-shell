@@ -22,6 +22,37 @@ S?.onUrl(url=>{serverReady=true;if(webview&&url)webview.src=url;});
 S?.onError(msg=>{if(loading){loading.classList.remove('hidden');const t=loading.querySelector('.loading-text');if(t)t.textContent='启动失败';if(loadingLog){loadingLog.textContent=msg;loadingLog.classList.add('show');}}});
 S?.onSetupStarted?.(()=>{const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
 webview?.addEventListener('dom-ready',()=>{loading?.classList.add('hidden');webview.classList.remove('hidden');webview.focus();});
+// webview 右键（webview-preload 上报）→ 主进程弹菜单
+webview?.addEventListener('ipc-message', (e) => {
+    if (e.channel === 'ctxmenu') {
+        const p = e.args?.[0] || {};
+        A?.contextMenu?.({ kind: 'webview', x: p.x, y: p.y, hasSelection: p.hasSelection });
+    }
+});
+// 套壳界面右键（非 webview 区域）→ 主进程弹菜单
+document.addEventListener('contextmenu', (e) => {
+    if (e.target === document.body || e.target.closest?.('#titlebar') || e.target.closest?.('#float-buttons') || e.target.closest?.('.panel') || e.target.closest?.('.overlay')) {
+        e.preventDefault();
+        A?.contextMenu?.({ kind: 'shell' });
+    }
+});
+// 主进程菜单命令执行
+A?.onCtxCmd?.(cmd => {
+    if (!webview) return;
+    if (cmd === 'reload') webview.reload();
+    else if (cmd === 'goBack') { if (webview.canGoBack?.()) webview.goBack(); }
+    else if (cmd === 'goForward') { if (webview.canGoForward?.()) webview.goForward(); }
+    else if (cmd === 'zoomIn') { zoomFactor = Math.min(ZOOM_MAX, zoomFactor + ZOOM_STEP); applyZoom(); }
+    else if (cmd === 'zoomOut') { zoomFactor = Math.max(ZOOM_MIN, zoomFactor - ZOOM_STEP); applyZoom(); }
+    else if (cmd === 'zoomReset') { zoomFactor = 1; applyZoom(); }
+    else if (cmd === 'inspect') { try { webview.openDevTools(); } catch (_) {} }
+});
+A?.onShellAction?.(a => {
+    if (a === 'settings') openSettings();
+    else if (a === 'tools') { $('#btn-tools')?.click(); }
+    else if (a === 'terminal') toggleTerminal();
+    else if (a === 'update') { openSettings(); checkShellUpdate(); }
+});
 webview?.addEventListener('will-navigate',e=>{try{const cur=webview.getURL?.()||webview.src||'';if(!cur)return;if(new URL(e.url).origin!==new URL(cur).origin)e.preventDefault();}catch(_){}});
 webview?.addEventListener('new-window',e=>{e.preventDefault();const u=String(e.url||'');if(/^https?:\/\//i.test(u))W?.openExternal(u);});
 

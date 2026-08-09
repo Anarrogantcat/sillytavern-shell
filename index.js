@@ -608,6 +608,40 @@ function setupIPC() {
         debug: m => terminalWrite(`[updater] ${m}\n`),
     };
     let shellUpdateVersion = null;
+    // ── Context menu (webview has no default one) ─────────────────────
+    ipcMain.on('app:contextMenu', (e, opts = {}) => {
+        const w = mainWindow;
+        if (!w) return;
+        const toShell = cmd => w.webContents.send('ctx:cmd', cmd);
+        const menu = opts.kind === 'webview'
+            ? Menu.buildFromTemplate([
+                { label: '复制', role: 'copy', enabled: !!opts.hasSelection },
+                { label: '粘贴', role: 'paste' },
+                { label: '全选', role: 'selectAll' },
+                { type: 'separator' },
+                { label: '刷新', click: () => toShell('reload') },
+                { label: '返回', click: () => toShell('goBack') },
+                { label: '前进', click: () => toShell('goForward') },
+                { type: 'separator' },
+                { label: '放大', click: () => toShell('zoomIn') },
+                { label: '缩小', click: () => toShell('zoomOut') },
+                { label: '重置缩放', click: () => toShell('zoomReset') },
+                { type: 'separator' },
+                { label: '检查元素', click: () => toShell('inspect') },
+            ])
+            : Menu.buildFromTemplate([
+                { label: '设置', click: () => w.webContents.send('shell:action', 'settings') },
+                { label: '工具箱', click: () => w.webContents.send('shell:action', 'tools') },
+                { label: '终端', click: () => w.webContents.send('shell:action', 'terminal') },
+                { type: 'separator' },
+                { label: '刷新页面', click: () => toShell('reload') },
+                { label: '检查套壳更新', click: () => w.webContents.send('shell:action', 'update') },
+                { type: 'separator' },
+                { label: '退出', click: () => { isQuitting = true; app.quit(); } },
+            ]);
+        menu.popup({ window: w });
+    });
+
     // ── Tools 工具箱注册（A/B/C/D 档，全部只读/套壳层）─────────────
     toolsApp = registerAppTools({
         ipcMain, app, dialog, shell, dataRoot, getSettings: loadSettings, saveSettings, terminalWrite,
