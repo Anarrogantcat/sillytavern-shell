@@ -83,10 +83,10 @@ const dataRoot = settings.dataRoot || (app.isPackaged
     } catch (_) { /* non-fatal */ }
 })();
 
-// ── Model Benchmark (测速 + 对话 Token 统计 + 建议) ─────────────
+// ── 对话 Token 自动统计（只读监听聊天文件，生成完成通知）─────────
 // 只读 ST 数据（settings.json / 聊天记录），零写入本体，不依赖 ST 内部 API。
 // 自动监听当前角色卡的聊天文件：消息生成完成（写盘）→ 统计 Token；
-// 10 分钟窗口分组为"一次对话"，记满 3 次后结合硬件与实测速度给建议。
+// 10 分钟窗口分组为"一次对话"；统计结果供工具箱聊天统计使用。
 const BENCH_SESSION_WINDOW_MS = 10 * 60 * 1000;
 const BENCH_MAX_SESSIONS = 3;
 // Tools 工具箱实例（setupIPC 时赋值，托盘/监听回调共用）
@@ -96,11 +96,8 @@ let lastNotifyTs = 0;
 const benchState = {
     activeCharacter: null,
     model: null,
-    hardware: null,
     sessions: [],        // [{total, reply, lastTs}] 已结束的对话
     current: null,       // 进行中的对话 {total, reply, lastTs}
-    benchmark: null,     // 最近测速结果
-    suggestion: null,    // 最近建议
     benchTimer: null,    // 10s 轮询扫描定时器
     fileBytes: new Map(),
     tokenQueue: Promise.resolve(),
@@ -126,27 +123,6 @@ function benchDetectModel() {
 }
 function benchOllamaBase(url) { return String(url || '').replace(/\/v1\/?$/, '').replace(/\/+$/, ''); }
 function benchIsOllama(url) { return /(localhost|127\.0\.0\.1):11434/i.test(String(url || '')); }
-function benchGetHardware(cb) {
-    // ASYNC: never block the main process (execSync nvidia-smi/powershell can stall 5-13s)
-    const result = {
-        cpu: (os.cpus()[0]?.model || 'Unknown CPU').trim(),
-        memGB: Math.round((os.totalmem() / 2 ** 30) * 10) / 10,
-        gpu: '', vramGB: 0,
-    };
-    const finish = () => { benchState.hardware = result; cb?.(result); };
-    exec('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader', { timeout: 5000, windowsHide: true }, (err, stdout) => {
-        if (!err && stdout) {
-            const [name, mem] = stdout.trim().split(',').map(x => x.trim());
-            result.gpu = name || '';
-            result.vramGB = Math.round((parseFloat(mem) / 1024) * 10) / 10;
-            return finish();
-        }
-        exec('powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Where-Object {$_.Name -match \'NVIDIA|AMD|RTX|Radeon\'} | Select-Object -First 1).Name"', { timeout: 8000, windowsHide: true }, (err2, out2) => {
-            if (!err2 && out2) result.gpu = out2.trim();
-            finish();
-        });
-    });
-}
 async function benchTokenize(text) {
     const { url, model } = benchState.model || {};
     if (url && model && benchIsOllama(url)) {
@@ -159,77 +135,6 @@ async function benchTokenize(text) {
     let cjk = 0, other = 0;
     for (const ch of t) { if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)) cjk++; else other++; }
     return Math.max(1, Math.round(cjk / 1.5 + other / 4));
-}
-async function benchGenerateOnce(numPredict = 128) {
-    const { url, model } = benchState.model || {};
-    if (!url || !model) throw new Error('未检测到模型配置');
-    if (benchIsOllama(url)) {
-        const t0 = Date.now();
-        const r = await fetch(benchOllamaBase(url) + '/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt: 'Write a short story about a curious cat exploring a lighthouse. ', stream: false, options: { num_predict: numPredict, temperature: 0.6 } }), signal: AbortSignal.timeout(180000) });
-        if (!r.ok) throw new Error(`generate HTTP ${r.status}`);
-        const j = await r.json();
-        const evalMs = (j.eval_duration || 0) / 1e6;
-        const tok = j.eval_count || 0;
-        return { tokPerSec: evalMs > 0 ? Math.round((tok / (evalMs / 1000)) * 10) / 10 : 0, tok, evalMs: Math.round(evalMs), totalMs: Date.now() - t0, ttftMs: Math.round(((j.total_duration || 0) - (j.eval_duration || 0)) / 1e6) };
-    }
-    const t0 = Date.now();
-    const r = await fetch(String(url).replace(/\/+$/, '') + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Write a short story about a curious cat. ' }], max_tokens: 64, stream: false }), signal: AbortSignal.timeout(180000) });
-    if (!r.ok) throw new Error(`chat/completions HTTP ${r.status}`);
-    const j = await r.json();
-    const tok = j.usage?.completion_tokens || 0;
-    const ms = Date.now() - t0;
-    return { tokPerSec: ms > 0 && tok > 0 ? Math.round((tok / (ms / 1000)) * 10) / 10 : 0, tok, evalMs: ms, totalMs: ms, ttftMs: ms };
-}
-async function benchGetModelContext() {
-    const { url, model } = benchState.model || {};
-    if (!url || !model) return null;
-    if (benchIsOllama(url)) {
-        try {
-            const r = await fetch(benchOllamaBase(url) + '/api/show', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }), signal: AbortSignal.timeout(15000) });
-            if (r.ok) {
-                const j = await r.json();
-                const mi = j.model_info || {};
-                const ctx = mi['general.context_length'] ?? mi['llama.context_length'] ?? mi['qwen2.context_length'];
-                if (ctx) return ctx;
-            }
-        } catch (_) {}
-    }
-    const c = benchGetSettings().oai_settings?.openai_max_context;
-    return typeof c === 'number' && c > 0 ? c : null;
-}
-async function benchRunBenchmark() {
-    const runs = [];
-    let lastErr = null;
-    for (let i = 0; i < 3; i++) {
-        try { runs.push(await benchGenerateOnce()); } catch (e) { lastErr = e; }
-        if (i < 2) await new Promise(r => setTimeout(r, 300));
-    }
-    if (!runs.length) throw lastErr || new Error('测速失败');
-    runs.sort((a, b) => a.tokPerSec - b.tokPerSec);
-    const med = runs[Math.floor(runs.length / 2)];
-    const modelCtx = await benchGetModelContext();
-    benchState.benchmark = { ...med, runs: runs.map(r => r.tokPerSec), modelCtx };
-    benchState.suggestion = benchComputeSuggestion(med.tokPerSec, modelCtx);
-    return benchState.benchmark;
-}
-function benchComputeSuggestion(tokPerSec, modelCtxLimit) {
-    const sessions = [...benchState.sessions];
-    if (benchState.current && benchState.current.total > 0) sessions.push(benchState.current);
-    const totalHistory = sessions.reduce((a, s) => a + s.total, 0);
-    const replyToks = sessions.filter(s => s.reply > 0).map(s => s.reply);
-    const maxReply = replyToks.length ? Math.max(...replyToks) : 512;
-    const vramGB = benchState.hardware?.vramGB || 0;
-    const baseOverhead = 1200; // 系统提示 + 角色卡 + 世界书 估算
-    const need = baseOverhead + totalHistory + maxReply;
-    const ctxByNeed = Math.max(4096, Math.ceil((need * 1.25) / 100) * 100); // 至少 4K
-    const ctxByModel = modelCtxLimit ? Math.floor((modelCtxLimit * 0.75) / 100) * 100 : Infinity;
-    const ctxByVram = vramGB > 0 ? Math.floor((vramGB * 2048) / 100) * 100 : Infinity;
-    const suggestCtx = Math.min(ctxByNeed, ctxByModel, ctxByVram);
-    const respByUsage = Math.ceil((maxReply * 1.1) / 50) * 50;
-    const respBySpeed = tokPerSec > 0 ? Math.floor((tokPerSec * 60) / 50) * 50 : Infinity;
-    const respByCtx = Math.max(512, Math.floor((suggestCtx / 8) / 50) * 50); // 至少 512
-    const suggestResp = Math.min(respByUsage, respBySpeed, respByCtx);
-    return { suggestCtx, suggestResp, totalHistory, maxReply, baseOverhead, ctxByNeed, ctxByModel, ctxByVram, respByUsage, respBySpeed, respByCtx, sessionsCount: sessions.length };
 }
 function benchActiveCharDir() {
     const s = benchGetSettings();
@@ -277,6 +182,7 @@ function benchScanOnce() {
 }
 function benchStartWatcher() {
     benchStopWatcher();
+    if (!benchState.model) benchState.model = benchDetectModel(); // tokenize 需要模型配置
     benchScanOnce();
     benchState.benchTimer = setInterval(benchScanOnce, 10000);
 }
@@ -307,25 +213,7 @@ function benchQueueTokenize(msg) {
             }
         }
         benchState.current.lastTs = Math.max(benchState.current.lastTs, sendTs);
-        if (benchState.sessions.length + (benchState.current ? 1 : 0) >= BENCH_MAX_SESSIONS) {
-            benchState.suggestion = benchComputeSuggestion(benchState.benchmark?.tokPerSec || 0, benchState.benchmark?.modelCtx ?? null);
-        }
     }).catch(() => {});
-}
-function benchGetStatus() {
-    if (!benchState.hardware) benchGetHardware(); // async — never blocks
-    if (!benchState.model) benchState.model = benchDetectModel();
-    benchScanOnce(); // pick up character/chat changes immediately when the panel opens
-    const sessions = [...benchState.sessions];
-    if (benchState.current && benchState.current.total > 0) sessions.push({ ...benchState.current, active: true });
-    return {
-        activeCharacter: benchState.activeCharacter,
-        model: benchState.model,
-        hardware: benchState.hardware,
-        sessions,
-        benchmark: benchState.benchmark,
-        suggestion: benchState.suggestion,
-    };
 }
 
 // ── SillyTavern Setup (first launch) ─────────────────────────────────
@@ -659,16 +547,6 @@ function setupIPC() {
             try { toolsApp.saveRollbackPackage(shellUpdateVersion, autoUpdater.downloadedUpdateHelper?.installerPath || ''); } catch (_) {}
         }
     });
-    // ── Model Benchmark IPC ──────────────────────────────────────────
-    ipcMain.handle('bench:status', () => benchGetStatus());
-    ipcMain.handle('bench:benchmark', async () => {
-        try { return await benchRunBenchmark(); }
-        catch (e) { return { error: e.message }; }
-    });
-    ipcMain.handle('bench:reset', () => {
-        benchState.sessions = []; benchState.current = null; benchState.suggestion = null;
-        return true;
-    });
     ipcMain.handle('shell-update:check', async () => {
         try {
             const result = await autoUpdater.checkForUpdates();
@@ -741,7 +619,7 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_w, p, cb) => cb(['clipboard-read', 'clipboard-sanitized-write', 'notifications'].includes(p)));
     createTray(); createWindow(); setupIPC();
-    // Start the model-benchmark chat watcher (read-only, auto restarts on activate)
+    // Start the chat watcher (read-only token statistics, auto restarts on activate)
     benchStartWatcher();
 
     // Check if SillyTavern is already installed — skip setup if so
