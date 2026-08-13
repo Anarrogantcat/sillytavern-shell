@@ -27,6 +27,11 @@ webview?.addEventListener('ipc-message', (e) => {
     if (e.channel === 'ctxmenu') {
         const p = e.args?.[0] || {};
         A?.contextMenu?.({ kind: 'webview', x: p.x, y: p.y, hasSelection: p.hasSelection });
+    } else if (e.channel === 'hotkey') {
+        const k = String(e.args?.[0] || '').toUpperCase();
+        if (k === 'T') $('#btn-tools')?.click();
+        else if (k === 'R') webview?.reload();
+        else if (k === 'L') openSettings();
     }
 });
 // 套壳界面右键（非 webview 区域）→ 主进程弹菜单
@@ -297,7 +302,7 @@ TL()?.onMini?.(v => {
         miniHideTs = setTimeout(() => { if (miniVisible && miniEl.text) miniEl.text.textContent = (v.char || '') + ' · 空闲'; miniEl.dot.className = 'mini-dot idle'; }, 8000);
     }
 });
-miniEl.close?.addEventListener('click', () => { localStorage.setItem('miniHidden', '1'); miniHide(); });
+miniEl.close?.addEventListener('click', () => { miniHide(); }); // 临时隐藏本次，重启恢复；持久开关在设置面板
 
 // ── 设置项绑定（局域网/置顶/主题/字体/迷你窗/zip/崩溃提醒）─────────
 async function renderUiSettings() {
@@ -309,6 +314,7 @@ async function renderUiSettings() {
         $('#t-mini').value = u.miniStatus ? '1' : '0';
         document.body.dataset.theme = u.theme || 'purple';
         document.body.dataset.font = String(u.fontScale || 1);
+        if (!u.miniStatus) localStorage.setItem('miniHidden', '1'); // 启动同步：设置关闭则隐藏
     }
     const lc = await TL()?.lanConfig();
     if (lc) {
@@ -541,7 +547,10 @@ tEl.notify?.addEventListener('change', async () => {
     s.notifyGenerated = tEl.notify.value === '1';
     await window.electronAPI?.settings?.save?.(s);
 });
-// 深夜模式监听
+// 启动即应用主题/字体/迷你窗等 UI 设置（无需打开设置面板）
+(async () => { if (typeof renderUiSettings === 'function') { try { await renderUiSettings(); } catch (_) {} } })();
+
+// ── 深夜模式监听
 TL()?.onNight?.(v => document.body.classList.toggle('night', !!v));
 // F11 沉浸
 document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); TL()?.immerseSet(); } });

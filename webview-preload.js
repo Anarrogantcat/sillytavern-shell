@@ -24,3 +24,11 @@ window.addEventListener('contextmenu', (e) => {
     } catch (_) {}
     ipcRenderer.sendToHost('ctxmenu', { x: e.clientX, y: e.clientY, hasSelection });
 });
+
+// B1 全局快捷键转发：webview 内的按键不会冒泡到宿主，转发 Ctrl+Shift 组合键
+window.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey || !e.shiftKey) return;
+    if (['T', 'R', 'L'].includes(e.key.toUpperCase())) {
+        ipcRenderer.sendToHost('hotkey', e.key.toUpperCase());
+    }
+});

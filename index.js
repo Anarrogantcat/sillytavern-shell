@@ -369,6 +369,8 @@ function createWindow() {
     if (saved && !saved.maximized) { opts.x = saved.x; opts.y = saved.y; }
     mainWindow = new BrowserWindow(opts);
     if (saved?.maximized) mainWindow.maximize();
+    // B2 窗口置顶：启动时应用设置
+    try { if (settings.alwaysOnTop) mainWindow.setAlwaysOnTop(true); } catch (_) {}
     mainWindow.loadFile(path.join(__dirname, 'shell.html'));
     mainWindow.once('ready-to-show', () => mainWindow.show());
     const track = () => { if (!mainWindow?.isMaximized()) mainWindow._lastNormalBounds = mainWindow.getBounds(); };
@@ -550,8 +552,8 @@ function setupIPC() {
         ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite,
         win: () => mainWindow, getSettings: loadSettings,
     });
-    registerEnvTools({ ipcMain, terminalWrite });
-    registerChatTools({ ipcMain, dataRoot });
+    registerEnvTools({ ipcMain, terminalWrite, dataRoot });
+    registerChatTools({ ipcMain, dataRoot, app });
     // 更新下载完成后保留回滚包
     autoUpdater.on('update-downloaded', () => {
         if (shellUpdateVersion) {
@@ -607,7 +609,7 @@ function startServer() {
                 args.push('--basicAuthMode', '1', '--basicAuthUser', String(s.lanUser), '--basicAuthPassword', String(s.lanPass));
             }
         }
-        terminalWrite('\x1b[36m> node ' + args.join(' ') + '\x1b[0m');
+        terminalWrite('\x1b[36m> node ' + args.map(a => s.lanPass && String(a).includes(String(s.lanPass)) ? '******' : a).join(' ') + '\x1b[0m');
         serverProcess = spawn('node', args, { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
         let started = false, stdoutBuffer = '', timedOut = false;
         const killOnTimeout = setTimeout(() => {
@@ -638,6 +640,12 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 // ── App Lifecycle ────────────────────────────────────────────────────
 app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_w, p, cb) => cb(['clipboard-read', 'clipboard-sanitized-write', 'notifications'].includes(p)));
+    // A1 局域网 basicAuth：本机 webview 自动应答凭据（手机端仍手动输入）
+    session.defaultSession.on('login', (event, _req, _authInfo, callback) => {
+        const s = loadSettings();
+        if (s.lanEnabled && s.lanUser && s.lanPass) { event.preventDefault(); callback(String(s.lanUser), String(s.lanPass)); }
+        else callback(); // 取消认证（不阻止页面加载，ST 会显示登录页）
+    });
     createTray(); createWindow(); setupIPC();
     // Start the chat watcher (read-only token statistics, auto restarts on activate)
     benchStartWatcher();

@@ -1,5 +1,17 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.8 (2026-08-04) — v1.8.7 问题修复
+- 修复 模型服务状态（A3）读取配置失败：registerEnvTools 缺 dataRoot 传参
+- 修复 独立对话多会话（B10）崩溃：registerChatTools 缺 app 传参（app.getPath 抛错）
+- 修复 局域网开启密码后本机 webview 被 basicAuth 挡住（401）：session login 事件自动应答凭据，手机端仍手动输入
+- 修复 局域网密码泄露到终端日志：显示 ******
+- 修复 环境体检按钮在 v1.8.7 工具箱改造中被误删：已加回
+- 修复 主题/字体/迷你窗设置重启后不生效：启动时即应用 UI 设置
+- 修复 窗口置顶设置重启后不生效：createWindow 时应用
+- 修复 迷你状态窗 × 按钮与设置开关状态不同步：× 仅临时隐藏本次，重启恢复；设置开关为持久控制
+- 修复 全局快捷键在 ST 页面内不生效：webview-preload 转发 Ctrl+Shift+T/R/L
+- 修复 detectModel 缺 claude/gemini 来源（独立对话/草稿在云 API 配置下不可用）
+
 ## v1.8.7 (2026-08-04) — 全面增强版
 - A1 局域网访问：设置面板开关 + 用户名/密码（--listen + basicAuth 启动参数，零写入 ST），显示手机访问地址
 - A2 迷你状态窗：右上角胶囊显示生成中🟡/完成✓(耗时+Token)/空闲；设置开关 + ×按钮 + 托盘联动隐藏
