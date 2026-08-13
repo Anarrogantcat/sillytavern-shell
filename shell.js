@@ -276,8 +276,6 @@ const miniEl = { box: $('#mini-status'), dot: $('#mini-dot'), text: $('#mini-tex
 let miniVisible = true, miniHideTs = 0;
 function miniShow() {
     if (!miniEl.box) return;
-    const s = localStorage.getItem('miniHidden');
-    if (s === '1') return;
     miniVisible = true;
     miniEl.box.classList.remove('hidden');
 }
@@ -342,7 +340,15 @@ async function renderUiSettings() {
         $('#t-mini').value = u.miniStatus ? '1' : '0';
         document.body.dataset.theme = u.theme || 'purple';
         document.body.dataset.font = String(u.fontScale || 1);
-        if (!u.miniStatus) localStorage.setItem('miniHidden', '1'); // 启动同步：设置关闭则隐藏
+        // 迷你窗：启动即显示空闲状态（清除 v1.8.8 及以前 × 按钮的 localStorage 残留）
+        localStorage.removeItem('miniHidden');
+        if (u.miniStatus) {
+            if (miniEl.dot) miniEl.dot.className = 'mini-dot idle';
+            if (miniEl.text) miniEl.text.textContent = '就绪';
+            miniShow();
+        } else {
+            miniHide();
+        }
     }
     const lc = await TL()?.lanConfig();
     if (lc) {
@@ -370,7 +376,7 @@ $('#t-font')?.addEventListener('change', async () => { const v = $('#t-font').va
 $('#t-mini')?.addEventListener('change', async () => {
     const on = $('#t-mini').value === '1';
     await TL()?.uiSet('miniStatus', on);
-    if (on) { localStorage.removeItem('miniHidden'); miniShow(); } else { localStorage.setItem('miniHidden', '1'); miniHide(); }
+    if (on) miniShow(); else miniHide();
 });
 $('#t-backup-zip')?.addEventListener('change', async () => { await TL()?.backupSave({ zip: $('#t-backup-zip').value === '1' }); });
 $('#t-crash')?.addEventListener('change', async () => {
