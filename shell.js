@@ -153,7 +153,7 @@ T?.onOutput(text=>{if(!serverReady&&loadingLog)loadingAppend(text);termAppend(te
 
 // ── Settings ─────────────────────────────────
 let settingsData={};
-async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();}
+async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
 btnSettings?.addEventListener('click',openSettings);
 $('#btn-settings-close')?.addEventListener('click',closeSettings);
@@ -266,6 +266,149 @@ async function renderTools() {
         }
     }));
 }
+// ── 迷你状态窗（可隐藏：设置/×按钮/托盘三处联动）──────────────────
+const miniEl = { box: $('#mini-status'), dot: $('#mini-dot'), text: $('#mini-text'), close: $('#mini-close') };
+let miniVisible = true, miniHideTs = 0;
+function miniShow() {
+    if (!miniEl.box) return;
+    const s = localStorage.getItem('miniHidden');
+    if (s === '1') return;
+    miniVisible = true;
+    miniEl.box.classList.remove('hidden');
+}
+function miniHide() {
+    if (!miniEl.box) return;
+    miniVisible = false;
+    miniEl.box.classList.add('hidden');
+}
+TL()?.onMini?.(v => {
+    if (!v) return;
+    if (!miniEl.dot || !miniEl.text) return;
+    miniEl.dot.className = 'mini-dot ' + v.state;
+    if (v.state === 'gen') miniEl.text.textContent = `🟡 ${v.char || '角色'} 生成中…`;
+    else if (v.state === 'done') {
+        const t = v.ms != null && v.ms > 0 ? ` ${Math.round(v.ms / 1000)}s` : '';
+        miniEl.text.textContent = `✓ ${v.char || '角色'} 回复完成${t}${v.toks ? ` · ${v.toks} tok` : ''}`;
+    } else miniEl.text.textContent = v.char || '';
+    miniShow();
+    // 完成状态 8 秒后淡出回空闲
+    if (v.state === 'done') {
+        clearTimeout(miniHideTs);
+        miniHideTs = setTimeout(() => { if (miniVisible && miniEl.text) miniEl.text.textContent = (v.char || '') + ' · 空闲'; miniEl.dot.className = 'mini-dot idle'; }, 8000);
+    }
+});
+miniEl.close?.addEventListener('click', () => { localStorage.setItem('miniHidden', '1'); miniHide(); });
+
+// ── 设置项绑定（局域网/置顶/主题/字体/迷你窗/zip/崩溃提醒）─────────
+async function renderUiSettings() {
+    const u = await TL()?.uiGet();
+    if (u) {
+        $('#t-top').value = u.alwaysOnTop ? '1' : '0';
+        $('#t-theme').value = u.theme || 'purple';
+        $('#t-font').value = String(u.fontScale || 1);
+        $('#t-mini').value = u.miniStatus ? '1' : '0';
+        document.body.dataset.theme = u.theme || 'purple';
+        document.body.dataset.font = String(u.fontScale || 1);
+    }
+    const lc = await TL()?.lanConfig();
+    if (lc) {
+        $('#t-lan').value = lc.enabled ? '1' : '0';
+        $('#t-lan-user').value = lc.user || '';
+        $('#t-lan-pass').value = lc.pass || '';
+        const ips = await TL()?.lanIps() || [];
+        $('#t-lan-ips').textContent = lc.enabled && ips.length ? `手机访问: http://${ips[0]}:8000` : '';
+    }
+    const bc = await TL()?.backupConfig();
+    if (bc) $('#t-backup-zip').value = bc.zip ? '1' : '0';
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    $('#t-crash').value = s.crashAlert === false ? '0' : '1';
+}
+$('#t-lan')?.addEventListener('change', async () => {
+    await TL()?.lanSave({ enabled: $('#t-lan').value === '1' });
+    alert('局域网访问已' + ($('#t-lan').value === '1' ? '开启' : '关闭') + '，重启服务器后生效（设置→服务器控制→重启服务器）');
+    await renderUiSettings();
+});
+$('#t-lan-user')?.addEventListener('change', async () => { await TL()?.lanSave({ user: $('#t-lan-user').value.trim() }); });
+$('#t-lan-pass')?.addEventListener('change', async () => { await TL()?.lanSave({ pass: $('#t-lan-pass').value }); });
+$('#t-top')?.addEventListener('change', async () => { await TL()?.uiSet('alwaysOnTop', $('#t-top').value === '1'); });
+$('#t-theme')?.addEventListener('change', async () => { const v = $('#t-theme').value; await TL()?.uiSet('theme', v); document.body.dataset.theme = v; });
+$('#t-font')?.addEventListener('change', async () => { const v = $('#t-font').value; await TL()?.uiSet('fontScale', Number(v)); document.body.dataset.font = v; });
+$('#t-mini')?.addEventListener('change', async () => {
+    const on = $('#t-mini').value === '1';
+    await TL()?.uiSet('miniStatus', on);
+    if (on) { localStorage.removeItem('miniHidden'); miniShow(); } else { localStorage.setItem('miniHidden', '1'); miniHide(); }
+});
+$('#t-backup-zip')?.addEventListener('change', async () => { await TL()?.backupSave({ zip: $('#t-backup-zip').value === '1' }); });
+$('#t-crash')?.addEventListener('change', async () => {
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    s.crashAlert = $('#t-crash').value === '1';
+    await window.electronAPI?.settings?.save?.(s);
+});
+
+// ── B13 异常退出提示 ─────────────────────────────────────────────
+(async () => {
+    if (!TL()) return;
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    if (s.crashAlert === false) return;
+    const crashed = await TL().crashCheck();
+    if (crashed) {
+        const n = new Notification('上次异常退出', { body: '应用上次非正常退出（可能崩溃或被强制结束）。如果反复出现，请查看终端日志。' });
+        n.onclick = () => { try { window.electronAPI?.app?.getVersion?.(); } catch (_) {} };
+        n.show();
+        setTimeout(() => { try { n.close(); } catch (_) {} }, 6000);
+    }
+})();
+
+// ── B1 全局快捷键 ────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'T') { e.preventDefault(); $('#btn-tools')?.click(); }
+    else if (e.ctrlKey && e.shiftKey && e.key === 'R') { e.preventDefault(); webview?.reload(); }
+    else if (e.ctrlKey && e.shiftKey && e.key === 'L') { e.preventDefault(); openSettings(); }
+});
+
+// ── 工具箱新区：导出 HTML / 角色卡速览 / 世界书 / 模型服务 / RAG ──
+$('#t-export-html')?.addEventListener('click', async () => {
+    const r = await TL()?.exportChatHtml();
+    setNote(tEl.exportRes, r?.error ? `❌ ${r.error}` : `✅ 已导出 ${r.count} 条消息 → ${r.dest}`);
+});
+(async () => {
+    const cards = await TL()?.listCharacters() || [];
+    const sel = $('#t-card-list');
+    if (sel) sel.innerHTML = '<option value="">选择角色卡…</option>' + cards.map(c => `<option value="${c}">${c}</option>`).join('');
+})();
+$('#t-card-view')?.addEventListener('click', async () => {
+    const name = $('#t-card-list')?.value;
+    if (!name) return;
+    const r = await TL()?.cardPreview(name);
+    setDetail($('#t-card-res'), r?.error ? '❌ ' + r.error :
+        `【${r.name}】\n${r.description ? '描述: ' + r.description.slice(0, 200) : ''}\n${r.personality ? '性格: ' + r.personality.slice(0, 200) : ''}\n${r.scenario ? '场景: ' + r.scenario.slice(0, 200) : ''}\n${r.firstMes ? '开场白: ' + r.firstMes : ''}`.replace(/</g, '&lt;'));
+});
+$('#t-worlds')?.addEventListener('click', async () => {
+    const books = await TL()?.worldBooks() || [];
+    const total = books.reduce((a, b) => a + b.entries.length, 0);
+    setNote($('#t-worlds-note'), `共 ${books.length} 个世界书 / ${total} 条目`);
+    setDetail($('#t-env-res'), books.length ? books.map(b => `📖 ${b.name} (${b.entries.length} 条)\n` + b.entries.slice(0, 5).map(en => `  · ${en.comment || en.content.slice(0, 40)}`).join('\n')).join('\n') : '未找到世界书');
+});
+$('#t-model-service')?.addEventListener('click', async () => {
+    setDetail(tEl.envRes, '探测中…');
+    const r = await TL()?.modelService();
+    if (!r) return;
+    const icon = r.online ? '🟢' : '🔴';
+    const typeName = { ollama: 'Ollama', claude: 'Claude', openai: 'OpenAI', openrouter: 'OpenRouter', 'openai-compatible': 'OpenAI 兼容（本地部署）' }[r.type] || r.type;
+    let html = `${icon} ${typeName}: ${r.detail}\n${r.model ? '当前模型: ' + r.model : ''}`;
+    if (r.loaded) html += `\n已加载: ${r.loaded.name}${r.loaded.vramGB ? ` · ${r.loaded.vramGB}GB 显存` : ''}`;
+    if (r.models?.length) html += `\n可用模型(${r.models.length}):\n` + r.models.slice(0, 12).map(m => `  · ${m.name}${m.sizeGB ? ` (${m.sizeGB}GB)` : ''}`).join('\n');
+    setDetail(tEl.envRes, html);
+});
+$('#t-rag')?.addEventListener('click', async () => {
+    const q = $('#t-rag-q')?.value.trim();
+    if (!q) return;
+    const hits = await TL()?.ragSearch(q) || [];
+    setDetail($('#t-rag-res'), hits.length ? hits.map(h => `[${h.doc}] ${h.text}`).join('\n---\n') : '未命中（文档放 %APPDATA%\\sillytavern-electron\
+ag-docs\\）');
+});
+
+// 工具箱打开时也渲染设置项（设置面板共用 renderTools）
 tEl.btn?.addEventListener('click', () => {
     if (!tEl.panel) return;
     const open = tEl.panel.classList.toggle('hidden');

@@ -28,7 +28,12 @@ body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSyst
 <body>
 <div id="bar">
 <span class="model" id="model-label">检测模型…</span>
+<div style="display:flex;gap:6px;align-items:center">
+<select id="session-select" title="会话列表"><option value="">加载会话…</option></select>
+<button id="new-session" title="新建会话">＋</button>
+<button id="del-session" title="删除当前会话">🗑</button>
 <button id="clear">清空</button>
+</div>
 </div>
 <div id="msgs"><div class="msg hint">独立对话助手——直连当前模型，不经过 SillyTavern 本体</div></div>
 <div id="input-row">
@@ -38,6 +43,8 @@ body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSyst
 <script>
 const $ = s => document.querySelector(s);
 const msgs = $('#msgs'), input = $('#input'), send = $('#send');
+const sessSel = $('#session-select');
+let currentSession = 'default';
 function add(text, cls) {
     const d = document.createElement('div');
     d.className = 'msg ' + cls;
@@ -46,9 +53,24 @@ function add(text, cls) {
     msgs.scrollTop = msgs.scrollHeight;
     return d;
 }
+function renderMsgs(list) {
+    msgs.innerHTML = '<div class="msg hint">独立对话助手——直连当前模型，不经过 SillyTavern 本体</div>';
+    for (const m of list || []) add(m.content, m.role === 'user' ? 'user' : 'assistant');
+}
+async function refreshSessions(selectId) {
+    const list = await window.electronAPI?.chatSessions?.() || [];
+    sessSel.innerHTML = '<option value="">选择会话…</option>' + list.map(s => `<option value="${s.id}">${s.title} (${s.count})</option>`).join('');
+    if (selectId) sessSel.value = selectId;
+}
+async function loadSession(id) {
+    const s = await window.electronAPI?.chatLoad?.(id);
+    if (s) { currentSession = id; renderMsgs(s.messages); }
+}
 (async () => {
     const m = await window.electronAPI?.chatModel?.();
     $('#model-label').textContent = m?.model ? '模型: ' + m.model : '未检测到模型配置';
+    await refreshSessions('default');
+    await loadSession('default');
 })();
 async function doSend() {
     const t = input.value.trim();
@@ -56,19 +78,36 @@ async function doSend() {
     input.value = '';
     add(t, 'user');
     send.disabled = true;
-    const r = await window.electronAPI?.chatSend?.(t);
+    const r = await window.electronAPI?.chatSend?.(t, currentSession);
     send.disabled = false;
     if (r?.error) add('失败: ' + r.error, 'err');
-    else add(r?.reply || '(空回复)', 'assistant');
+    else { add(r?.reply || '(空回复)', 'assistant'); await refreshSessions(r.sessionId); }
 }
 send.addEventListener('click', doSend);
 input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
 });
 $('#clear').addEventListener('click', async () => {
-    msgs.innerHTML = '<div class="msg hint">已清空</div>';
-    await window.electronAPI?.chatClear?.();
+    if (!confirm('删除当前会话？')) return;
+    await window.electronAPI?.chatClear?.(currentSession);
+    currentSession = 'default';
+    await window.electronAPI?.chatNew?.() && refreshSessions();
+    await refreshSessions();
+    renderMsgs([]);
 });
+$('#new-session').addEventListener('click', async () => {
+    const id = await window.electronAPI?.chatNew?.();
+    await refreshSessions(id);
+    await loadSession(id);
+});
+$('#del-session').addEventListener('click', async () => {
+    if (!confirm('删除当前会话？')) return;
+    await window.electronAPI?.chatClear?.(currentSession);
+    const id = await window.electronAPI?.chatNew?.();
+    await refreshSessions(id);
+    await loadSession(id);
+});
+sessSel.addEventListener('change', () => { if (sessSel.value) loadSession(sessSel.value); });
 </script>
 </body>
 </html>

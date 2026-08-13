@@ -70,16 +70,21 @@ const dataRoot = settings.dataRoot || (app.isPackaged
 // by the old account ("dubious ownership"), which breaks ST update (git pull)
 // and the integrity check (git ls-files). Add the ST root as safe once, at
 // startup, so both features keep working across reinstall/relocation.
+// B12 启动加速：safe.directory 检查异步化（execSync 会阻塞启动，改用 exec 后台执行）
 (function ensureGitSafeDir() {
     try {
         const cwd = sillyTavernRoot;
         if (!fs.existsSync(path.join(cwd, '.git'))) return; // not a git repo — nothing to do
-        const existing = execSync('git config --global --get-all safe.directory', { stdio: ['ignore', 'pipe', 'ignore'] })
-            .toString().split('\n').map(s => s.trim()).filter(Boolean);
-        if (!existing.includes(cwd)) {
-            execSync(`git config --global --add safe.directory "${cwd}"`, { stdio: 'ignore' });
-            terminalWrite(`[git] added safe.directory ${cwd}\n`);
-        }
+        exec('git config --global --get-all safe.directory', { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }, (err, stdout) => {
+            try {
+                const existing = String(stdout || '').split('\n').map(s => s.trim()).filter(Boolean);
+                if (!existing.includes(cwd)) {
+                    exec(`git config --global --add safe.directory "${cwd}"`, { stdio: 'ignore', windowsHide: true }, () => {
+                        terminalWrite(`[git] added safe.directory ${cwd}\n`);
+                    });
+                }
+            } catch (_) { /* non-fatal */ }
+        });
     } catch (_) { /* non-fatal */ }
 })();
 
@@ -205,12 +210,18 @@ function benchQueueTokenize(msg) {
         benchState.current.total += count;
         if (!msg.is_user) {
             benchState.current.reply += count;
+            // A2: 迷你状态窗——生成完成事件（耗时 = 本次回复与上一条消息写入时间差）
+            const genMs = benchState.current.lastTs ? sendTs - benchState.current.lastTs : 0;
+            mainWindow?.webContents.send('mini:state', { state: 'done', char: benchState.activeCharacter || '角色', ms: genMs > 0 ? genMs : null, toks: count });
             // B9: 生成完成通知（10s 节流）
             const now = Date.now();
             if (now - lastNotifyTs > 10000) {
                 lastNotifyTs = now;
                 try { toolsData?.notifyGenerated(benchState.activeCharacter || '角色', count); } catch (_) {}
             }
+        } else {
+            // 用户消息写入 → 生成中（等回复）
+            mainWindow?.webContents.send('mini:state', { state: 'gen', char: benchState.activeCharacter || '角色' });
         }
         benchState.current.lastTs = Math.max(benchState.current.lastTs, sendTs);
     }).catch(() => {});
@@ -587,8 +598,17 @@ function startServer() {
         const serverJs = path.join(sillyTavernRoot, 'server.js');
         if (!fs.existsSync(serverJs)) { reject(new Error(`server.js not found at ${serverJs}`)); return; }
         migrateDataIfNeeded();
-        terminalWrite('\x1b[36m> node server.js --dataRoot "' + dataRoot + '" --no-browserLaunchEnabled\x1b[0m');
-        serverProcess = spawn('node', [serverJs, '--dataRoot', dataRoot, '--no-browserLaunchEnabled'], { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
+        // A1 局域网访问：--listen 监听全网卡；basicAuth 凭据（全部启动参数，零写入 ST 文件）
+        const s = loadSettings();
+        const args = [serverJs, '--dataRoot', dataRoot, '--no-browserLaunchEnabled'];
+        if (s.lanEnabled) {
+            args.push('--listen');
+            if (s.lanUser && s.lanPass) {
+                args.push('--basicAuthMode', '1', '--basicAuthUser', String(s.lanUser), '--basicAuthPassword', String(s.lanPass));
+            }
+        }
+        terminalWrite('\x1b[36m> node ' + args.join(' ') + '\x1b[0m');
+        serverProcess = spawn('node', args, { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
         let started = false, stdoutBuffer = '', timedOut = false;
         const killOnTimeout = setTimeout(() => {
             if (started) return;
@@ -637,7 +657,7 @@ app.whenReady().then(async () => {
         else { mainWindow?.show(); mainWindow?.focus(); }
     });
 });
-app.on('before-quit', () => { isQuitting = true; stopServer(); });
+app.on('before-quit', () => { isQuitting = true; stopServer(); try { toolsApp?.markCleanExit?.(); } catch (_) {} });
 app.on('will-quit', () => { if (tray) { tray.destroy(); tray = null; } });
 if (!app.requestSingleInstanceLock()) app.quit();
 else app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); } });

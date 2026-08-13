@@ -56,18 +56,24 @@
 <div class="tool-actions">
 <button id="t-export-cards" class="btn-secondary" style="padding:4px 10px;font-size:11px">导出角色卡</button>
 <button id="t-summarize" class="btn-secondary" style="padding:4px 10px;font-size:11px">剧情总结</button>
+<button id="t-export-html" class="btn-secondary" style="padding:4px 10px;font-size:11px">聊天导出 HTML</button>
 <button id="t-portable" class="btn-secondary" style="padding:4px 10px;font-size:11px">便携包导出</button>
 <span id="t-export-res" class="tool-note"></span>
 </div>
 
-<div class="tool-sec">🖥 环境 / Ollama</div>
-<div class="tool-actions">
-<button id="t-env" class="btn-secondary" style="padding:4px 10px;font-size:11px">环境体检</button>
-<button id="t-ollama" class="btn-secondary" style="padding:4px 10px;font-size:11px">Ollama 模型</button>
-<button id="t-gpu" class="btn-secondary" style="padding:4px 10px;font-size:11px">显存/温度</button>
-<button id="t-clash" class="btn-secondary" style="padding:4px 10px;font-size:11px">Clash 状态</button>
-</div>
+<div class="tool-sec">👁 角色卡速览 / 世界书</div>
+<div class="tool-row"><select id="t-card-list" class="tool-input"><option value="">选择角色卡…</option></select><button id="t-card-view" class="btn-secondary" style="padding:3px 8px;font-size:11px">查看</button></div>
+<div id="t-card-res" class="tool-detail"></div>
+<div class="tool-actions"><button id="t-worlds" class="btn-secondary" style="padding:4px 10px;font-size:11px">世界书列表</button><span id="t-worlds-note" class="tool-note"></span></div>
+
+<div class="tool-sec">🤖 模型服务</div>
+<div class="tool-actions"><button id="t-model-service" class="btn-secondary" style="padding:4px 10px;font-size:11px">服务状态</button><button id="t-ollama" class="btn-secondary" style="padding:4px 10px;font-size:11px">Ollama 模型</button><button id="t-gpu" class="btn-secondary" style="padding:4px 10px;font-size:11px">显存/温度</button><button id="t-clash" class="btn-secondary" style="padding:4px 10px;font-size:11px">Clash 状态</button></div>
 <div id="t-env-res" class="tool-detail"></div>
+
+<div class="tool-sec">📚 本地知识库 (RAG)</div>
+<div class="tool-row"><input type="text" id="t-rag-q" class="tool-input" placeholder="输入关键词检索（文档放 userData/rag-docs/）"></div>
+<div class="tool-actions"><button id="t-rag" class="btn-secondary" style="padding:4px 10px;font-size:11px">检索</button></div>
+<div id="t-rag-res" class="tool-detail"></div>
 
 <div class="tool-sec">✏️ 草稿生成器（直连模型）</div>
 <div class="tool-row"><input type="text" id="t-draft-prompt" class="tool-input" placeholder="输入生成要求，如：写一段雨夜相遇的场景描写"></div>
@@ -82,6 +88,7 @@
 
 </div>
 </div>
+<div id="mini-status" class="mini-status hidden"><span id="mini-dot" class="mini-dot"></span><span id="mini-text">-</span><button id="mini-close" title="隐藏迷你状态窗">&times;</button></div>
 <div id="lock-overlay" class="lock-overlay hidden">
 <div class="lock-box">
 <div style="font-size:28px;margin-bottom:8px">🔒</div>
@@ -107,11 +114,20 @@
 <div class="setting-row"><label>备份目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"></div>
 <div class="setting-row"><label>自动备份</label><label class="tool-switch"><input type="checkbox" id="t-backup-auto"><span class="tool-slider"></span></label><select id="t-backup-interval" class="tool-input" style="width:110px;flex:none"><option value="24">每 24 小时</option><option value="48">每 48 小时</option><option value="72">每 72 小时</option></select></div>
 <div class="setting-row"><label>保留份数</label><input type="number" id="t-backup-keep" class="tool-input" min="1" max="20" value="5" style="width:70px"></div>
+<div class="setting-row"><label>zip 压缩</label><select id="t-backup-zip" class="tool-input" style="width:70px"><option value="1">开</option><option value="0">关</option></select><span class="tool-note">压缩省空间</span></div>
 <div id="t-backup-info" class="tool-note" style="margin:2px 0 6px"></div>
+<div class="setting-row"><label>局域网访问</label><select id="t-lan" class="tool-input" style="width:70px"><option value="0">关</option><option value="1">开</option></select><span class="tool-note" id="t-lan-ips"></span></div>
+<div class="setting-row"><label>访问用户名</label><input type="text" id="t-lan-user" class="tool-input" style="width:140px" placeholder="留空=不认证"></div>
+<div class="setting-row"><label>访问密码</label><input type="password" id="t-lan-pass" class="tool-input" style="width:140px" placeholder="留空=不认证"></div>
 <div class="setting-row"><label>开机自启</label><select id="t-autostart" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
+<div class="setting-row"><label>窗口置顶</label><select id="t-top" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
+<div class="setting-row"><label>界面主题</label><select id="t-theme" class="tool-input"><option value="purple">深紫</option><option value="blue">深蓝</option><option value="black">纯黑</option></select></div>
+<div class="setting-row"><label>UI 字体</label><select id="t-font" class="tool-input"><option value="1">100%</option><option value="1.1">110%</option><option value="0.9">90%</option></select></div>
+<div class="setting-row"><label>迷你状态窗</label><select id="t-mini" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
 <div class="setting-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button></div>
 <div class="setting-row"><label>生成通知</label><select id="t-notify" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
+<div class="setting-row"><label>崩溃提醒</label><select id="t-crash" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
 <div id="t-rollback-list" class="tool-detail"></div>
 </div>
