@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.9 (2026-08-04)
+- 新增 迷你状态窗可拖动（按住拖到任意位置，位置记忆，重启保留；× 仍可临时隐藏）
+
 ## v1.8.8 (2026-08-04) — v1.8.7 问题修复
 - 修复 模型服务状态（A3）读取配置失败：registerEnvTools 缺 dataRoot 传参
 - 修复 独立对话多会话（B10）崩溃：registerChatTools 缺 app 传参（app.getPath 抛错）

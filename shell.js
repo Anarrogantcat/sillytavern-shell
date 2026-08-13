@@ -304,6 +304,34 @@ TL()?.onMini?.(v => {
 });
 miniEl.close?.addEventListener('click', () => { miniHide(); }); // 临时隐藏本次，重启恢复；持久开关在设置面板
 
+// 迷你窗拖动（× 除外），位置持久化
+let miniDrag = null;
+miniEl.box?.addEventListener('mousedown', e => {
+    if (e.target === miniEl.close || e.button !== 0) return;
+    const r = miniEl.box.getBoundingClientRect();
+    miniDrag = { sx: e.screenX, sy: e.screenY, ox: r.left, oy: r.top };
+    e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+    if (!miniDrag || !miniEl.box) return;
+    const nx = miniDrag.ox + (e.screenX - miniDrag.sx);
+    const ny = miniDrag.oy + (e.screenY - miniDrag.sy);
+    miniEl.box.style.left = Math.max(4, Math.min(window.innerWidth - miniEl.box.offsetWidth - 4, nx)) + 'px';
+    miniEl.box.style.top = Math.max(42, Math.min(window.innerHeight - miniEl.box.offsetHeight - 4, ny)) + 'px';
+    miniEl.box.style.right = 'auto';
+});
+document.addEventListener('mouseup', () => {
+    if (!miniDrag || !miniEl.box) return;
+    if (miniEl.box.style.left) {
+        localStorage.setItem('miniPos', JSON.stringify({ left: miniEl.box.style.left, top: miniEl.box.style.top }));
+    }
+    miniDrag = null;
+});
+try {
+    const p = JSON.parse(localStorage.getItem('miniPos') || 'null');
+    if (p && p.left && miniEl.box) { miniEl.box.style.left = p.left; miniEl.box.style.top = p.top; miniEl.box.style.right = 'auto'; }
+} catch (_) {}
+
 // ── 设置项绑定（局域网/置顶/主题/字体/迷你窗/zip/崩溃提醒）─────────
 async function renderUiSettings() {
     const u = await TL()?.uiGet();
