@@ -120,8 +120,6 @@ const benchState = {
     current: null,       // 进行中的对话 {total, reply, lastTs}
     benchTimer: null,    // 10s 轮询扫描定时器
     mtimes: {},          // 聊天文件 mtime 缓存（性能优化）
-    fd: null,            // 最新聊天文件句柄（增量读取）
-    fdPath: null,
     fileBytes: new Map(),
     tokenQueue: Promise.resolve(),
 };
@@ -194,20 +192,14 @@ function benchScanOnce() {
         benchState.fileBytes.clear();
         benchState.sessions = [];
         benchState.current = null;
-        if (benchState.fd) { try { fs.closeSync(benchState.fd); } catch (_) {} benchState.fd = null; }
     }
     if (!dir) return;
     const f = benchLatestChatFile(dir);
     if (!f) return;
-    // 增量读取：保持文件句柄，只读新增字节（避免大聊天文件每 10 秒全量读入）
+    // 增量读取：open→read→close（不驻留句柄！Windows 上驻留句柄会阻止 ST 保存聊天
+    // 的临时文件重命名操作 → 聊天无法保存；v1.8.12 曾因此引入严重 bug）
     try {
-        let fd = benchState.fd;
-        if (fd === null || benchState.fdPath !== f) {
-            if (fd !== null) { try { fs.closeSync(fd); } catch (_) {} }
-            fd = fs.openSync(f, 'r');
-            benchState.fd = fd; benchState.fdPath = f;
-        }
-        const st = fs.fstatSync(fd);
+        const st = fs.statSync(f);
         const prev = benchState.fileBytes.get(f);
         if (prev === undefined || st.size <= prev) {
             benchState.fileBytes.set(f, st.size);
@@ -215,8 +207,15 @@ function benchScanOnce() {
         }
         benchState.fileBytes.set(f, st.size);
         const len = st.size - prev;
-        const buf = Buffer.alloc(len);
-        fs.readSync(fd, buf, 0, len, prev);
+        if (len <= 0 || len > 5 * 1024 * 1024) return; // 异常增量防护
+        const fd = fs.openSync(f, 'r');
+        let buf;
+        try {
+            buf = Buffer.alloc(len);
+            fs.readSync(fd, buf, 0, len, prev);
+        } finally {
+            fs.closeSync(fd); // 立即关闭，绝不驻留
+        }
         for (const line of buf.toString('utf8').split('\n')) {
             if (!line.trim()) continue;
             let msg = null;
@@ -234,7 +233,6 @@ function benchStartWatcher() {
 }
 function benchStopWatcher() {
     if (benchState.benchTimer) { clearInterval(benchState.benchTimer); benchState.benchTimer = null; }
-    if (benchState.fd) { try { fs.closeSync(benchState.fd); } catch (_) {} benchState.fd = null; benchState.fdPath = null; }
 }
 function benchQueueTokenize(msg) {
     benchState.tokenQueue = benchState.tokenQueue.then(async () => {
