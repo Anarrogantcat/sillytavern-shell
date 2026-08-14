@@ -119,6 +119,9 @@ const benchState = {
     sessions: [],        // [{total, reply, lastTs}] 已结束的对话
     current: null,       // 进行中的对话 {total, reply, lastTs}
     benchTimer: null,    // 10s 轮询扫描定时器
+    mtimes: {},          // 聊天文件 mtime 缓存（性能优化）
+    fd: null,            // 最新聊天文件句柄（增量读取）
+    fdPath: null,
     fileBytes: new Map(),
     tokenQueue: Promise.resolve(),
 };
@@ -147,7 +150,7 @@ async function benchTokenize(text) {
     const { url, model } = benchState.model || {};
     if (url && model && benchIsOllama(url)) {
         try {
-            const r = await fetch(benchOllamaBase(url) + '/api/tokenize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt: String(text || '') }), signal: AbortSignal.timeout(15000) });
+            const r = await fetch(benchOllamaBase(url) + '/api/tokenize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt: String(text || '') }), signal: AbortSignal.timeout(3000) });
             if (r.ok) { const j = await r.json(); return j.count || 0; }
         } catch (_) {}
     }
@@ -167,8 +170,20 @@ function benchLatestChatFile(dir) {
     let files = [];
     try { files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl')); } catch (_) { return null; }
     if (!files.length) return null;
-    files.sort((a, b) => fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs);
-    return path.join(dir, files[0]);
+    // 性能优化：mtime 缓存（benchState.mtimes），每轮只 stat 新文件名；已见过的文件用缓存
+    const now = Date.now();
+    let best = null, bestM = -1;
+    const mtimes = benchState.mtimes || (benchState.mtimes = {});
+    for (const f of files) {
+        let m = mtimes[f];
+        if (m === undefined) {
+            try { m = fs.statSync(path.join(dir, f)).mtimeMs; } catch (_) { continue; }
+            mtimes[f] = m;
+            if (Object.keys(mtimes).length > 200) for (const k of Object.keys(mtimes)) { if (!files.includes(k)) delete mtimes[k]; } // 清理已删除文件
+        }
+        if (m > bestM) { bestM = m; best = f; }
+    }
+    return best ? path.join(dir, best) : null;
 }
 function benchScanOnce() {
     // Poll-based watcher: resilient to fs.watch quirks (non-recursive dirs, missed events,
@@ -179,26 +194,37 @@ function benchScanOnce() {
         benchState.fileBytes.clear();
         benchState.sessions = [];
         benchState.current = null;
+        if (benchState.fd) { try { fs.closeSync(benchState.fd); } catch (_) {} benchState.fd = null; }
     }
     if (!dir) return;
     const f = benchLatestChatFile(dir);
     if (!f) return;
-    let buf;
-    try { buf = fs.readFileSync(f); } catch (_) { return; }
-    const prev = benchState.fileBytes.get(f);
-    if (prev === undefined || buf.length <= prev) {
-        // First sight, or file rewritten (new chat) — reset baseline, count nothing
-        benchState.fileBytes.set(f, buf.length);
-        return;
-    }
-    benchState.fileBytes.set(f, buf.length);
-    for (const line of buf.slice(prev).toString('utf8').split('\n')) {
-        if (!line.trim()) continue;
-        let msg = null;
-        try { msg = JSON.parse(line); } catch (_) { continue; }
-        if (!msg || msg.chat_metadata || !msg.mes) continue;
-        benchQueueTokenize(msg);
-    }
+    // 增量读取：保持文件句柄，只读新增字节（避免大聊天文件每 10 秒全量读入）
+    try {
+        let fd = benchState.fd;
+        if (fd === null || benchState.fdPath !== f) {
+            if (fd !== null) { try { fs.closeSync(fd); } catch (_) {} }
+            fd = fs.openSync(f, 'r');
+            benchState.fd = fd; benchState.fdPath = f;
+        }
+        const st = fs.fstatSync(fd);
+        const prev = benchState.fileBytes.get(f);
+        if (prev === undefined || st.size <= prev) {
+            benchState.fileBytes.set(f, st.size);
+            return;
+        }
+        benchState.fileBytes.set(f, st.size);
+        const len = st.size - prev;
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, prev);
+        for (const line of buf.toString('utf8').split('\n')) {
+            if (!line.trim()) continue;
+            let msg = null;
+            try { msg = JSON.parse(line); } catch (_) { continue; }
+            if (!msg || msg.chat_metadata || !msg.mes) continue;
+            benchQueueTokenize(msg);
+        }
+    } catch (_) { /* 文件被占用/轮换，下轮重试 */ }
 }
 function benchStartWatcher() {
     benchStopWatcher();
@@ -208,6 +234,7 @@ function benchStartWatcher() {
 }
 function benchStopWatcher() {
     if (benchState.benchTimer) { clearInterval(benchState.benchTimer); benchState.benchTimer = null; }
+    if (benchState.fd) { try { fs.closeSync(benchState.fd); } catch (_) {} benchState.fd = null; benchState.fdPath = null; }
 }
 function benchQueueTokenize(msg) {
     benchState.tokenQueue = benchState.tokenQueue.then(async () => {

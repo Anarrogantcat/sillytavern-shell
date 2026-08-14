@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.12 (2026-08-04)
+- 性能优化（聊天统计 watcher）：① 聊天文件改为增量读取（保持句柄只读新增字节，不再每 10 秒全量读大文件）；② mtime 缓存（每轮只 stat 新文件，不再全量 stat 排序）；③ Token 统计请求超时 15s→3s（避免与 ST 生成争抢 Ollama 队列拖慢生成）
+
 ## v1.8.11 (2026-08-04)
 - 修复 ST 本体插件/扩展更新失败 "Internal Server Error"：根因 = 重装系统后用户扩展目录（Data/default-user/extensions/*）git 仓库报 dubious ownership，git pull 失败 → ST 返回 500；启动时自动把扩展目录加入 git safe.directory（幂等，与 ST 本体同款处理）
 
