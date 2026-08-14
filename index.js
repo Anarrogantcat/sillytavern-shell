@@ -71,17 +71,32 @@ const dataRoot = settings.dataRoot || (app.isPackaged
 // and the integrity check (git ls-files). Add the ST root as safe once, at
 // startup, so both features keep working across reinstall/relocation.
 // B12 启动加速：safe.directory 检查异步化（execSync 会阻塞启动，改用 exec 后台执行）
+// 覆盖范围：ST 本体 + 用户扩展目录（Data/default-user/extensions/*）
+// ——重装系统后旧账号创建的 git 仓库报 dubious ownership → ST 插件/扩展更新 500
 (function ensureGitSafeDir() {
     try {
         const cwd = sillyTavernRoot;
         if (!fs.existsSync(path.join(cwd, '.git'))) return; // not a git repo — nothing to do
         exec('git config --global --get-all safe.directory', { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }, (err, stdout) => {
             try {
-                const existing = String(stdout || '').split('\n').map(s => s.trim()).filter(Boolean);
-                if (!existing.includes(cwd)) {
-                    exec(`git config --global --add safe.directory "${cwd}"`, { stdio: 'ignore', windowsHide: true }, () => {
-                        terminalWrite(`[git] added safe.directory ${cwd}\n`);
-                    });
+                const existing = new Set(String(stdout || '').split('\n').map(s => s.trim()).filter(Boolean));
+                const targets = [cwd];
+                // 用户扩展目录（ST 1.18 装在 Data 下，插件更新走 git pull）
+                try {
+                    const extRoot = path.join(dataRoot, 'default-user', 'extensions');
+                    if (fs.existsSync(extRoot)) {
+                        for (const f of fs.readdirSync(extRoot)) {
+                            const p = path.join(extRoot, f);
+                            if (fs.existsSync(path.join(p, '.git'))) targets.push(p);
+                        }
+                    }
+                } catch (_) { /* non-fatal */ }
+                for (const t of targets) {
+                    if (!existing.has(t)) {
+                        exec(`git config --global --add safe.directory "${t}"`, { stdio: 'ignore', windowsHide: true }, () => {
+                            terminalWrite(`[git] added safe.directory ${t}\n`);
+                        });
+                    }
                 }
             } catch (_) { /* non-fatal */ }
         });

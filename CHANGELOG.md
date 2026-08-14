@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.11 (2026-08-04)
+- 修复 ST 本体插件/扩展更新失败 "Internal Server Error"：根因 = 重装系统后用户扩展目录（Data/default-user/extensions/*）git 仓库报 dubious ownership，git pull 失败 → ST 返回 500；启动时自动把扩展目录加入 git safe.directory（幂等，与 ST 本体同款处理）
+
 ## v1.8.10 (2026-08-04)
 - 修复 角色卡速览识别不了角色卡：PNG 解析改为按 chunk 结构正确读取 tEXt（关键字 chara/ccv3），不再全文搜字节（旧实现大 JSON 截断/误匹配）
 - 修复 迷你状态窗不显示：清除 v1.8.8 及以前 × 按钮遗留的 localStorage 隐藏标记；启动即显示"就绪"空闲状态（之前要等聊天事件才出现）
