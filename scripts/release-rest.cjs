@@ -44,6 +44,7 @@ const assets = [
     'dist-electron-v3/latest.yml',
     `dist-electron-v3-lite/SillyTavern-Lite-Setup-${VERSION}.exe`,
     `dist-electron-v3-lite/SillyTavern-Lite-Setup-${VERSION}.exe.blockmap`,
+    'dist-electron-v3-lite/lite.yml',
 ];
 const relId = fs.readFileSync('.gh-release-id.txt', 'utf8').trim();
 for (const a of assets) {

@@ -2,7 +2,7 @@
   "directories": { "output": "../../dist-electron-v3-lite" },
   "appId": "com.sillytavern.desktop.lite",
   "productName": "SillyTavern",
-  "publish": { "provider": "github", "owner": "Anarrogantcat", "repo": "sillytavern-shell" },
+  "publish": { "provider": "github", "owner": "Anarrogantcat", "repo": "sillytavern-shell", "channel": "lite" },
   "artifactName": "SillyTavern-Lite-Setup-${version}.exe",
   "files": ["index.js","preload.js","webview-preload.js","shell.html","shell.css","shell.js","chat.html","lib/","package.json","assets/icon.png","CHANGELOG.md"],
   "extraResources": [{ "from": "assets/icon.png", "to": "icon.png" }],

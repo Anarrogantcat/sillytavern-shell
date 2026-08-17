@@ -60,6 +60,23 @@ else if (/[\\/]resources[\\/]sillytavern$/i.test(settings.serverPath)) {
     saveSettings(settings);
 }
 const sillyTavernRoot = cliArguments.serverPath || settings.serverPath || defaultST;
+// ── P0 安全：禁止递归删除危险路径（盘符根/系统根/用户主目录/套壳自身/项目根）──
+// 开发模式 defaultST = ../.. 可能是盘符根；用户手填 serverPath 也可能指向任意目录。
+function isUnsafeRmPath(p) {
+    try {
+        const r = path.resolve(String(p || ''));
+        if (/^[A-Za-z]:[\\/]?$/.test(r) || r === '/' || r === '\\') return true; // 盘符根/系统根
+        const guard = [app.getPath('home'), app.getPath('documents'), app.getPath('downloads')];
+        if (app.isPackaged) guard.push(path.dirname(process.execPath)); else guard.push(path.resolve(__dirname, '..'));
+        for (const g of guard) {
+            if (r === g || r.startsWith(g + path.sep)) return true;
+        }
+        return false;
+    } catch (_) { return true; }
+}
+function assertSafeRmPath(p) {
+    if (isUnsafeRmPath(p)) throw new Error(`拒绝删除危险路径: ${p}`);
+}
 // User data lives OUTSIDE resources — upgrade/reinstall never touches it
 const dataRoot = settings.dataRoot || (app.isPackaged
     ? path.join(path.dirname(process.resourcesPath), '..', 'Data')
@@ -302,6 +319,8 @@ async function setupSillyTavern() {
 
     // Clean up non-empty directory before git clone (git requires empty dir)
     if (fs.existsSync(sillyTavernRoot)) {
+        // P0 安全：拒绝删除盘符根/主目录/套壳自身等危险路径
+        assertSafeRmPath(sillyTavernRoot);
         // Safety: never delete user data if dataRoot is inside the ST dir
         const dataInside = dataRoot.startsWith(sillyTavernRoot + path.sep);
         terminalWrite('\x1b[36m> Cleaning up old files...\x1b[0m');
@@ -355,7 +374,14 @@ function terminalWrite(text) {
 // ── Window State ─────────────────────────────────────────────────────
 const STATE_PATH = path.join(app.getPath('userData'), 'window-state.json');
 function loadWindowState() {
-    try { if (fs.existsSync(STATE_PATH)) { const d = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')); if (d && typeof d.width === 'number') return d; } } catch (_) {}
+    try { if (fs.existsSync(STATE_PATH)) { const d = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')); if (d && typeof d.width === 'number') {
+        // 审计：显示器边界校验（防止窗口恢复到屏幕外）
+        const sw = require('electron').screen?.getPrimaryDisplay?.()?.workAreaSize?.width || 9999;
+        const sh = require('electron').screen?.getPrimaryDisplay?.()?.workAreaSize?.height || 9999;
+        if (typeof d.x === 'number' && (d.x < -d.width + 80 || d.x > sw - 80)) delete d.x;
+        if (typeof d.y === 'number' && (d.y < -20 || d.y > sh - 80)) delete d.y;
+        return d;
+    } } } catch (_) {}
     return null;
 }
 function saveWindowState(win) {
@@ -411,6 +437,8 @@ function createWindow() {
     if (saved?.maximized) mainWindow.maximize();
     // B2 窗口置顶：启动时应用设置
     try { if (settings.alwaysOnTop) mainWindow.setAlwaysOnTop(true); } catch (_) {}
+    // P1 安全：禁止任何 window.open 子窗口（远程页面可能继承 preload → RCE 面）
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     mainWindow.loadFile(path.join(__dirname, 'shell.html'));
     mainWindow.once('ready-to-show', () => mainWindow.show());
     const track = () => { if (!mainWindow?.isMaximized()) mainWindow._lastNormalBounds = mainWindow.getBounds(); };
@@ -458,7 +486,7 @@ function setupIPC() {
     ipcMain.handle('settings:get', () => settings);
     ipcMain.handle('settings:save', (_e, s) => { Object.assign(settings, s); saveSettings(settings); });
     ipcMain.handle('settings:getServerPath', () => sillyTavernRoot);
-    ipcMain.handle('settings:setServerPath', (_e, p) => { settings.serverPath = p; saveSettings(settings); });
+    ipcMain.handle('settings:setServerPath', (_e, p) => { if (typeof p !== 'string') return { error: 'invalid path' }; if (isUnsafeRmPath(p)) return { error: '拒绝设置危险路径（盘符根/主目录/套壳自身）' }; settings.serverPath = p; saveSettings(settings); return { ok: true }; });
     ipcMain.handle('settings:getDataRoot', () => dataRoot);
     ipcMain.handle('shell:openPath', (_e, p) => { if (typeof p === 'string' && fs.existsSync(p)) shell.openPath(p); });
 
@@ -506,6 +534,10 @@ function setupIPC() {
     }));
 
     ipcMain.handle('update:sillytavern', async () => {
+        // 完整版内置 ST 不打包 .git（prebuild SKIP_DIRS），git pull 必然失败——给出明确指引
+        if (!fs.existsSync(path.join(sillyTavernRoot, '.git'))) {
+            return { error: '当前为完整版内置 ST（无 git 仓库）。请通过「检查套壳更新」升级整个应用，内置 ST 会随套壳版本更新。' };
+        }
         stopServer();
         const isWin = process.platform === 'win32', npmCmd = isWin ? 'npm.cmd' : 'npm', shell = isWin;
         try {
@@ -595,9 +627,10 @@ function setupIPC() {
     registerEnvTools({ ipcMain, terminalWrite, dataRoot });
     registerChatTools({ ipcMain, dataRoot, app });
     // 更新下载完成后保留回滚包
+    // 审计 #8：downloadedUpdateHelper 无 installerPath；真实路径是 autoUpdater.installerPath（BaseUpdater 属性）
     autoUpdater.on('update-downloaded', () => {
         if (shellUpdateVersion) {
-            try { toolsApp.saveRollbackPackage(shellUpdateVersion, autoUpdater.downloadedUpdateHelper?.installerPath || ''); } catch (_) {}
+            try { toolsApp.saveRollbackPackage(shellUpdateVersion, autoUpdater.installerPath || autoUpdater.downloadedUpdateHelper?.installerPath || ''); } catch (_) {}
         }
     });
     ipcMain.handle('shell-update:check', async () => {
@@ -640,17 +673,22 @@ function startServer() {
         const serverJs = path.join(sillyTavernRoot, 'server.js');
         if (!fs.existsSync(serverJs)) { reject(new Error(`server.js not found at ${serverJs}`)); return; }
         migrateDataIfNeeded();
-        // A1 局域网访问：--listen 监听全网卡；basicAuth 凭据（全部启动参数，零写入 ST 文件）
+        // A1 局域网访问：--listen 监听全网卡；basicAuth 凭据走环境变量
+        // （ST 1.18 getConfigValue 优先读 env：SILLYTAVERN_BASICAUTHMODE / ...USERNAME / ...PASSWORD，
+        //  --basicAuthUser/--basicAuthPassword CLI 参数无效——审计 #5；零写入 ST 文件）
         const s = loadSettings();
         const args = [serverJs, '--dataRoot', dataRoot, '--no-browserLaunchEnabled'];
+        const env = { ...process.env, ELECTRON_RUN_AS_NODE: undefined };
         if (s.lanEnabled) {
             args.push('--listen');
             if (s.lanUser && s.lanPass) {
-                args.push('--basicAuthMode', '1', '--basicAuthUser', String(s.lanUser), '--basicAuthPassword', String(s.lanPass));
+                env.SILLYTAVERN_BASICAUTHMODE = '1';
+                env.SILLYTAVERN_BASICAUTHUSER_USERNAME = String(s.lanUser);
+                env.SILLYTAVERN_BASICAUTHUSER_PASSWORD = String(s.lanPass);
             }
         }
-        terminalWrite('\x1b[36m> node ' + args.map(a => s.lanPass && String(a).includes(String(s.lanPass)) ? '******' : a).join(' ') + '\x1b[0m');
-        serverProcess = spawn('node', args, { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
+        terminalWrite('\x1b[36m> node ' + args.join(' ') + (s.lanEnabled && s.lanPass ? ' [basicAuth via env]' : '') + '\x1b[0m');
+        serverProcess = spawn('node', args, { cwd: sillyTavernRoot, stdio: ['ignore', 'pipe', 'pipe'], env });
         let started = false, stdoutBuffer = '', timedOut = false;
         const killOnTimeout = setTimeout(() => {
             if (started) return;
@@ -667,7 +705,26 @@ function startServer() {
         });
         serverProcess.stderr.on('data', data => terminalWrite(data));
         serverProcess.on('error', err => { clearTimeout(killOnTimeout); if (!started) { serverProcess = null; reject(err); } });
-        serverProcess.on('exit', code => { clearTimeout(killOnTimeout); if (!started && !timedOut && code !== 0) { serverProcess = null; reject(new Error(`Server exited with code ${code}`)); } serverProcess = null; });
+        // 审计：ST 崩溃后无感知——启动成功后意外退出 → 通知页面并自动重启（防循环：5 分钟内最多 2 次）
+        let lastCrashTs = 0, crashCount = 0;
+        serverProcess.on('exit', (code) => {
+            clearTimeout(killOnTimeout);
+            if (!started && !timedOut && code !== 0) { serverProcess = null; reject(new Error(`Server exited with code ${code}`)); return; }
+            serverProcess = null;
+            if (started && !isQuitting && code !== 0) {
+                const now = Date.now();
+                if (now - lastCrashTs < 5 * 60 * 1000) crashCount++; else crashCount = 1;
+                lastCrashTs = now;
+                mainWindow?.webContents.send('server:error', `ST 服务器异常退出 (code ${code})`);
+                terminalWrite(`\x1b[31m[server] SillyTavern 异常退出 (code ${code})\x1b[0m\n`);
+                if (crashCount <= 2) {
+                    terminalWrite(`\x1b[33m[server] 5 秒后自动重启 (${crashCount}/2)...\x1b[0m\n`);
+                    setTimeout(() => { if (!isQuitting) { try { startServer().catch(e => terminalWrite('\x1b[31m[server] 重启失败: ' + e.message + '\x1b[0m\n')); } catch (_) {} } }, 5000);
+                } else {
+                    terminalWrite('\x1b[31m[server] 连续崩溃，停止自动重启。请查看上方日志或手动重启。\x1b[0m\n');
+                }
+            }
+        });
     });
 }
 
@@ -681,10 +738,15 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_w, p, cb) => cb(['clipboard-read', 'clipboard-sanitized-write', 'notifications'].includes(p)));
     // A1 局域网 basicAuth：本机 webview 自动应答凭据（手机端仍手动输入）
-    session.defaultSession.on('login', (event, _req, _authInfo, callback) => {
-        const s = loadSettings();
-        if (s.lanEnabled && s.lanUser && s.lanPass) { event.preventDefault(); callback(String(s.lanUser), String(s.lanPass)); }
-        else callback(); // 取消认证（不阻止页面加载，ST 会显示登录页）
+    // 仅对本地 ST 地址应答，防止凭据泄露给任意 Basic Auth 站点（审计 #9）
+    session.defaultSession.on('login', (event, _req, authInfo, callback) => {
+        try {
+            const host = String(authInfo?.host || '');
+            const isLocal = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(host);
+            const s = loadSettings();
+            if (isLocal && s.lanEnabled && s.lanUser && s.lanPass) { event.preventDefault(); callback(String(s.lanUser), String(s.lanPass)); }
+            else callback(); // 非本地地址或未配置：取消认证
+        } catch (_) { callback(); }
     });
     createTray(); createWindow(); setupIPC();
     // Start the chat watcher (read-only token statistics, auto restarts on activate)

@@ -13,7 +13,9 @@ const shellJs = fs.readFileSync(base + 'shell.js', 'utf8');
 const chatHtml = fs.readFileSync(base + 'chat.html', 'utf8');
 const ids = new Set([...shellHtml.matchAll(/id="([^"]+)"/g)].map(m => m[1]));
 const refs = new Set([...shellJs.matchAll(/\$\('#([^']+)'\)/g)].map(m => m[1]));
-let missing = [...refs].filter(r => !ids.has(r));
+// 动态创建的元素 id（运行时 document.createElement，不要求静态存在）
+const dynamicIds = new Set(['btn-do-update', 'btn-view-update', 'btn-dl-shell', 'zoom-badge', 'mini-close']);
+let missing = [...refs].filter(r => !ids.has(r) && !dynamicIds.has(r));
 if (missing.length) bad('shell.js 引用缺失 id: ' + missing.join(', '));
 else ok('shell.js 引用 ' + refs.size + ' 个 id 全部存在');
 // chat.html refs
@@ -29,7 +31,7 @@ const preload = fs.readFileSync(base + 'preload.js', 'utf8');
 const indexJs = fs.readFileSync(base + 'index.js', 'utf8');
 const libs = ['tools-app.js', 'tools-data.js', 'tools-env.js', 'tools-chat.js'].map(f => fs.readFileSync(base + 'lib/' + f, 'utf8')).join('\n');
 const mainAll = indexJs + libs;
-const invokes = new Set([...preload.matchAll(/ipcRenderer\.(invoke|send|on)\('([^']+)'/g)].map(m => m[2]));
+const invokes = new Set([...preload.matchAll(/ipcRenderer\.invoke\('([^']+)'/g)].map(m => m[1]));
 const handles = new Set([...mainAll.matchAll(/ipcMain\.(handle|on)\('([^']+)'/g)].map(m => m[2]));
 missing = [...invokes].filter(c => !handles.has(c));
 if (missing.length) bad('preload 调用但主进程未注册: ' + missing.join(', '));

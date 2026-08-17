@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline';">
 <title>SillyTavern</title>
 <link rel="stylesheet" href="shell.css">
 </head>
@@ -125,7 +125,7 @@
 <div class="setting-row"><label>UI 字体</label><select id="t-font" class="tool-input"><option value="1">100%</option><option value="1.1">110%</option><option value="0.9">90%</option></select></div>
 <div class="setting-row"><label>迷你状态窗</label><select id="t-mini" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
-<div class="setting-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button></div>
+<div class="setting-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button><span id="t-pin-status" class="tool-note"></span></div>
 <div class="setting-row"><label>生成通知</label><select id="t-notify" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>崩溃提醒</label><select id="t-crash" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
@@ -140,13 +140,13 @@
 </div>
 <div id="server-ctl-status" class="update-status"></div>
 </div>
-<div class="update-section">
+<div class="update-section" id="update-section-st">
 <label style="font-size:12px;color:#9090a8;font-weight:500">SillyTavern 更新</label>
 <button id="btn-check-update" class="btn-primary">检查更新</button>
 <div id="update-status" class="update-status"></div>
 <div id="update-progress" class="update-progress hidden"><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-text"></span></div>
 </div>
-<div class="update-section" style="margin-top:8px">
+<div class="update-section" id="update-section-shell" style="margin-top:8px">
 <label style="font-size:12px;color:#9090a8;font-weight:500">套壳更新</label>
 <div id="shell-update-status" class="update-status"></div>
 <div id="shell-update-progress" class="update-progress hidden"><div class="progress-bar"><div class="progress-fill" id="shell-progress-fill"></div></div><span id="shell-progress-text"></span></div>

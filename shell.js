@@ -176,7 +176,7 @@ $('#btn-shell-changelog')?.addEventListener('click',async()=>{const md=await A?.
 let updateData=null,updateCleanup=null;
 $('#btn-check-update')?.addEventListener('click',checkUpdate);
 $('#btn-update')?.addEventListener('click',async()=>{openSettings();checkUpdate();});
-async function checkUpdate(){const b=$('#btn-check-update'),s=$('#update-status');if(b)b.disabled=true;if(s){s.textContent='检查中...';s.className='update-status info';}updateData=await U?.check();if(updateData?.error){if(s){s.textContent='检查失败: '+updateData.error;s.className='update-status error';}}else if(updateData?.hasUpdate){if(s){s.innerHTML=`发现新版本 <b>v${updateData.latest}</b> (当前 v${updateData.current})`;s.className='update-status success';}let ub=$('#btn-do-update');if(!ub){ub=document.createElement('button');ub.id='btn-do-update';ub.className='btn-primary';ub.textContent='立即更新';ub.addEventListener('click',doUpdate);$('.update-section').appendChild(ub);}let vu=$('#btn-view-update');if(!vu&&updateData?.url){vu=document.createElement('button');vu.id='btn-view-update';vu.className='btn-secondary';vu.textContent='查看更新日志';vu.style.marginTop='6px';vu.addEventListener('click',()=>{window.open(updateData.url,'_blank');});$('.update-section').appendChild(vu);}}else{if(s){s.textContent='已是最新版本 (v'+updateData.current+')';s.className='update-status info';}}if(b)b.disabled=false;}
+async function checkUpdate(){const b=$('#btn-check-update'),s=$('#update-status');if(b)b.disabled=true;if(s){s.textContent='检查中...';s.className='update-status info';}updateData=await U?.check();if(updateData?.error){if(s){s.textContent='检查失败: '+updateData.error;s.className='update-status error';}}else if(updateData?.hasUpdate){if(s){s.innerHTML=`发现新版本 <b>v${escapeHtml(updateData.latest)}</b> (当前 v${escapeHtml(updateData.current)})`;s.className='update-status success';}let ub=$('#btn-do-update');if(!ub){ub=document.createElement('button');ub.id='btn-do-update';ub.className='btn-primary';ub.textContent='立即更新';ub.addEventListener('click',doUpdate);$('#update-section-st')?.appendChild(ub);}let vu=$('#btn-view-update');if(!vu&&updateData?.url){vu=document.createElement('button');vu.id='btn-view-update';vu.className='btn-secondary';vu.textContent='查看更新日志';vu.style.marginTop='6px';vu.addEventListener('click',()=>{window.electronAPI?.window?.openExternal?.(updateData.url);});$('#update-section-st')?.appendChild(vu);}}else{if(s){s.textContent='已是最新版本 (v'+updateData.current+')';s.className='update-status info';}}if(b)b.disabled=false;}
 async function doUpdate(){const s=$('#update-status'),p=$('#update-progress');$('#btn-do-update').disabled=true;$('#btn-check-update').disabled=true;s.textContent='更新中 (git pull + npm install)...';s.className='update-status info';p.classList.remove('hidden');$('#progress-fill').style.width='100%';$('#progress-text').textContent='更新完成后服务器将自动重启';try{const r=await U?.updateSillyTavern();if(r?.success){s.textContent='更新完成！';s.className='update-status success';p.classList.add('hidden');}else throw new Error(r?.error||'Update failed');}catch(e){s.textContent='更新失败: '+e.message;s.className='update-status error';p.classList.add('hidden');}}
 
 document.addEventListener('keydown',e=>{
@@ -216,7 +216,7 @@ const r=await T?.exec('node -e "'+script.replace(/"/g,'\\"')+'"');
 if(r?.error&&!r.stdout){s.textContent='检测失败: '+(r.stderr||r.error);s.className='update-status error';return;}
 let data={git:false,out:[]};try{data=JSON.parse(r?.stdout||'{}');}catch(_){}
 if(data.out.length===0){s.textContent=data.git?'✅ 所有文件完整 (git 安装)':'✅ 核心文件完整 (非 git 安装)';s.className='update-status success';}
-else{s.innerHTML='<pre style=margin:0;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto>缺失文件：\\n'+data.out.join('\\n')+'</pre>';s.className='update-status error';}
+else{s.innerHTML='<pre style=margin:0;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto>缺失文件：\n'+escapeHtml(data.out.join('\n'))+'</pre>';s.className='update-status error';}
 }catch(e){s.textContent='检测失败: '+e.message;s.className='update-status error';}});
 
 // Ctrl+Scroll zoom — now handled via webview preload + setZoomFactor (see Zoom section above)
@@ -240,7 +240,9 @@ const tEl = {
     immerse: $('#t-immerse'), notify: $('#t-notify'), rollbackInfo: $('#t-rollback-info'), rollbackList: $('#t-rollback-list'),
 };
 function setNote(el, text) { if (el) el.textContent = text; }
-function setDetail(el, html) { if (el) el.innerHTML = html; }
+// XSS 安全：所有动态内容一律转义为纯文本（\n → <br>），绝不直接 innerHTML 数据
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function setDetail(el, text) { if (el) el.innerHTML = escapeHtml(text).replace(/\n/g, '<br>'); }
 async function renderTools() {
     if (!TL()) return;
     // 备份配置
@@ -258,13 +260,13 @@ async function renderTools() {
     const ng = await TL().nightGet();
     if (ng) tEl.night.value = ng.enabled ? '1' : '0';
     const pg = await TL().pinGet();
-    if (pg) setNote(tEl.pin, pg.hasPin ? '已设置' : '');
+    if (pg) setNote($('#t-pin-status'), pg.hasPin ? '已设置' : '');
     const s = await window.electronAPI?.settings?.get?.();
     if (s) tEl.notify.value = s.notifyGenerated === false ? '0' : '1';
     // 回滚列表
     const rl = await TL().rollbackList();
     setNote(tEl.rollbackInfo, rl.length ? `可用 ${rl.length} 个回滚包` : '无回滚包');
-    setDetail(tEl.rollbackList, rl.length ? rl.map(r => `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="${r.version}">回滚到 v${r.version}</button>`).join('') : '');
+    setDetail(tEl.rollbackList, rl.length ? rl.map(r => `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="${escapeHtml(r.version)}">回滚到 v${escapeHtml(r.version)}</button>`).join('') : '');
     tEl.rollbackList.querySelectorAll('[data-rollback]').forEach(b => b.addEventListener('click', async () => {
         if (confirm(`确定回滚到 v${b.dataset.rollback}？应用将退出并安装旧版。`)) {
             await TL().rollbackInstall(b.dataset.rollback);
@@ -414,7 +416,7 @@ $('#t-export-html')?.addEventListener('click', async () => {
 (async () => {
     const cards = await TL()?.listCharacters() || [];
     const sel = $('#t-card-list');
-    if (sel) sel.innerHTML = '<option value="">选择角色卡…</option>' + cards.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (sel) sel.innerHTML = '<option value="">选择角色卡…</option>' + cards.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 })();
 $('#t-card-view')?.addEventListener('click', async () => {
     const name = $('#t-card-list')?.value;
@@ -445,7 +447,7 @@ $('#t-rag')?.addEventListener('click', async () => {
     if (!q) return;
     const hits = await TL()?.ragSearch(q) || [];
     setDetail($('#t-rag-res'), hits.length ? hits.map(h => `[${h.doc}] ${h.text}`).join('\n---\n') : '未命中（文档放 %APPDATA%\\sillytavern-electron\
-ag-docs\\）');
+ag-docs\\ 目录）');
 });
 
 // 工具箱打开时也渲染设置项（设置面板共用 renderTools）
@@ -496,7 +498,7 @@ tEl.searchKw?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch
 tEl.stats?.addEventListener('click', async () => {
     const s = await TL()?.chatStats();
     if (!s) return;
-    setNote(tEl.statsRes, `✅ ${s.chars} 个角色卡 / ${s.totalMessages} 条消息 / ${Math.round(s.totalChars / 10000) / 100} 万字（回复 ${s.replyChars} 字符）`);
+    setNote(tEl.statsRes, `✅ ${s.chats} 个聊天文件 / ${s.totalMessages} 条消息 / ${Math.round(s.totalChars / 10000) / 100} 万字（回复 ${s.replyChars} 字符）`);
     setDetail(tEl.searchRes, '各角色卡：\n' + s.perChar.slice(0, 12).map(c => `${c.char}: ${c.messages} 条 / ${c.chars} 字 / 回复 ${c.replyChars} 字`).join('\n'));
 });
 // 导出
@@ -608,4 +610,4 @@ document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefa
 })();
 
 $('#btn-check-shell-update')?.addEventListener('click',checkShellUpdate);
-async function checkShellUpdate(){const s=$('#shell-update-status');if(!s)return;s.textContent='检查中...';s.className='update-status info';const cur=await A?.getShellVersion();const SU=window.electronAPI?.shellUpdate;if(!SU){s.textContent='自动更新不可用';s.className='update-status error';return;}try{const r=await SU.check();const newer=r?.version&&cur&&String(r.version)!==String(cur)&&(String(r.version).localeCompare(String(cur),undefined,{numeric:true})>0);if(r?.hasUpdate&&newer){s.innerHTML=`发现新版本 <b>v${r.version}</b> (当前 v${cur})`;s.className='update-status success';let dl=$('#btn-dl-shell');if(!dl){dl=document.createElement('button');dl.id='btn-dl-shell';dl.className='btn-primary';dl.style.marginTop='6px';dl.textContent='下载并安装';dl.addEventListener('click',async()=>{if(dl.dataset.done)return;dl.disabled=true;dl.textContent='下载中...';s.innerHTML='下载中...';s.className='update-status info';const sp=$('#shell-update-progress'),sf=$('#shell-progress-fill'),st=$('#shell-progress-text');if(sp){sp.classList.remove('hidden');if(sf)sf.style.width='0%';if(st)st.textContent='0%';}let cleanup=SU.onProgress(({percent})=>{if(sf)sf.style.width=`${Math.round(percent||0)}%`;if(st)st.textContent=`${Math.round(percent||0)}%`;dl.textContent=`下载中 ${Math.round(percent||0)}%`;});let dc=SU.onDownloaded(()=>{cleanup();dc();if(sp)sp.classList.add('hidden');dl.dataset.done='1';s.innerHTML='✅ 下载完成，正在安装...';s.className='update-status success';dl.textContent='安装中...';setTimeout(()=>SU.install(),800);});let ec=SU.onError(e=>{cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';});try{await SU.download();}catch(e){cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';}});s.appendChild(dl);}}else if(r?.error){s.textContent=(/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network|Network/i.test(r.error))?'⚠ 网络连接失败 — 请检查网络或代理 (127.0.0.1:7890)':'检查失败: '+r.error;s.className='update-status error';}else{s.textContent='已是最新版本 (v'+cur+')';s.className='update-status info';}}catch(e){s.textContent='检查失败: '+e.message;s.className='update-status error';}}
+async function checkShellUpdate(){const s=$('#shell-update-status');if(!s)return;s.textContent='检查中...';s.className='update-status info';const cur=await A?.getShellVersion();const SU=window.electronAPI?.shellUpdate;if(!SU){s.textContent='自动更新不可用';s.className='update-status error';return;}try{const r=await SU.check();const newer=r?.version&&cur&&String(r.version)!==String(cur)&&(String(r.version).localeCompare(String(cur),undefined,{numeric:true})>0);if(r?.hasUpdate&&newer){s.innerHTML=`发现新版本 <b>v${escapeHtml(String(r.version))}</b> (当前 v${escapeHtml(String(cur))})`;s.className='update-status success';let dl=$('#btn-dl-shell');if(!dl){dl=document.createElement('button');dl.id='btn-dl-shell';dl.className='btn-primary';dl.style.marginTop='6px';dl.textContent='下载并安装';dl.addEventListener('click',async()=>{if(dl.dataset.done)return;dl.disabled=true;dl.textContent='下载中...';s.innerHTML='下载中...';s.className='update-status info';const sp=$('#shell-update-progress'),sf=$('#shell-progress-fill'),st=$('#shell-progress-text');if(sp){sp.classList.remove('hidden');if(sf)sf.style.width='0%';if(st)st.textContent='0%';}let cleanup=SU.onProgress(({percent})=>{if(sf)sf.style.width=`${Math.round(percent||0)}%`;if(st)st.textContent=`${Math.round(percent||0)}%`;dl.textContent=`下载中 ${Math.round(percent||0)}%`;});let dc=SU.onDownloaded(()=>{cleanup();dc();if(sp)sp.classList.add('hidden');dl.dataset.done='1';s.innerHTML='✅ 下载完成，正在安装...';s.className='update-status success';dl.textContent='安装中...';setTimeout(()=>SU.install(),800);});let ec=SU.onError(e=>{cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';});try{await SU.download();}catch(e){cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';}});s.appendChild(dl);}}else if(r?.error){s.textContent=(/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network|Network/i.test(r.error))?'⚠ 网络连接失败 — 请检查网络或代理 (127.0.0.1:7890)':'检查失败: '+r.error;s.className='update-status error';}else{s.textContent='已是最新版本 (v'+cur+')';s.className='update-status info';}}catch(e){s.textContent='检查失败: '+e.message;s.className='update-status error';}}

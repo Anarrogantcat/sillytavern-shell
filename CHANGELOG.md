@@ -1,5 +1,21 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.14 (2026-08-04) — 安全审计修复
+- 🔴 P0 路径删除保护：禁止删除盘符根/系统根/主目录/套壳自身/项目根（开发模式 defaultST 曾指向 D:\，设置服务器路径也可指向任意目录→清空）；设置危险服务器路径直接拒绝
+- 🔴 修复 独立对话助手完全不可用：chat.html 调顶层 API，preload 只在 tools 下 → 补顶层扁平别名；chat 窗口补 sandbox:false（ESM preload 必需）
+- 🔴 XSS→RCE 修复：setDetail 全部转义为纯文本；版本号/文件列表/角色卡名 innerHTML 转义；CSP 去掉 script-src 'unsafe-inline'；window.open 改 openExternal；主进程 setWindowOpenHandler deny（防子窗口继承 preload）
+- 🔴 局域网 basicAuth 修复：ST 1.18 不读 --basicAuthUser CLI 参数 → 改为环境变量注入（SILLYTAVERN_BASICAUTHMODE/USERNAME/PASSWORD，getConfigValue 优先读 env，零写入 ST）；login 应答仅限本地地址（防凭据泄露给任意站点）
+- 修复 完整版 ST 更新失败：无 .git 时明确提示走套壳更新
+- 修复 lite 版误打包 ST（93MB）：afterPack 检测 lite 输出跳过；lite 更新通道分离（latest-lite.yml）
+- 修复 版本回滚从未生效：installerPath 从 downloadedUpdateHelper（无此属性）改为 autoUpdater.installerPath；回滚安装前退出应用
+- 修复 备份 zip 命令注入（路径拼 PowerShell 命令 → 参数数组 spawn）；备份排除规则支持 Windows 反斜杠
+- 修复 ST 崩溃无感知：异常退出通知页面 + 自动重启（5 分钟最多 2 次防循环）
+- 修复 窗口恢复到屏幕外（显示器边界校验）
+- 修复 统计口径（chars 实为聊天文件数）；ST/套壳更新按钮错位（update-section 多区块）；PIN 状态不显示（password input 加状态 span）；RAG 路径提示缺分隔符
+- 修复 路径穿越：角色卡名/会话 id 拒绝 .. 与绝对路径
+- 修复 云模型直连无鉴权：Claude（/v1/messages+x-api-key）、Gemini（generateContent+key）、OpenAI 兼容（Bearer）
+- 修复 全量检查脚本误报（动态 id/IPC on 通道）；package-lock 版本同步 1.8.13
+
 ## v1.8.13 (2026-08-04)
 - 🔴 修复 聊天无法保存：v1.8.12 增量读取驻留文件句柄，Windows 上阻止 ST 保存聊天的临时文件重命名 → 改为 open→read→close（不驻留句柄，仍增量读取）
 - 🔴 修复 角色卡速览仍无法解析：PNG 签名检查用 toString('ascii') 比较 0x89 被截断成 tab 导致所有卡片被拒 → 改为字节级比较；ST 1.18 角色卡 JSON 为 Base64 编码 → 增加 Base64 解码通道（39 张真实角色卡全部解析通过）

@@ -96,4 +96,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         chatNew: () => ipcRenderer.invoke('tools:chatNew'),
         draftGenerate: (p, n) => ipcRenderer.invoke('tools:draftGenerate', p, n),
     },
+    // D 档（chat.html 独立窗口使用顶层扁平 API）
+    chatOpen: () => ipcRenderer.invoke('tools:chatOpen'),
+    chatModel: () => ipcRenderer.invoke('tools:chatModel'),
+    chatSend: (t, sid) => ipcRenderer.invoke('tools:chatSend', t, sid),
+    chatClear: sid => ipcRenderer.invoke('tools:chatClear', sid),
+    chatSessions: () => ipcRenderer.invoke('tools:chatSessions'),
+    chatLoad: sid => ipcRenderer.invoke('tools:chatLoad', sid),
+    chatNew: () => ipcRenderer.invoke('tools:chatNew'),
+    draftGenerate: (p, n) => ipcRenderer.invoke('tools:draftGenerate', p, n),
 });
