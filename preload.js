@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         listCharacters: () => ipcRenderer.invoke('tools:listCharacters'),
         exportCharacters: () => ipcRenderer.invoke('tools:exportCharacters'),
         chatStats: () => ipcRenderer.invoke('tools:chatStats'),
+        integrityCheck: () => ipcRenderer.invoke('tools:integrityCheck'),
         exportChatHtml: () => ipcRenderer.invoke('tools:exportChatHtml'),
         cardPreview: n => ipcRenderer.invoke('tools:cardPreview', n),
         worldBooks: () => ipcRenderer.invoke('tools:worldBooks'),

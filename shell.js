@@ -207,6 +207,34 @@ T?.onOutput(text=>{if(!serverReady&&loadingLog)loadingAppend(text);termAppend(te
 
 // ── Settings ─────────────────────────────────
 let settingsData={};
+// 设置页 Tab：按现有 DOM 结构分组，不依赖额外 HTML 标记
+function initSettingsTabs() {
+    const tabs = document.querySelectorAll('#settings-tabs .settings-tab');
+    if (!tabs.length) return;
+    const body = document.querySelector('.settings-body');
+    if (!body) return;
+    const children = [...body.children].filter(el => el.id !== 'settings-tabs');
+    const firstSectionIdx = children.findIndex(el => el.classList.contains('update-section'));
+    const generalEls = firstSectionIdx >= 0 ? children.slice(0, firstSectionIdx) : children;
+    const sections = children.filter(el => el.classList.contains('update-section') && el.children.length > 0);
+    const groups = {
+        general: generalEls,
+        tools: [sections[0]],
+        server: [sections[1]],
+        update: [sections[2], sections[3]],
+        integrity: [sections[4]],
+    };
+    function switchSettingsTab(name) {
+        const show = groups[name] || [];
+        for (const el of children) el.style.display = 'none';
+        for (const el of show) if (el) el.style.display = '';
+        for (const tab of tabs) tab.classList.toggle('active', tab.dataset.tab === name);
+        try { localStorage.setItem('settingsTab', name); } catch (_) {}
+    }
+    for (const tab of tabs) tab.addEventListener('click', () => switchSettingsTab(tab.dataset.tab));
+    switchSettingsTab(localStorage.getItem('settingsTab') || 'general');
+}
+initSettingsTabs();
 async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
 btnSettings?.addEventListener('click',openSettings);
@@ -224,7 +252,7 @@ $('#btn-shell-changelog')?.addEventListener('click',async()=>{const md=await A?.
 // ── Update ───────────────────────────────────
 let updateData=null,updateCleanup=null;
 $('#btn-check-update')?.addEventListener('click',checkUpdate);
-$('#btn-update')?.addEventListener('click',async()=>{openSettings();checkUpdate();});
+
 async function checkUpdate(){const b=$('#btn-check-update'),s=$('#update-status');if(b)b.disabled=true;if(s){s.textContent='检查中...';s.className='update-status info';}updateData=await U?.check();if(updateData?.error){if(s){s.textContent='检查失败: '+updateData.error;s.className='update-status error';}}else if(updateData?.hasUpdate){if(s){s.innerHTML=`发现新版本 <b>v${escapeHtml(updateData.latest)}</b> (当前 v${escapeHtml(updateData.current)})`;s.className='update-status success';}let ub=$('#btn-do-update');if(!ub){ub=document.createElement('button');ub.id='btn-do-update';ub.className='btn-primary';ub.textContent='立即更新';ub.addEventListener('click',doUpdate);$('#update-section-st')?.appendChild(ub);}let vu=$('#btn-view-update');if(!vu&&updateData?.url){vu=document.createElement('button');vu.id='btn-view-update';vu.className='btn-secondary';vu.textContent='查看更新日志';vu.style.marginTop='6px';vu.addEventListener('click',()=>{window.electronAPI?.window?.openExternal?.(updateData.url);});$('#update-section-st')?.appendChild(vu);}}else{if(s){s.textContent='已是最新版本 (v'+updateData.current+')';s.className='update-status info';}}if(b)b.disabled=false;}
 async function doUpdate(){const s=$('#update-status'),p=$('#update-progress');$('#btn-do-update').disabled=true;$('#btn-check-update').disabled=true;s.textContent='更新中 (git pull + npm install)...';s.className='update-status info';p.classList.remove('hidden');$('#progress-fill').style.width='100%';$('#progress-text').textContent='更新完成后服务器将自动重启';try{const r=await U?.updateSillyTavern();if(r?.success){s.textContent='更新完成！';s.className='update-status success';p.classList.add('hidden');}else throw new Error(r?.error||'Update failed');}catch(e){s.textContent='更新失败: '+e.message;s.className='update-status error';p.classList.add('hidden');}}
 
@@ -259,14 +287,12 @@ webview?.addEventListener('ipc-message',e=>{
 });
 
 // Integrity check
-$('#btn-check-integrity')?.addEventListener('click',async()=>{const s=$('#integrity-status');if(!s)return;s.textContent='检测中...';s.className='update-status info';try{
-const script=`const fs=require('fs');let git=false;try{git=require('child_process').execSync('git rev-parse --is-inside-work-tree',{stdio:'pipe'}).toString().trim()==='true';}catch(_){git=false;}const out=[];if(git){try{const del=require('child_process').execSync('git ls-files --deleted',{stdio:'pipe'}).toString().trim().split('\\n').filter(l=>l&&!l.startsWith('data/'));del.forEach(l=>out.push('MISSING '+l));}catch(_){out.push('git 检查失败（目录可能未信任，正在使用文件检查）');['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}}else{['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}if(!fs.existsSync('node_modules'))out.push('MISSING node_modules');console.log(JSON.stringify({git,out}));`;
-const r=await T?.exec('node -e "'+script.replace(/"/g,'\\"')+'"');
-if(r?.error&&!r.stdout){s.textContent='检测失败: '+(r.stderr||r.error);s.className='update-status error';return;}
-let data={git:false,out:[]};try{data=JSON.parse(r?.stdout||'{}');}catch(_){}
-if(data.out.length===0){s.textContent=data.git?'✅ 所有文件完整 (git 安装)':'✅ 核心文件完整 (非 git 安装)';s.className='update-status success';}
-else{s.innerHTML='<pre style=margin:0;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto>缺失文件：\n'+escapeHtml(data.out.join('\n'))+'</pre>';s.className='update-status error';}
-}catch(e){s.textContent='检测失败: '+e.message;s.className='update-status error';}});
+$('#btn-check-integrity')?.addEventListener('click',async()=>{const s=$('#integrity-status');if(!s)return;s.textContent='检测中...';s.className='update-status info';try{const data=await (window.electronAPI?.tools?.integrityCheck?.()||{});if(data?.error){s.textContent='检测失败: '+data.error;s.className='update-status error';return;}if(!data.out||data.out.length===0){s.textContent=data.git?'✅ 所有文件完整 (git 安装)':'✅ 核心文件完整 (非 git 安装)';s.className='update-status success';}else{s.innerHTML='<pre style=margin:0;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto>缺失文件：\n'+escapeHtml(data.out.join('\n'))+'</pre>';s.className='update-status error';}}catch(e){s.textContent='检测失败: '+e.message;s.className='update-status error';}});
+
+
+
+
+
 
 // Ctrl+Scroll zoom — now handled via webview preload + setZoomFactor (see Zoom section above)
 
@@ -327,6 +353,7 @@ async function renderTools() {
 // ── 迷你状态窗（可隐藏：设置/×按钮/托盘三处联动）──────────────────
 const miniEl = { box: $('#mini-status'), dot: $('#mini-dot'), text: $('#mini-text'), close: $('#mini-close') };
 let miniVisible = true, miniHideTs = 0;
+let miniDismissed = false; // 用户点 × 后，本次运行内不再自动显示
 function miniShow() {
     if (!miniEl.box) return;
     miniVisible = true;
@@ -340,8 +367,9 @@ function miniHide() {
 TL()?.onMini?.(v => {
     if (!v) return;
     if (!miniEl.dot || !miniEl.text) return;
+    if (miniDismissed || document.body.dataset.miniEnabled === '0') return;
     miniEl.dot.className = 'mini-dot ' + v.state;
-    if (v.state === 'gen') miniEl.text.textContent = `🟡 ${v.char || '角色'} 生成中…`;
+    if (v.state === 'gen') { clearTimeout(miniHideTs); miniEl.text.textContent = `🟡 ${v.char || '角色'} 生成中…`; }
     else if (v.state === 'done') {
         const t = v.ms != null && v.ms > 0 ? ` ${Math.round(v.ms / 1000)}s` : '';
         miniEl.text.textContent = `✓ ${v.char || '角色'} 回复完成${t}${v.toks ? ` · ${v.toks} tok` : ''}`;
@@ -353,31 +381,33 @@ TL()?.onMini?.(v => {
         miniHideTs = setTimeout(() => { if (miniVisible && miniEl.text) miniEl.text.textContent = (v.char || '') + ' · 空闲'; miniEl.dot.className = 'mini-dot idle'; }, 8000);
     }
 });
-miniEl.close?.addEventListener('click', () => { miniHide(); }); // 临时隐藏本次，重启恢复；持久开关在设置面板
+miniEl.close?.addEventListener('click', () => { if (miniDragIgnoreClick) return; miniDismissed = true; miniHide(); }); // 点 × 后本次运行内不再自动显示
 
 // 迷你窗拖动（× 除外），位置持久化
-let miniDrag = null;
-miniEl.box?.addEventListener('mousedown', e => {
+let miniDrag = null, miniDragIgnoreClick = false;
+miniEl.box?.addEventListener('pointerdown', e => {
     if (e.target === miniEl.close || e.button !== 0) return;
     const r = miniEl.box.getBoundingClientRect();
-    miniDrag = { sx: e.screenX, sy: e.screenY, ox: r.left, oy: r.top };
+    miniDrag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top };
     e.preventDefault();
+    try { miniEl.box.setPointerCapture?.(e.pointerId); } catch (_) {}
 });
-document.addEventListener('mousemove', e => {
+miniEl.box?.addEventListener('pointermove', e => {
     if (!miniDrag || !miniEl.box) return;
-    const nx = miniDrag.ox + (e.screenX - miniDrag.sx);
-    const ny = miniDrag.oy + (e.screenY - miniDrag.sy);
+    const nx = miniDrag.ox + (e.clientX - miniDrag.sx);
+    const ny = miniDrag.oy + (e.clientY - miniDrag.sy);
     miniEl.box.style.left = Math.max(4, Math.min(window.innerWidth - miniEl.box.offsetWidth - 4, nx)) + 'px';
     miniEl.box.style.top = Math.max(42, Math.min(window.innerHeight - miniEl.box.offsetHeight - 4, ny)) + 'px';
     miniEl.box.style.right = 'auto';
 });
-document.addEventListener('mouseup', () => {
+miniEl.box?.addEventListener('pointerup', () => {
     if (!miniDrag || !miniEl.box) return;
     if (miniEl.box.style.left) {
         localStorage.setItem('miniPos', JSON.stringify({ left: miniEl.box.style.left, top: miniEl.box.style.top }));
     }
-    miniDrag = null;
+    miniDrag = null; miniDragIgnoreClick = true; setTimeout(() => { miniDragIgnoreClick = false; }, 120);
 });
+miniEl.box?.addEventListener('pointercancel', () => { miniDrag = null; });
 try {
     const p = JSON.parse(localStorage.getItem('miniPos') || 'null');
     if (p && p.left && miniEl.box) { miniEl.box.style.left = p.left; miniEl.box.style.top = p.top; miniEl.box.style.right = 'auto'; }
@@ -391,6 +421,8 @@ async function renderUiSettings() {
         $('#t-theme').value = u.theme || 'purple';
         $('#t-font').value = String(u.fontScale || 1);
         $('#t-mini').value = u.miniStatus ? '1' : '0';
+        document.body.dataset.miniEnabled = u.miniStatus ? '1' : '0';
+        if (u.miniStatus) miniDismissed = false; // 重新开启后恢复自动显示
         document.body.dataset.theme = u.theme || 'purple';
         document.body.dataset.font = String(u.fontScale || 1);
         // 迷你窗：启动即显示空闲状态（清除 v1.8.8 及以前 × 按钮的 localStorage 残留）
@@ -535,7 +567,7 @@ TL()?.tunnelOnState?.(tunnelRender);
 tEl.btn?.addEventListener('click', () => {
     if (!tEl.panel) return;
     const open = tEl.panel.classList.toggle('hidden');
-    if (!open) { renderTools(); }
+    if (!open) { renderTools(); renderUiSettings().catch(() => {}); (async () => { const t = await TL()?.tunnelStatus(); if (t) tunnelRender(t); })(); }
 });
 tEl.close?.addEventListener('click', () => tEl.panel?.classList.add('hidden'));
 // 备份

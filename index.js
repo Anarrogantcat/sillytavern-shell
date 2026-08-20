@@ -374,7 +374,7 @@ async function setupSillyTavern() {
 let terminalLines = [], termSendBuf = '', termSendTimer = null;
 function terminalWrite(text) {
     const lines = text.toString().split('\n');
-    for (const line of lines) { if (line) terminalLines.push(line); }
+    for (const line of lines) { terminalLines.push(line); } // 保留空行，历史显示更接近真实终端
     while (terminalLines.length > TERMINAL_RING_SIZE) terminalLines.shift();
     // Coalesce high-frequency log floods into one IPC message per 80ms window
     termSendBuf += text.toString();
@@ -425,7 +425,7 @@ function createTray() {
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: '显示窗口', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
         { type: 'separator' },
-        { label: '立即备份数据', click: () => { try { const d = toolsApp?.doBackup(); terminalWrite(`[tray] ${d}\n`); } catch (e) { terminalWrite(`[tray] 备份失败: ${e.message}\n`); } } },
+        { label: '立即备份数据', click: async () => { try { const d = await toolsApp?.doBackup(); terminalWrite(`[tray] ${d}\n`); } catch (e) { terminalWrite(`[tray] 备份失败: ${e.message}\n`); } } },
         { type: 'separator' },
         { label: '打开数据目录', click: () => shell.openPath(dataRoot) },
         { label: '打开角色卡目录', click: () => shell.openPath(path.join(dataRoot, 'default-user', 'characters')) },
@@ -524,7 +524,30 @@ function setupIPC() {
         return { ok: true };
     });
 
-    ipcMain.handle('settings:get', () => settings);
+    // ST 完整性检测：改用主进程直接执行，避免 node -e 字符串拼接受特殊字符影响
+    ipcMain.handle('tools:integrityCheck', async () => {
+        try {
+            let git = false;
+            try { git = execSync('git rev-parse --is-inside-work-tree', { cwd: sillyTavernRoot, stdio: 'pipe' }).toString().trim() === 'true'; } catch (_) { git = false; }
+            const out = [];
+            const coreFiles = ['server.js', 'package.json', 'public/index.html'];
+            if (git) {
+                try {
+                    const del = execSync('git ls-files --deleted', { cwd: sillyTavernRoot, stdio: 'pipe' }).toString().trim().split(/\r?\n/).filter(l => l && !l.startsWith('data/'));
+                    del.forEach(l => out.push('MISSING ' + l));
+                } catch (_) {
+                    out.push('git 检查失败（目录可能未信任，正在使用文件检查）');
+                    for (const f of coreFiles) if (!fs.existsSync(path.join(sillyTavernRoot, f))) out.push('MISSING ' + f);
+                }
+            } else {
+                for (const f of coreFiles) if (!fs.existsSync(path.join(sillyTavernRoot, f))) out.push('MISSING ' + f);
+            }
+            if (!fs.existsSync(path.join(sillyTavernRoot, 'node_modules'))) out.push('MISSING node_modules');
+            return { git, out };
+        } catch (e) { return { error: e.message }; }
+    });
+
+    ipcMain.handle('settings:get', () => { const copy = { ...settings }; delete copy.pin; copy.hasPin = !!settings.pin; return copy; });
     ipcMain.handle('settings:save', (_e, s) => {
         if (s && typeof s === 'object') {
             // 设置面板保存走这里，必须与 settings:setServerPath 同一安全校验，
