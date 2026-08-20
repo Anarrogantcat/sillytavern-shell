@@ -94,6 +94,10 @@
 <div class="tool-sec">🖥 迷你状态窗</div>
 <div class="tool-row"><label>迷你状态窗</label><select id="t-mini" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 
+<div class="tool-sec">🔍 状态栏诊断</div>
+<div class="tool-actions"><button id="t-diag-statusbar" class="btn-secondary" style="padding:4px 10px;font-size:11px">诊断</button><button id="t-fix-statusbar" class="btn-secondary" style="padding:4px 10px;font-size:11px">清理占位符</button></div>
+<div id="t-diag-res" class="tool-detail"></div>
+
 </div>
 </div>
 <div id="mini-status" class="mini-status hidden"><span id="mini-dot" class="mini-dot"></span><span id="mini-text">-</span><button id="mini-close" title="隐藏迷你状态窗">&times;</button></div>
@@ -130,6 +134,7 @@
 <button class="settings-tab" data-tab="update">更新</button>
 <button class="settings-tab" data-tab="integrity">完整性</button>
 </nav>
+<div class="settings-content">
 <div class="setting-row"><label>服务器路径</label><input type="text" id="setting-server-path" placeholder="D:\AI\SillyTavern"></div>
 <div class="setting-row"><label>数据路径 (--dataRoot)</label><input type="text" id="setting-data-root" disabled></div>
 <div class="setting-row"><label>窗口宽度</label><input type="number" id="setting-width" min="640" max="3840"></div>
@@ -192,6 +197,7 @@
 <label style="font-size:12px;color:#9090a8;font-weight:500">完整性检测</label>
 <button id="btn-check-integrity" class="btn-primary" style="margin-top:4px">检测 SillyTavern 完整性</button>
 <div id="integrity-status" class="update-status"></div>
+</div>
 </div>
 </div>
 <div class="settings-footer"><button id="btn-settings-save" class="btn-primary">保存</button><button id="btn-settings-cancel" class="btn-secondary">取消</button></div>

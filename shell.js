@@ -211,7 +211,7 @@ let settingsData={};
 function initSettingsTabs() {
     const tabs = document.querySelectorAll('#settings-tabs .settings-tab');
     if (!tabs.length) return;
-    const body = document.querySelector('.settings-body');
+    const body = document.querySelector('.settings-content') || document.querySelector('.settings-body');
     if (!body) return;
     const children = [...body.children].filter(el => el.id !== 'settings-tabs');
     const firstSectionIdx = children.findIndex(el => el.classList.contains('update-section'));
@@ -560,6 +560,80 @@ tunnelCopy?.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(tunnelUrl); setNote(tunnelStatus, `✅ ${tunnelUrl}（已复制）`); } catch (_) { window.prompt('公网地址:', tunnelUrl); }
 });
 TL()?.tunnelOnState?.(tunnelRender);
+
+// ── 状态栏诊断（运行时注入，不修改 ST 本体）──
+function setDiag(text, isError) { const el = document.getElementById('t-diag-res'); if (el) { el.textContent = text; el.style.color = isError ? '#e0556a' : ''; } }
+async function diagStatusBar() {
+    setDiag('诊断中…');
+    try {
+        const r = await webview.executeJavaScript(`(() => {
+            const out = { readyState: document.readyState, placeholder: false, markers: {}, runtime: false, context: null, statKeys: [] };
+            const html = document.body ? document.body.innerHTML : '';
+            out.placeholder = /<\\s*StatusPlaceHolderImpl\\s*\\/\\s*>/i.test(html);
+            const markers = { typeA: ['.status-wrapper', '.status-card'], typeB: ['#swj-orb', '#swj-panel'], typeC: ['.qp-app', '.qp-title', '#qp-list'] };
+            for (const [type, sels] of Object.entries(markers)) {
+                out.markers[type] = [];
+                for (const sel of sels) {
+                    const el = document.querySelector(sel);
+                    if (el) {
+                        const cs = getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        out.markers[type].push({ sel, display: cs.display, visibility: cs.visibility, opacity: cs.opacity, width: rect.width, height: rect.height });
+                    }
+                }
+            }
+            try { out.runtime = !!window.__SWJ_STATUSBAR_RUNTIME__; } catch (_) {}
+            try {
+                const ctx = window.SillyTavern?.getContext?.();
+                if (ctx) {
+                    out.context = { characterId: ctx.characterId, chatId: ctx.chatId, groupId: ctx.groupId, preset: ctx.preset || ctx.chatCompletionSettings?.preset || null, source: ctx.chatCompletionSettings?.chat_completion_source || null };
+                }
+            } catch (_) {}
+            try {
+                const vars = typeof getAllVariables === 'function' ? getAllVariables() : (window.Mvu?.getMvuData ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null);
+                if (vars && vars.stat_data) out.statKeys = Object.keys(vars.stat_data).slice(0, 50);
+            } catch (_) {}
+            return out;
+        })()`);
+        const lines = [];
+        lines.push('页面状态: ' + (r.readyState || 'unknown'));
+        lines.push('占位符残留: ' + (r.placeholder ? '是' : '否'));
+        lines.push('脚本运行时: ' + (r.runtime ? '存在' : '无'));
+        if (r.context) lines.push('角色/聊天: ' + r.context.characterId + ' / ' + r.context.chatId + (r.context.groupId ? ' (群聊)' : '') + ' | 预设: ' + (r.context.preset || '未知'));
+        const found = [];
+        for (const [type, arr] of Object.entries(r.markers || {})) for (const m of arr) found.push(type + ':' + m.sel);
+        lines.push('状态栏标记: ' + (found.length ? found.join(', ') : '未发现'));
+        lines.push('stat_data 字段数: ' + (r.statKeys ? r.statKeys.length : 0));
+        if (r.statKeys && r.statKeys.length) lines.push('字段前10: ' + r.statKeys.slice(0, 10).join(', '));
+        if (r.placeholder && !found.length) lines.push('结论: 占位符残留且状态栏 DOM 未注入，很可能为模板/预设替换失败');
+        else if (found.length) lines.push('结论: 状态栏 DOM 已注入，请查看上方标记样式判断是否隐藏');
+        else lines.push('结论: 未检测到已知状态栏实现');
+        setDiag(lines.join('\n'));
+    } catch (e) { setDiag('诊断失败: ' + e.message, true); }
+}
+async function fixStatusBar() {
+    setDiag('清理中…');
+    try {
+        const r = await webview.executeJavaScript(`(() => {
+            let replaced = 0;
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            for (const node of nodes) {
+                if (node.nodeValue && /<\\s*StatusPlaceHolderImpl\\s*\\/\\s*>/i.test(node.nodeValue)) {
+                    const div = document.createElement('div');
+                    div.id = 'shell-statusbar-fallback';
+                    node.parentNode.replaceChild(div, node);
+                    replaced++;
+                }
+            }
+            return { replaced };
+        })()`);
+        setDiag(r.replaced ? '已清理 ' + r.replaced + ' 处占位符残留' : '未发现占位符残留');
+    } catch (e) { setDiag('清理失败: ' + e.message, true); }
+}
+document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatusBar);
+document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
 // 启动时恢复隧道状态
 (async () => { const t = await TL()?.tunnelStatus(); if (t) { tunnelRender(t); if (t.url && tunnelSel) tunnelSel.value = '1'; } })();
 
