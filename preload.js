@@ -95,6 +95,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         chatLoad: sid => ipcRenderer.invoke('tools:chatLoad', sid),
         chatNew: () => ipcRenderer.invoke('tools:chatNew'),
         draftGenerate: (p, n) => ipcRenderer.invoke('tools:draftGenerate', p, n),
+        // 公网隧道 (Cloudflare)
+        tunnelStart: () => ipcRenderer.invoke('tools:tunnelStart'),
+        tunnelStop: () => ipcRenderer.invoke('tools:tunnelStop'),
+        tunnelStatus: () => ipcRenderer.invoke('tools:tunnelStatus'),
+        tunnelOnState: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('tunnel:state', h); return () => ipcRenderer.removeListener('tunnel:state', h); },
     },
     // D 档（chat.html 独立窗口使用顶层扁平 API）
     chatOpen: () => ipcRenderer.invoke('tools:chatOpen'),

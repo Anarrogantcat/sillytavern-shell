@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.8.15 (2026-08-17) — Cloudflare 公网隧道
+- 新增 🌐 公网隧道（Cloudflare Tunnel，开源免费免注册）：cloudflared 二进制随安装包分发（构建时自动下载到 vendor/，打包进 resources/）；设置面板一键开关；生成 trycloudflare.com 公网地址 + 复制按钮；手机 4G 即可访问
+- 安全：开启隧道必须已设置访问密码（basicAuth）；未开认证时自动启用并重启服务器；关闭即地址失效
+
 ## v1.8.14 (2026-08-04) — 安全审计修复
 - 🔴 P0 路径删除保护：禁止删除盘符根/系统根/主目录/套壳自身/项目根（开发模式 defaultST 曾指向 D:\，设置服务器路径也可指向任意目录→清空）；设置危险服务器路径直接拒绝
 - 🔴 修复 独立对话助手完全不可用：chat.html 调顶层 API，preload 只在 tools 下 → 补顶层扁平别名；chat 窗口补 sandbox:false（ESM preload 必需）

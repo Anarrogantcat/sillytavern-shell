@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-electron",
-  "version": "1.8.14",
+  "version": "1.8.15",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
@@ -43,7 +43,7 @@
       "assets/icon.png",
       "CHANGELOG.md"
     ],
-    "extraResources": [{ "from": "assets/icon.png", "to": "icon.png" }],
+    "extraResources": [{ "from": "assets/icon.png", "to": "icon.png" }, { "from": "vendor/cloudflared.exe", "to": "cloudflared.exe" }],
     "afterPack": "./scripts/afterPack.js",
     "win": {
       "target": "nsis",

@@ -8,3 +8,4 @@ builder-debug.yml
 Start.bat
 start.sh
 .smoke/*/
+vendor/

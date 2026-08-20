@@ -132,6 +132,12 @@
 <div id="t-rollback-list" class="tool-detail"></div>
 </div>
 <div class="update-section" style="margin-top:8px">
+<label style="font-size:12px;color:#9090a8;font-weight:500">🌐 公网隧道 (Cloudflare)</label>
+<div class="setting-row"><label>隧道开关</label><select id="t-tunnel"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">手机在外也能访问，需先设访问密码</span></div>
+<div id="t-tunnel-status" class="update-status"></div>
+<button id="t-tunnel-copy" class="btn-secondary" style="display:none;margin-top:6px">复制公网地址</button>
+</div>
+<div class="update-section" style="margin-top:8px">
 <label style="font-size:12px;color:#9090a8;font-weight:500">服务器控制</label>
 <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
 <button id="btn-restart-server" class="btn-primary">重启服务器</button>

@@ -13,6 +13,7 @@ import { registerAppTools } from './lib/tools-app.js';
 import { registerDataTools, detectModel as dataDetectModel, chatOnce as dataChatOnce } from './lib/tools-data.js';
 import { registerEnvTools } from './lib/tools-env.js';
 import { registerChatTools } from './lib/tools-chat.js';
+import { registerTunnelTools } from './lib/tools-tunnel.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
 // electron-updater's default logger writes to console (stdout). When the
@@ -626,6 +627,11 @@ function setupIPC() {
     });
     registerEnvTools({ ipcMain, terminalWrite, dataRoot });
     registerChatTools({ ipcMain, dataRoot, app });
+    registerTunnelTools({
+        ipcMain, app, terminalWrite,
+        getSettings: loadSettings, saveSettings, win: () => mainWindow,
+        restartServer: async () => { stopServer(); try { await startServer(); return { success: true }; } catch (e) { return { success: false, error: e.message }; } },
+    });
     // 更新下载完成后保留回滚包
     // 审计 #8：downloadedUpdateHelper 无 installerPath；真实路径是 autoUpdater.installerPath（BaseUpdater 属性）
     autoUpdater.on('update-downloaded', () => {

@@ -29,7 +29,7 @@ else ok('chat.html 引用全部存在');
 console.log('=== 2. IPC 通道一致性 ===');
 const preload = fs.readFileSync(base + 'preload.js', 'utf8');
 const indexJs = fs.readFileSync(base + 'index.js', 'utf8');
-const libs = ['tools-app.js', 'tools-data.js', 'tools-env.js', 'tools-chat.js'].map(f => fs.readFileSync(base + 'lib/' + f, 'utf8')).join('\n');
+const libs = ['tools-app.js', 'tools-data.js', 'tools-env.js', 'tools-chat.js', 'tools-tunnel.js'].map(f => fs.readFileSync(base + 'lib/' + f, 'utf8')).join('\n');
 const mainAll = indexJs + libs;
 const invokes = new Set([...preload.matchAll(/ipcRenderer\.invoke\('([^']+)'/g)].map(m => m[1]));
 const handles = new Set([...mainAll.matchAll(/ipcMain\.(handle|on)\('([^']+)'/g)].map(m => m[2]));

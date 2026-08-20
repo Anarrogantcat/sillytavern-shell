@@ -450,6 +450,36 @@ $('#t-rag')?.addEventListener('click', async () => {
 ag-docs\\ 目录）');
 });
 
+// ── 🌐 公网隧道 (Cloudflare) ───────────────────────────────────────
+const tunnelSel = $('#t-tunnel'), tunnelStatus = $('#t-tunnel-status'), tunnelCopy = $('#t-tunnel-copy');
+let tunnelUrl = '';
+function tunnelRender(v) {
+    if (!tunnelStatus || !v) return;
+    if (v.url) { tunnelUrl = v.url; setNote(tunnelStatus, `✅ ${v.url}`); tunnelStatus.className = 'update-status success'; if (tunnelCopy) tunnelCopy.style.display = ''; if (tunnelSel && tunnelSel.value !== '1') tunnelSel.value = '1'; }
+    else if (v.error) { setNote(tunnelStatus, '❌ ' + v.error); tunnelStatus.className = 'update-status error'; if (tunnelCopy) tunnelCopy.style.display = 'none'; if (tunnelSel) tunnelSel.value = '0'; }
+    else if (!v.running) { if (tunnelSel && tunnelSel.value === '1') { setNote(tunnelStatus, '已停止'); tunnelStatus.className = 'update-status info'; } }
+}
+tunnelSel?.addEventListener('change', async () => {
+    const on = tunnelSel.value === '1';
+    if (on) {
+        setNote(tunnelStatus, '⏳ 开启中…'); tunnelStatus.className = 'update-status info';
+        const r = await TL()?.tunnelStart();
+        if (r?.error) { tunnelSel.value = '0'; setNote(tunnelStatus, '❌ ' + r.error); tunnelStatus.className = 'update-status error'; }
+    } else {
+        await TL()?.tunnelStop();
+        tunnelUrl = '';
+        setNote(tunnelStatus, ''); tunnelStatus.className = '';
+        if (tunnelCopy) tunnelCopy.style.display = 'none';
+    }
+});
+tunnelCopy?.addEventListener('click', async () => {
+    if (!tunnelUrl) return;
+    try { await navigator.clipboard.writeText(tunnelUrl); setNote(tunnelStatus, `✅ ${tunnelUrl}（已复制）`); } catch (_) { window.prompt('公网地址:', tunnelUrl); }
+});
+TL()?.tunnelOnState?.(tunnelRender);
+// 启动时恢复隧道状态
+(async () => { const t = await TL()?.tunnelStatus(); if (t) { tunnelRender(t); if (t.url && tunnelSel) tunnelSel.value = '1'; } })();
+
 // 工具箱打开时也渲染设置项（设置面板共用 renderTools）
 tEl.btn?.addEventListener('click', () => {
     if (!tEl.panel) return;

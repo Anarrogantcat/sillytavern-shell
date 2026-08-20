@@ -17,6 +17,26 @@ if(!ROOT||!fs.existsSync(path.join(ROOT,'server.js'))||isDriveRoot(ROOT)){
 }
 console.log(`ST source root: ${ROOT}`);
 
+// 🌐 确保 cloudflared.exe 存在（打包进安装包用；构建机缺失时自动下载，之后缓存）
+const VENDOR_DIR = path.join(ELECTRON_DIR, 'vendor');
+const CLOUDFLARED = path.join(VENDOR_DIR, 'cloudflared.exe');
+const CLOUDFLARED_URL = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe';
+if (!fs.existsSync(CLOUDFLARED)) {
+    console.log('Downloading cloudflared (tunnel binary)...');
+    fs.mkdirSync(VENDOR_DIR, { recursive: true });
+    const tmp = CLOUDFLARED + '.tmp';
+    try {
+        execSync(`curl.exe -sL --noproxy "*" -o "${tmp}" "${CLOUDFLARED_URL}"`, { stdio: 'inherit', timeout: 300000 });
+        fs.renameSync(tmp, CLOUDFLARED);
+        console.log('cloudflared ready');
+    } catch (e) {
+        try { fs.rmSync(tmp, { force: true }); } catch (_) {}
+        console.error('WARNING: cloudflared download failed — tunnel feature will be unavailable in this build: ' + e.message);
+    }
+} else {
+    console.log(`cloudflared cached: ${fs.statSync(CLOUDFLARED).size / 1024 / 1024 | 0} MB`);
+}
+
 function gitHead(dir){try{return execSync('git rev-parse HEAD',{cwd:dir,stdio:'pipe'}).toString().trim();}catch(_){return '';}}
 const head=gitHead(ROOT);
 const cachedHead=fs.existsSync(HEAD_FILE)?fs.readFileSync(HEAD_FILE,'utf8').trim():'';
