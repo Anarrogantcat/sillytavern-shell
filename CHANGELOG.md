@@ -1,6 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.9.6 (2026-08-21) — ZeroTier IP 解析兼容
+- 修复 ZeroTier 已加入网络但显示“未获取到 ZeroTier IP”：兼容不同 zerotier-cli listnetworks 输出格式，自动识别网络 ID、状态、IP
+
 ## v1.9.5 (2026-08-21) — ZeroTier 自动检测网络 ID
 - ZeroTier 助手自动列出已加入的网络（下拉选择），无需手动输入网络 ID
 - 选择已加入网络后自动填入输入框，可一键加入/离开
