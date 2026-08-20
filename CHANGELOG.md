@@ -1,6 +1,11 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.9.7 (2026-08-21) — 自动放行 ST 白名单
+- ZeroTier 助手新增「自动放行 ZeroTier/LAN 访问」开关
+- 开启后启动 ST 时自动注入 SILLYTAVERN_WHITELISTMODE=false，不修改 config.yaml，不影响 ST 更新
+- 重启服务器后生效
+
 ## v1.9.6 (2026-08-21) — ZeroTier IP 解析兼容
 - 修复 ZeroTier 已加入网络但显示“未获取到 ZeroTier IP”：兼容不同 zerotier-cli listnetworks 输出格式，自动识别网络 ID、状态、IP
 

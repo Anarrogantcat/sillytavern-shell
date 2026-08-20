@@ -650,7 +650,7 @@ document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatu
 document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
 
 // ── ZeroTier 助手（虚拟局域网，不影响 Clash 代理）──
-const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), netlist: $('#zt-netlist'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), info: $('#zt-info') };
+const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), netlist: $('#zt-netlist'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), allow: $('#zt-allow'), info: $('#zt-info') };
 function ztSetNote(text, cls) { if (ztEl.status) { ztEl.status.textContent = text; ztEl.status.className = cls || ''; } }
 function ztSetDetail(text) { if (ztEl.info) ztEl.info.textContent = text; }
 async function ztRefresh() {
@@ -665,6 +665,7 @@ async function ztRefresh() {
             ztEl.netlist.innerHTML = '<option value="">已加入网络…</option>' + (s.networks || []).map(n => `<option value="${escapeHtml(String(n.id))}">${escapeHtml(String(n.name || n.id))} (${escapeHtml(String(n.status || ''))})</option>`).join('');
             const saved = await window.electronAPI?.settings?.get?.();
             if (saved?.ztNetworkId && ztEl.netid) ztEl.netid.value = saved.ztNetworkId;
+            if (ztEl.allow) ztEl.allow.checked = !!saved?.disableWhitelist;
         }
         if (s.networks && s.networks.length) lines.push('已加入网络:\n' + s.networks.map(n => `  ${n.name || n.id} ${n.id} ${n.status || ''} ${n.ip || ''}`).join('\n'));
         if (s.ip) lines.push('ZeroTier IP: ' + s.ip + '\n访问地址: http://' + s.ip + ':8000');
@@ -699,6 +700,11 @@ ztEl.copy?.addEventListener('click', async () => {
 ztEl.netlist?.addEventListener('change', () => {
     const id = ztEl.netlist.value;
     if (id && ztEl.netid) ztEl.netid.value = id;
+});
+ztEl.allow?.addEventListener('change', async () => {
+    const on = !!ztEl.allow.checked;
+    await window.electronAPI?.settings?.save?.({ disableWhitelist: on });
+    ztSetNote(on ? '✅ 已开启自动放行白名单，重启服务器生效' : '已关闭自动放行白名单', 'update-status ' + (on ? 'success' : 'info'));
 });
 // 启动时恢复隧道状态
 (async () => { const t = await TL()?.tunnelStatus(); if (t) { tunnelRender(t); if (t.url && tunnelSel) tunnelSel.value = '1'; } })();

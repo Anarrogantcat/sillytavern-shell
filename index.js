@@ -765,6 +765,11 @@ function startServer() {
         // 子进程是 node.exe，不需要 ELECTRON_RUN_AS_NODE；显式删除避免 undefined 被转成 "undefined" 字符串
         const env = { ...process.env };
         delete env.ELECTRON_RUN_AS_NODE;
+        // 自动放行白名单：开启后通过环境变量关闭 ST 白名单，避免 ZeroTier/LAN 访问被拦截
+        if (s.disableWhitelist) {
+            env.SILLYTAVERN_WHITELISTMODE = 'false';
+            terminalWrite('[server] 已自动关闭 ST 白名单（disableWhitelist）\n');
+        }
         if (s.lanEnabled) {
             args.push('--listen');
             if (s.lanUser && s.lanPass) {
