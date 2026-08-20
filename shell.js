@@ -539,10 +539,20 @@ ag-docs\\ 目录）');
 
 // ── 🌐 公网隧道 (Cloudflare) ───────────────────────────────────────
 const tunnelSel = $('#t-tunnel'), tunnelStatus = $('#t-tunnel-status'), tunnelCopy = $('#t-tunnel-copy');
-let tunnelUrl = '';
+let tunnelUrl = '', tunnelWatchdog = null;
+function clearTunnelWatchdog() { if (tunnelWatchdog) { clearTimeout(tunnelWatchdog); tunnelWatchdog = null; } }
+function startTunnelWatchdog() {
+    clearTunnelWatchdog();
+    tunnelWatchdog = setTimeout(() => {
+        if (!tunnelUrl && tunnelStatus && !tunnelStatus.textContent.includes('❌')) {
+            setNote(tunnelStatus, '⏳ 仍在连接，请检查网络/代理 (127.0.0.1:7890)…');
+            tunnelStatus.className = 'update-status info';
+        }
+    }, 20000);
+}
 function tunnelRender(v) {
     if (!tunnelStatus || !v) return;
-    if (v.url) { tunnelUrl = v.url; setNote(tunnelStatus, `✅ ${v.url}`); tunnelStatus.className = 'update-status success'; if (tunnelCopy) tunnelCopy.style.display = ''; if (tunnelSel && tunnelSel.value !== '1') tunnelSel.value = '1'; }
+    if (v.url) { clearTunnelWatchdog(); tunnelUrl = v.url; setNote(tunnelStatus, `✅ ${v.url}`); tunnelStatus.className = 'update-status success'; if (tunnelCopy) tunnelCopy.style.display = ''; if (tunnelSel && tunnelSel.value !== '1') tunnelSel.value = '1'; }
     else if (v.error) { setNote(tunnelStatus, '❌ ' + v.error); tunnelStatus.className = 'update-status error'; if (tunnelCopy) tunnelCopy.style.display = 'none'; if (tunnelSel) tunnelSel.value = '0'; }
     else if (!v.running) { if (tunnelSel && tunnelSel.value === '1') { setNote(tunnelStatus, '已停止'); tunnelStatus.className = 'update-status info'; } }
 }
