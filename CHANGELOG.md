@@ -1,6 +1,12 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.8.18 (2026-08-21) — 隧道开启卡死修复
+- 修复 打开隧道一直显示“开启中”：cloudflared 连接失败/超时不再无声无息，stderr 中的 error/failed/timeout/refused 会反馈到状态栏；45 秒未获得公网地址自动判定失败
+- 修复 cloudflared 启动失败（spawn error）无处理导致主进程异常：新增 proc.on('error') 处理
+- 启动前先探测 ST 8000 端口，服务器未监听时直接返回明确错误，避免隧道指向死端口
+- 关闭隧道后自动恢复启动前的局域网访问状态（仅当隧道自动开启了 lanEnabled 时），并后台重启服务器使 --listen 失效
+
 ## v1.8.17 (2026-08-21) — basicAuth 登录弹窗
 - 新增 🔐 basicAuth 登录弹窗：ST 开启 basicAuth 后，webview 遇到 401 不再只能看 Unauthorized 页，壳内弹出账号/密码框，可保存到套壳设置（不写 ST config.yaml）；已显示 Unauthorized 页时也能自动检测并弹窗重试
 - 🔴 修复 登录事件挂错对象：原 session.defaultSession.on('login') 从不触发（Electron 的 login 事件在 app 上）→ 改为 app.on('login')，自动登录/弹窗真正生效
