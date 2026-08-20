@@ -650,7 +650,7 @@ document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatu
 document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
 
 // ── ZeroTier 助手（虚拟局域网，不影响 Clash 代理）──
-const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), info: $('#zt-info') };
+const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), netlist: $('#zt-netlist'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), info: $('#zt-info') };
 function ztSetNote(text, cls) { if (ztEl.status) { ztEl.status.textContent = text; ztEl.status.className = cls || ''; } }
 function ztSetDetail(text) { if (ztEl.info) ztEl.info.textContent = text; }
 async function ztRefresh() {
@@ -661,12 +661,15 @@ async function ztRefresh() {
         if (!s?.running) { ztSetNote('❌ ZeroTier 未运行', 'update-status error'); ztSetDetail('请启动 ZeroTier One 服务后重试'); return; }
         ztSetNote('✅ ZeroTier 运行中', 'update-status success');
         const lines = [];
-        if (s.networks && s.networks.length) lines.push('已加入网络:\n' + s.networks.join('\n'));
+        if (ztEl.netlist) {
+            ztEl.netlist.innerHTML = '<option value="">已加入网络…</option>' + (s.networks || []).map(n => `<option value="${escapeHtml(String(n.id))}">${escapeHtml(String(n.name || n.id))} (${escapeHtml(String(n.status || ''))})</option>`).join('');
+            const saved = await window.electronAPI?.settings?.get?.();
+            if (saved?.ztNetworkId && ztEl.netid) ztEl.netid.value = saved.ztNetworkId;
+        }
+        if (s.networks && s.networks.length) lines.push('已加入网络:\n' + s.networks.map(n => `  ${n.name || n.id} ${n.id} ${n.status || ''} ${n.ip || ''}`).join('\n'));
         if (s.ip) lines.push('ZeroTier IP: ' + s.ip + '\n访问地址: http://' + s.ip + ':8000');
         if (s.clashTun) lines.push('⚠ 检测到 Clash TUN(127.0.0.1:7890)\n若 ZeroTier 不通，请在 Clash 中绕过 172.16.0.0/12 和 10.0.0.0/8');
         ztSetDetail(lines.join('\n'));
-        const saved = await window.electronAPI?.settings?.get?.();
-        if (saved?.ztNetworkId && ztEl.netid) ztEl.netid.value = saved.ztNetworkId;
     } catch (e) { ztSetNote('检测失败: ' + e.message, 'update-status error'); }
 }
 ztEl.join?.addEventListener('click', async () => {
@@ -692,6 +695,10 @@ ztEl.copy?.addEventListener('click', async () => {
         if (s?.ip) { await navigator.clipboard.writeText('http://' + s.ip + ':8000'); ztSetNote('✅ 已复制 ' + s.ip + ':8000', 'update-status success'); }
         else ztSetNote('未获取到 ZeroTier IP', 'update-status error');
     } catch (_) {}
+});
+ztEl.netlist?.addEventListener('change', () => {
+    const id = ztEl.netlist.value;
+    if (id && ztEl.netid) ztEl.netid.value = id;
 });
 // 启动时恢复隧道状态
 (async () => { const t = await TL()?.tunnelStatus(); if (t) { tunnelRender(t); if (t.url && tunnelSel) tunnelSel.value = '1'; } })();

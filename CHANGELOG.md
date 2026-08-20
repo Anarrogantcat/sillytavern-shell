@@ -1,6 +1,11 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.9.5 (2026-08-21) — ZeroTier 自动检测网络 ID
+- ZeroTier 助手自动列出已加入的网络（下拉选择），无需手动输入网络 ID
+- 选择已加入网络后自动填入输入框，可一键加入/离开
+- 仍支持手动输入新网络 ID
+
 ## v1.9.4 (2026-08-21) — ZeroTier 助手
 - 工具箱新增「🛰 ZeroTier 助手」：检测安装/运行状态、加入/离开网络、显示 ZeroTier IP、复制访问地址
 - 未安装 ZeroTier 时给出下载引导
