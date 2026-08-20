@@ -31,7 +31,12 @@ authEl.login?.addEventListener('click', async () => {
     const pass = authEl.pass.value;
     if (!user) { authEl.user?.focus(); return; }
     if (authEl.remember.checked) { try { await ST?.save?.({ stAuthUser: user, stAuthPass: pass }); } catch (_) {} }
-    await respondAuth({ user, pass });
+    const r = await respondAuth({ user, pass });
+    if (!r?.ok) {
+        // 当前没有待处理的认证请求（已经显示 Unauthorized 页）→ 存一次性凭据并重载 webview
+        await window.electronAPI?.shellAuth?.retry?.({ user, pass });
+        try { webview?.reload(); } catch (_) {}
+    }
 });
 authEl.cancel?.addEventListener('click', () => respondAuth({ cancel: true }));
 authEl.cancel2?.addEventListener('click', () => respondAuth({ cancel: true }));
@@ -56,7 +61,14 @@ S?.onUrl(url=>{serverReady=true;if(webview&&url)webview.src=url;});
 (async()=>{const u=await S?.getUrl();if(u&&!serverReady){serverReady=true;if(webview)webview.src=u;}})();
 S?.onError(msg=>{if(loading){loading.classList.remove('hidden');const t=loading.querySelector('.loading-text');if(t)t.textContent='启动失败';if(loadingLog){loadingLog.textContent=msg;loadingLog.classList.add('show');}}});
 S?.onSetupStarted?.(()=>{const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
-webview?.addEventListener('dom-ready',()=>{loading?.classList.add('hidden');webview.classList.remove('hidden');webview.focus();});
+webview?.addEventListener('dom-ready', async () => {
+    loading?.classList.add('hidden'); webview.classList.remove('hidden'); webview.focus();
+    // ST 开启 basicAuth 且认证失败时，页面可能已经渲染为 Unauthorized；主动检测并弹出登录框
+    try {
+        const text = await webview.executeJavaScript('document.body ? document.body.innerText : ""');
+        if (String(text).includes('Unauthorized')) showAuthPrompt({ host: '127.0.0.1' });
+    } catch (_) {}
+});
 // webview 右键（webview-preload 上报）→ 主进程弹菜单
 webview?.addEventListener('ipc-message', (e) => {
     if (e.channel === 'ctxmenu') {

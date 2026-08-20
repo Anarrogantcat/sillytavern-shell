@@ -444,6 +444,7 @@ let mainWindow = null, serverProcess = null, serverUrl = null;
 let pendingAuth = null;      // { callback, host }
 let pendingAuthTimer = null;
 let authAutoTriedAt = 0;     // 自动登录节流，避免错误凭据导致无限 401 循环
+let authOneShot = null;     // Unauthorized 页面触发的重试凭据（一次性，来自 shell:auth-retry）
 function createWindow() {
     const saved = loadWindowState();
     const opts = {
@@ -513,6 +514,13 @@ function setupIPC() {
         const user = String(payload.user || '');
         const pass = String(payload.pass || '');
         auth.callback(user, pass);
+        return { ok: true };
+    });
+    // Unauthorized 页面已显示（没有 pendingAuth）时，渲染进程存一次性凭据并重载 webview
+    ipcMain.handle('shell:auth-retry', (_e, payload) => {
+        const user = String(payload?.user || '');
+        const pass = String(payload?.pass || '');
+        if (user) authOneShot = { user, pass };
         return { ok: true };
     });
 
@@ -799,6 +807,12 @@ app.whenReady().then(async () => {
             const s = loadSettings();
             if (!isLocal) { callback(); return; } // 非本地地址：取消认证
             event.preventDefault();
+            // Unauthorized 页面重试：shell:auth-retry 存入的一次性凭据优先使用
+            if (authOneShot) {
+                const one = authOneShot; authOneShot = null;
+                callback(String(one.user), String(one.pass));
+                return;
+            }
             const creds = (s.stAuthUser && s.stAuthPass) ? { user: s.stAuthUser, pass: s.stAuthPass }
                 : (s.lanEnabled && s.lanUser && s.lanPass) ? { user: s.lanUser, pass: s.lanPass } : null;
             const now = Date.now();

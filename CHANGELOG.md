@@ -2,7 +2,7 @@
 
 
 ## v1.8.17 (2026-08-21) — basicAuth 登录弹窗
-- 新增 🔐 basicAuth 登录弹窗：ST 开启 basicAuth 后，webview 遇到 401 不再只能看 Unauthorized 页，壳内弹出账号/密码框，可保存到套壳设置（不写 ST config.yaml）
+- 新增 🔐 basicAuth 登录弹窗：ST 开启 basicAuth 后，webview 遇到 401 不再只能看 Unauthorized 页，壳内弹出账号/密码框，可保存到套壳设置（不写 ST config.yaml）；已显示 Unauthorized 页时也能自动检测并弹窗重试
 - 🔴 修复 登录事件挂错对象：原 session.defaultSession.on('login') 从不触发（Electron 的 login 事件在 app 上）→ 改为 app.on('login')，自动登录/弹窗真正生效
 - 自动登录：已保存 stAuthUser/stAuthPass（或局域网 lanUser/lanPass）时先自动登录一次；失败则 5 秒内转弹窗，避免错误凭据无限 401 循环
 - 安全：仅对 127.0.0.1/localhost/[::1] 弹窗或自动提供凭据，任意远端 Basic Auth 站点仍直接取消

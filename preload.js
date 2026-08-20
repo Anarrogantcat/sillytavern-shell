@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     shellAuth: {
         onRequired: cb => { const h = (_e, info) => cb(info); ipcRenderer.on('shell:auth-required', h); return () => ipcRenderer.removeListener('shell:auth-required', h); },
         respond: payload => ipcRenderer.invoke('shell:auth-respond', payload),
+        retry: payload => ipcRenderer.invoke('shell:auth-retry', payload),
     },
     server: {
         onUrl: cb => { const h = (_e, u) => cb(u); ipcRenderer.on('server:url', h); return () => ipcRenderer.removeListener('server:url', h); },
