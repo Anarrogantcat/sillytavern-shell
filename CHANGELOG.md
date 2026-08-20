@@ -10,7 +10,7 @@
 - 修复 独立对话窗口会话标题未转义直接 innerHTML 的注入风险
 - 修复 sessionSave 缺少路径穿越校验（与 sessionLoad/sessionDelete 对齐）
 - 修复 半成品 ST 安装被判定为已安装：isSillyTavernInstalled 同时检查 server.js 与 node_modules，git clone 成功但 npm install 失败时下次启动会重新安装
-- 修复 Gemini 模型直连 URL 重复拼接 /v1beta；模型服务状态增加 Gemini 分支；Claude 可达性改用 r.ok/r.status<500
+- 修复 Gemini 模型直连 URL 重复拼接 /v1beta；模型服务状态增加 Gemini 分支；Claude/Gemini 可达性改用 r.ok
 - 修复 完整性检测脚本 split('\\\\n') 过度转义导致 git ls-files 多行输出不拆分
 - 修复 zTXt 角色卡解析在 ESM 中误用 require('node:zlib')，并跳过压缩方式字节
 - 修复 自动备份开启后因未填备份目录导致定时备份永不执行
