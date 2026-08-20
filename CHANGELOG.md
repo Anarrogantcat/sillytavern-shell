@@ -1,6 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.8.17 (2026-08-21) — basicAuth 登录弹窗
+- 新增 🔐 basicAuth 登录弹窗：ST 开启 basicAuth 后，webview 遇到 401 不再只能看 Unauthorized 页，壳内弹出账号/密码框，可保存到套壳设置（不写 ST config.yaml）
+- 🔴 修复 登录事件挂错对象：原 session.defaultSession.on('login') 从不触发（Electron 的 login 事件在 app 上）→ 改为 app.on('login')，自动登录/弹窗真正生效
+- 自动登录：已保存 stAuthUser/stAuthPass（或局域网 lanUser/lanPass）时先自动登录一次；失败则 5 秒内转弹窗，避免错误凭据无限 401 循环
+- 安全：仅对 127.0.0.1/localhost/[::1] 弹窗或自动提供凭据，任意远端 Basic Auth 站点仍直接取消
+- 凭据存储：勾选保存后写入套壳 userData/settings.json（stAuthUser/stAuthPass），不读写 ST 本体任何文件
+
 ## v1.8.16 (2026-08-21) — 安全与功能修复
 - 🔴 P0 路径删除保护补全：isUnsafeRmPath 改为双向判定（目标在受保护目录内 / 受保护目录在目标内均拒绝），并把 Data 目录纳入保护；settings:save 与 CLI --server-path 复用同一校验，封堵设置面板绕过校验的入口
 - 🔴 修复 窗口状态永不恢复：loadWindowState 在 ESM 主进程里误用 require('electron') → 改为 import { screen }，显示器边界校验恢复

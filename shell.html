@@ -98,6 +98,18 @@
 <button id="lock-unlock" class="btn-primary">解锁</button>
 </div>
 </div>
+
+<div id="auth-overlay" class="overlay hidden">
+<div class="auth-panel">
+<div class="panel-header"><span>🔐 需要登录</span><button class="panel-close" id="btn-auth-cancel">&times;</button></div>
+<div class="auth-body">
+<input type="text" id="auth-user" class="tool-input" placeholder="basicAuth 账号" autocomplete="off">
+<input type="password" id="auth-pass" class="tool-input" placeholder="basicAuth 密码" autocomplete="off">
+<label class="auth-remember"><input type="checkbox" id="auth-remember"> 保存密码（仅保存在套壳设置中）</label>
+</div>
+<div class="auth-footer"><button id="btn-auth-cancel2" class="btn-secondary">取消</button><button id="btn-auth-login" class="btn-primary">登录</button></div>
+</div>
+</div>
 <div id="settings-overlay" class="overlay hidden">
 <div class="settings-panel">
 <div class="panel-header"><span>⚙ 设置</span><button class="panel-close" id="btn-settings-close">&times;</button></div>

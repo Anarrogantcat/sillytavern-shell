@@ -439,6 +439,11 @@ function createTray() {
 
 // ── Window ───────────────────────────────────────────────────────────
 let mainWindow = null, serverProcess = null, serverUrl = null;
+
+// ── basicAuth 登录弹窗状态（只保存在套壳 settings，不写 ST 本体）──
+let pendingAuth = null;      // { callback, host }
+let pendingAuthTimer = null;
+let authAutoTriedAt = 0;     // 自动登录节流，避免错误凭据导致无限 401 循环
 function createWindow() {
     const saved = loadWindowState();
     const opts = {
@@ -497,6 +502,19 @@ function setupIPC() {
     ipcMain.handle('shell:openExternal', (_e, url) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url); });
     w()?.on('maximize', () => w()?.webContents.send('window:maximizeChange', true));
     w()?.on('unmaximize', () => w()?.webContents.send('window:maximizeChange', false));
+
+    // basicAuth 登录弹窗：渲染进程回传凭据/取消
+    ipcMain.handle('shell:auth-respond', (_e, payload) => {
+        const auth = pendingAuth;
+        pendingAuth = null;
+        if (pendingAuthTimer) { clearTimeout(pendingAuthTimer); pendingAuthTimer = null; }
+        if (!auth) return { ok: false, error: 'no pending auth' };
+        if (!payload || payload.cancel) { auth.callback(); return { ok: true, canceled: true }; }
+        const user = String(payload.user || '');
+        const pass = String(payload.pass || '');
+        auth.callback(user, pass);
+        return { ok: true };
+    });
 
     ipcMain.handle('settings:get', () => settings);
     ipcMain.handle('settings:save', (_e, s) => {
@@ -772,15 +790,31 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 // ── App Lifecycle ────────────────────────────────────────────────────
 app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_w, p, cb) => cb(['clipboard-read', 'clipboard-sanitized-write', 'notifications'].includes(p)));
-    // A1 局域网 basicAuth：本机 webview 自动应答凭据（手机端仍手动输入）
-    // 仅对本地 ST 地址应答，防止凭据泄露给任意 Basic Auth 站点（审计 #9）
-    session.defaultSession.on('login', (event, _req, authInfo, callback) => {
+    // basicAuth 登录弹窗：app.login 事件才是 Electron 的认证事件（Session 没有 login）
+    // 仅对本地 ST 地址弹窗/自动登录，防止凭据泄露给任意 Basic Auth 站点（审计 #9）
+    app.on('login', (event, _webContents, _details, authInfo, callback) => {
         try {
             const host = String(authInfo?.host || '');
             const isLocal = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(host);
             const s = loadSettings();
-            if (isLocal && s.lanEnabled && s.lanUser && s.lanPass) { event.preventDefault(); callback(String(s.lanUser), String(s.lanPass)); }
-            else callback(); // 非本地地址或未配置：取消认证
+            if (!isLocal) { callback(); return; } // 非本地地址：取消认证
+            event.preventDefault();
+            const creds = (s.stAuthUser && s.stAuthPass) ? { user: s.stAuthUser, pass: s.stAuthPass }
+                : (s.lanEnabled && s.lanUser && s.lanPass) ? { user: s.lanUser, pass: s.lanPass } : null;
+            const now = Date.now();
+            if (creds && now - authAutoTriedAt > 5000) {
+                // 已保存凭据：先自动登录一次；若失败，5 秒内再次 401 会改为弹窗，避免无限循环
+                authAutoTriedAt = now;
+                callback(String(creds.user), String(creds.pass));
+                return;
+            }
+            // 同一时间只保留一个待认证请求，避免弹窗叠加
+            if (pendingAuth) { try { pendingAuth.callback(); } catch (_) {} }
+            pendingAuth = { callback, host };
+            if (pendingAuthTimer) clearTimeout(pendingAuthTimer);
+            pendingAuthTimer = setTimeout(() => { if (pendingAuth) { try { pendingAuth.callback(); } catch (_) {} pendingAuth = null; pendingAuthTimer = null; } }, 120000);
+            mainWindow?.webContents.send('shell:auth-required', { host });
+            // 认证结果由 shell:auth-respond 回传后调用 callback
         } catch (_) { callback(); }
     });
     createTray(); createWindow(); setupIPC();

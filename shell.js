@@ -4,6 +4,41 @@ const webview=$('#sillytavern-webview'),loading=$('#loading-overlay'),loadingLog
 const termPanel=$('#terminal-panel'),termOut=$('#terminal-output'),termInput=$('#terminal-input');
 const btnTerm=$('#btn-terminal'),btnSettings=$('#btn-settings'),settingsOverlay=$('#settings-overlay');
 
+// ── basicAuth 登录弹窗（凭据只存套壳 settings，不写 ST 本体）──
+const authEl = { overlay: $('#auth-overlay'), user: $('#auth-user'), pass: $('#auth-pass'), remember: $('#auth-remember'), login: $('#btn-auth-login'), cancel: $('#btn-auth-cancel'), cancel2: $('#btn-auth-cancel2') };
+let authHost = '';
+function showAuthPrompt(info = {}) {
+    if (!authEl.overlay) return;
+    authHost = String(info?.host || '');
+    authEl.user.value = '';
+    authEl.pass.value = '';
+    authEl.remember.checked = false;
+    (async () => {
+        try {
+            const s = await ST?.get?.() || {};
+            if (s.stAuthUser || s.lanUser) authEl.user.value = s.stAuthUser || s.lanUser || '';
+            if (s.stAuthPass || s.lanPass) authEl.pass.value = s.stAuthPass || s.lanPass || '';
+            authEl.remember.checked = !!(s.stAuthUser && s.stAuthPass);
+        } catch (_) {}
+    })();
+    authEl.overlay.classList.remove('hidden');
+    setTimeout(() => authEl.user?.focus(), 80);
+}
+function hideAuthPrompt() { authEl.overlay?.classList.add('hidden'); }
+async function respondAuth(payload) { hideAuthPrompt(); return await (window.electronAPI?.shellAuth?.respond?.(payload) || { ok: false }); }
+authEl.login?.addEventListener('click', async () => {
+    const user = authEl.user.value.trim();
+    const pass = authEl.pass.value;
+    if (!user) { authEl.user?.focus(); return; }
+    if (authEl.remember.checked) { try { await ST?.save?.({ stAuthUser: user, stAuthPass: pass }); } catch (_) {} }
+    await respondAuth({ user, pass });
+});
+authEl.cancel?.addEventListener('click', () => respondAuth({ cancel: true }));
+authEl.cancel2?.addEventListener('click', () => respondAuth({ cancel: true }));
+authEl.pass?.addEventListener('keydown', e => { if (e.key === 'Enter') authEl.login?.click(); });
+authEl.user?.addEventListener('keydown', e => { if (e.key === 'Enter') authEl.pass?.focus(); });
+window.electronAPI?.shellAuth?.onRequired?.(showAuthPrompt);
+
 // ── Window controls ──────────────────────────
 $('#btn-minimize')?.addEventListener('click',()=>W?.minimize());
 $('#btn-maximize')?.addEventListener('click',()=>W?.maximize());
