@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         respond: payload => ipcRenderer.invoke('shell:auth-respond', payload),
         retry: payload => ipcRenderer.invoke('shell:auth-retry', payload),
     },
+    zeroTier: {
+        status: () => ipcRenderer.invoke('tools:ztStatus'),
+        join: id => ipcRenderer.invoke('tools:ztJoin', id),
+        leave: id => ipcRenderer.invoke('tools:ztLeave', id),
+    },
     server: {
         onUrl: cb => { const h = (_e, u) => cb(u); ipcRenderer.on('server:url', h); return () => ipcRenderer.removeListener('server:url', h); },
         onError: cb => { const h = (_e, m) => cb(m); ipcRenderer.on('server:error', h); return () => ipcRenderer.removeListener('server:error', h); },

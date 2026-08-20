@@ -1,6 +1,12 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.9.4 (2026-08-21) — ZeroTier 助手
+- 工具箱新增「🛰 ZeroTier 助手」：检测安装/运行状态、加入/离开网络、显示 ZeroTier IP、复制访问地址
+- 未安装 ZeroTier 时给出下载引导
+- 检测到 Clash TUN(127.0.0.1:7890) 时提示绕过 ZeroTier 网段（172.16.0.0/12、10.0.0.0/8），不影响代理
+- 只调用 zerotier-cli，不修改 ST 本体、不修改 Clash 配置
+
 ## v1.9.3 (2026-08-21) — 隧道自动走本地代理
 - 修复 cloudflared 连不上 Cloudflare 导致“未获取到公网地址”：自动检测本地代理 127.0.0.1:7890（Clash 等），存在时自动注入 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 给 cloudflared
 - UI 层增加隧道连接看门狗：20 秒未获得地址会提示检查网络/代理，避免一直“开启中”

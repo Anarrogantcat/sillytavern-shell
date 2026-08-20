@@ -648,6 +648,51 @@ async function fixStatusBar() {
 }
 document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatusBar);
 document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
+
+// ── ZeroTier 助手（虚拟局域网，不影响 Clash 代理）──
+const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), info: $('#zt-info') };
+function ztSetNote(text, cls) { if (ztEl.status) { ztEl.status.textContent = text; ztEl.status.className = cls || ''; } }
+function ztSetDetail(text) { if (ztEl.info) ztEl.info.textContent = text; }
+async function ztRefresh() {
+    ztSetNote('检测中…', 'tool-note');
+    try {
+        const s = await window.electronAPI?.zeroTier?.status?.();
+        if (!s?.installed) { ztSetNote('❌ 未安装 ZeroTier', 'update-status error'); ztSetDetail('请到 https://www.zerotier.com/download/ 安装客户端'); return; }
+        if (!s?.running) { ztSetNote('❌ ZeroTier 未运行', 'update-status error'); ztSetDetail('请启动 ZeroTier One 服务后重试'); return; }
+        ztSetNote('✅ ZeroTier 运行中', 'update-status success');
+        const lines = [];
+        if (s.networks && s.networks.length) lines.push('已加入网络:\n' + s.networks.join('\n'));
+        if (s.ip) lines.push('ZeroTier IP: ' + s.ip + '\n访问地址: http://' + s.ip + ':8000');
+        if (s.clashTun) lines.push('⚠ 检测到 Clash TUN(127.0.0.1:7890)\n若 ZeroTier 不通，请在 Clash 中绕过 172.16.0.0/12 和 10.0.0.0/8');
+        ztSetDetail(lines.join('\n'));
+        const saved = await window.electronAPI?.settings?.get?.();
+        if (saved?.ztNetworkId && ztEl.netid) ztEl.netid.value = saved.ztNetworkId;
+    } catch (e) { ztSetNote('检测失败: ' + e.message, 'update-status error'); }
+}
+ztEl.join?.addEventListener('click', async () => {
+    const id = ztEl.netid.value.trim();
+    if (!id) { ztSetNote('请输入网络 ID', 'update-status error'); return; }
+    ztSetNote('加入中…', 'update-status info');
+    const r = await window.electronAPI?.zeroTier?.join?.(id);
+    if (r?.error) { ztSetNote('❌ ' + r.error, 'update-status error'); return; }
+    ztSetNote('✅ 已发出加入请求', 'update-status success');
+    setTimeout(ztRefresh, 1500);
+});
+ztEl.leave?.addEventListener('click', async () => {
+    const id = ztEl.netid.value.trim();
+    if (!id) { ztSetNote('请输入网络 ID', 'update-status error'); return; }
+    const r = await window.electronAPI?.zeroTier?.leave?.(id);
+    if (r?.error) { ztSetNote('❌ ' + r.error, 'update-status error'); return; }
+    ztSetNote('✅ 已离开网络', 'update-status success');
+    setTimeout(ztRefresh, 1500);
+});
+ztEl.copy?.addEventListener('click', async () => {
+    try {
+        const s = await window.electronAPI?.zeroTier?.status?.();
+        if (s?.ip) { await navigator.clipboard.writeText('http://' + s.ip + ':8000'); ztSetNote('✅ 已复制 ' + s.ip + ':8000', 'update-status success'); }
+        else ztSetNote('未获取到 ZeroTier IP', 'update-status error');
+    } catch (_) {}
+});
 // 启动时恢复隧道状态
 (async () => { const t = await TL()?.tunnelStatus(); if (t) { tunnelRender(t); if (t.url && tunnelSel) tunnelSel.value = '1'; } })();
 
@@ -655,7 +700,7 @@ document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusB
 tEl.btn?.addEventListener('click', () => {
     if (!tEl.panel) return;
     const open = tEl.panel.classList.toggle('hidden');
-    if (!open) { renderTools(); renderUiSettings().catch(() => {}); (async () => { const t = await TL()?.tunnelStatus(); if (t) tunnelRender(t); })(); }
+    if (!open) { renderTools(); renderUiSettings().catch(() => {}); (async () => { const t = await TL()?.tunnelStatus(); if (t) tunnelRender(t); })(); ztRefresh(); }
 });
 tEl.close?.addEventListener('click', () => tEl.panel?.classList.add('hidden'));
 // 备份
