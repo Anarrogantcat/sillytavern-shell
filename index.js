@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -53,7 +53,9 @@ if (settings.closeBehavior === undefined) {
     saveSettings(settings);
 }
 // ST lives as SIBLING of the shell install dir — shell upgrade/uninstall never touches it
-const defaultST = app.isPackaged ? path.join(path.dirname(process.resourcesPath), '..', 'SillyTavern') : path.resolve(__dirname, '../..');
+const defaultST = app.isPackaged
+    ? path.join(path.dirname(process.resourcesPath), '..', 'SillyTavern')
+    : path.resolve(__dirname, '..', 'SillyTavern');
 if (!settings.serverPath) { settings.serverPath = defaultST; saveSettings(settings); }
 else if (/[\\/]resources[\\/]sillytavern$/i.test(settings.serverPath)) {
     // Old layout (ST inside shell resources) — migrate to sibling dir
@@ -61,16 +63,16 @@ else if (/[\\/]resources[\\/]sillytavern$/i.test(settings.serverPath)) {
     saveSettings(settings);
 }
 const sillyTavernRoot = cliArguments.serverPath || settings.serverPath || defaultST;
-// ── P0 安全：禁止递归删除危险路径（盘符根/系统根/用户主目录/套壳自身/项目根）──
-// 开发模式 defaultST = ../.. 可能是盘符根；用户手填 serverPath 也可能指向任意目录。
+// ── P0 安全：禁止递归删除危险路径（盘符根/系统根/用户主目录/套壳自身/项目根/数据目录）──
+// 双向检查：目标在受保护目录内，或受保护目录在目标内（后者会随 rm -rf 一起被删）。
 function isUnsafeRmPath(p) {
     try {
         const r = path.resolve(String(p || ''));
         if (/^[A-Za-z]:[\\/]?$/.test(r) || r === '/' || r === '\\') return true; // 盘符根/系统根
-        const guard = [app.getPath('home'), app.getPath('documents'), app.getPath('downloads')];
-        if (app.isPackaged) guard.push(path.dirname(process.execPath)); else guard.push(path.resolve(__dirname, '..'));
+        const guard = [app.getPath('home'), app.getPath('documents'), app.getPath('downloads'), dataRoot];
+        if (app.isPackaged) guard.push(path.dirname(process.execPath)); else guard.push(path.resolve(__dirname));
         for (const g of guard) {
-            if (r === g || r.startsWith(g + path.sep)) return true;
+            if (r === g || r.startsWith(g + path.sep) || g.startsWith(r + path.sep)) return true;
         }
         return false;
     } catch (_) { return true; }
@@ -82,6 +84,18 @@ function assertSafeRmPath(p) {
 const dataRoot = settings.dataRoot || (app.isPackaged
     ? path.join(path.dirname(process.resourcesPath), '..', 'Data')
     : path.join(path.resolve(__dirname, '../..'), 'Data'));
+
+// 修复旧版本已保存的危险 serverPath（例如 D:\）：能用安全路径时自动纠偏，不能则下面的拦截会退出
+if (settings.serverPath && isUnsafeRmPath(settings.serverPath)) {
+    settings.serverPath = sillyTavernRoot;
+    saveSettings(settings);
+}
+
+// CLI --server-path 与已保存的 serverPath 都必须通过同一安全校验（setup/迁移可能 rm 该目录）
+if (isUnsafeRmPath(sillyTavernRoot)) {
+    console.error(`[sillytavern-shell] 拒绝使用危险服务器路径: ${sillyTavernRoot}`);
+    app.exit(1);
+}
 
 // ── Git safe.directory ────────────────────────────────────────────
 // After a Windows reinstall (new user SID) git refuses to touch repos owned
@@ -287,7 +301,7 @@ function benchQueueTokenize(msg) {
 
 // ── SillyTavern Setup (first launch) ─────────────────────────────────
 function isSillyTavernInstalled() {
-    return fs.existsSync(path.join(sillyTavernRoot, 'server.js'));
+    return fs.existsSync(path.join(sillyTavernRoot, 'server.js')) && fs.existsSync(path.join(sillyTavernRoot, 'node_modules'));
 }
 
 async function checkDependencies() {
@@ -377,8 +391,8 @@ const STATE_PATH = path.join(app.getPath('userData'), 'window-state.json');
 function loadWindowState() {
     try { if (fs.existsSync(STATE_PATH)) { const d = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')); if (d && typeof d.width === 'number') {
         // 审计：显示器边界校验（防止窗口恢复到屏幕外）
-        const sw = require('electron').screen?.getPrimaryDisplay?.()?.workAreaSize?.width || 9999;
-        const sh = require('electron').screen?.getPrimaryDisplay?.()?.workAreaSize?.height || 9999;
+        const sw = screen?.getPrimaryDisplay?.()?.workAreaSize?.width || 9999;
+        const sh = screen?.getPrimaryDisplay?.()?.workAreaSize?.height || 9999;
         if (typeof d.x === 'number' && (d.x < -d.width + 80 || d.x > sw - 80)) delete d.x;
         if (typeof d.y === 'number' && (d.y < -20 || d.y > sh - 80)) delete d.y;
         return d;
@@ -485,9 +499,22 @@ function setupIPC() {
     w()?.on('unmaximize', () => w()?.webContents.send('window:maximizeChange', false));
 
     ipcMain.handle('settings:get', () => settings);
-    ipcMain.handle('settings:save', (_e, s) => { Object.assign(settings, s); saveSettings(settings); });
+    ipcMain.handle('settings:save', (_e, s) => {
+        if (s && typeof s === 'object') {
+            // 设置面板保存走这里，必须与 settings:setServerPath 同一安全校验，
+            // 否则用户可绕过危险路径拦截，重启后 setup 可能 rm 掉安装目录/数据目录。
+            if (typeof s.serverPath === 'string') {
+                const p = s.serverPath.trim();
+                if (!p || isUnsafeRmPath(p)) return { error: '拒绝保存危险路径（盘符根/系统根/主目录/套壳自身/数据目录或其父目录）' };
+                s = { ...s, serverPath: p };
+            }
+            Object.assign(settings, s);
+            saveSettings(settings);
+        }
+        return { ok: true };
+    });
     ipcMain.handle('settings:getServerPath', () => sillyTavernRoot);
-    ipcMain.handle('settings:setServerPath', (_e, p) => { if (typeof p !== 'string') return { error: 'invalid path' }; if (isUnsafeRmPath(p)) return { error: '拒绝设置危险路径（盘符根/主目录/套壳自身）' }; settings.serverPath = p; saveSettings(settings); return { ok: true }; });
+    ipcMain.handle('settings:setServerPath', (_e, p) => { if (typeof p !== 'string') return { error: 'invalid path' }; const clean = p.trim(); if (!clean || isUnsafeRmPath(clean)) return { error: '拒绝设置危险路径（盘符根/系统根/主目录/套壳自身/数据目录或其父目录）' }; settings.serverPath = clean; saveSettings(settings); return { ok: true }; });
     ipcMain.handle('settings:getDataRoot', () => dataRoot);
     ipcMain.handle('shell:openPath', (_e, p) => { if (typeof p === 'string' && fs.existsSync(p)) shell.openPath(p); });
 
@@ -684,7 +711,9 @@ function startServer() {
         //  --basicAuthUser/--basicAuthPassword CLI 参数无效——审计 #5；零写入 ST 文件）
         const s = loadSettings();
         const args = [serverJs, '--dataRoot', dataRoot, '--no-browserLaunchEnabled'];
-        const env = { ...process.env, ELECTRON_RUN_AS_NODE: undefined };
+        // 子进程是 node.exe，不需要 ELECTRON_RUN_AS_NODE；显式删除避免 undefined 被转成 "undefined" 字符串
+        const env = { ...process.env };
+        delete env.ELECTRON_RUN_AS_NODE;
         if (s.lanEnabled) {
             args.push('--listen');
             if (s.lanUser && s.lanPass) {

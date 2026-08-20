@@ -45,6 +45,7 @@ const $ = s => document.querySelector(s);
 const msgs = $('#msgs'), input = $('#input'), send = $('#send');
 const sessSel = $('#session-select');
 let currentSession = 'default';
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function add(text, cls) {
     const d = document.createElement('div');
     d.className = 'msg ' + cls;
@@ -59,7 +60,7 @@ function renderMsgs(list) {
 }
 async function refreshSessions(selectId) {
     const list = await window.electronAPI?.chatSessions?.() || [];
-    sessSel.innerHTML = '<option value="">选择会话…</option>' + list.map(s => `<option value="${s.id}">${s.title} (${s.count})</option>`).join('');
+    sessSel.innerHTML = '<option value="">选择会话…</option>' + list.map(s => `<option value="${escapeHtml(String(s.id))}">${escapeHtml(String(s.title))} (${s.count})</option>`).join('');
     if (selectId) sessSel.value = selectId;
 }
 async function loadSession(id) {

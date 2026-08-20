@@ -6,7 +6,12 @@
 
 Function .onVerifyInstDir
   ${GetFileName} $INSTDIR $0
-  ${If} $0 != "Shell"
+  ${If} $0 == "Shell"
+    ; 目录名已经是 Shell，保持不变
+  ${ElseIf} $0 == "SillyTavern"
+    ; electron-builder 默认目录已包含 SillyTavern，只追加 \Shell，避免 SillyTavern\SillyTavern\Shell
+    StrCpy $INSTDIR "$INSTDIR\Shell"
+  ${Else}
     StrCpy $INSTDIR "$INSTDIR\SillyTavern\Shell"
   ${EndIf}
 FunctionEnd

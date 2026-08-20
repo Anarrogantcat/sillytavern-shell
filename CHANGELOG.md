@@ -1,5 +1,25 @@
 # SillyTavern Desktop Shell 更新日志
 
+
+## v1.8.16 (2026-08-21) — 安全与功能修复
+- 🔴 P0 路径删除保护补全：isUnsafeRmPath 改为双向判定（目标在受保护目录内 / 受保护目录在目标内均拒绝），并把 Data 目录纳入保护；settings:save 与 CLI --server-path 复用同一校验，封堵设置面板绕过校验的入口
+- 🔴 修复 窗口状态永不恢复：loadWindowState 在 ESM 主进程里误用 require('electron') → 改为 import { screen }，显示器边界校验恢复
+- 修复 NSIS 默认安装路径双重拼入 SillyTavern（...\SillyTavern\SillyTavern\Shell）→ 目录名已是 SillyTavern 时仅追加 \Shell
+- 修复 回滚按钮 / Ollama 加载卸载按钮渲染为纯文本且不可点击：新增 setDetailHtml 用于可信 HTML，setDetail 继续用于纯文本转义
+- 修复 终端面板拖拽调高方向反了（bottom 固定、顶部手柄，改为 startH - dh）
+- 修复 独立对话窗口会话标题未转义直接 innerHTML 的注入风险
+- 修复 sessionSave 缺少路径穿越校验（与 sessionLoad/sessionDelete 对齐）
+- 修复 半成品 ST 安装被判定为已安装：isSillyTavernInstalled 同时检查 server.js 与 node_modules，git clone 成功但 npm install 失败时下次启动会重新安装
+- 修复 Gemini 模型直连 URL 重复拼接 /v1beta；模型服务状态增加 Gemini 分支；Claude 可达性改用 r.ok/r.status<500
+- 修复 完整性检测脚本 split('\\\\n') 过度转义导致 git ls-files 多行输出不拆分
+- 修复 zTXt 角色卡解析在 ESM 中误用 require('node:zlib')，并跳过压缩方式字节
+- 修复 自动备份开启后因未填备份目录导致定时备份永不执行
+- 修复 PIN 设置反馈写到 input 元素不显示（改为状态 span）
+- 修复 启动加载日志不剥离 ANSI 转义码；终端输出区加 tabindex 使 Ctrl+C 复制可用
+- 修复 ELECTRON_RUN_AS_NODE: undefined 可能被传成字符串 "undefined"（改为删除该键）
+- 开发模式 defaultST 由盘符根改为 ../SillyTavern；dev guard 收窄到项目根
+- 同步 package-lock 版本号 1.8.16
+
 ## v1.8.15 (2026-08-17) — Cloudflare 公网隧道
 - 新增 🌐 公网隧道（Cloudflare Tunnel，开源免费免注册）：cloudflared 二进制随安装包分发（构建时自动下载到 vendor/，打包进 resources/）；设置面板一键开关；生成 trycloudflare.com 公网地址 + 复制按钮；手机 4G 即可访问
 - 安全：开启隧道必须已设置访问密码（basicAuth）；未开认证时自动启用并重启服务器；关闭即地址失效

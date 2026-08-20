@@ -95,6 +95,7 @@ function toggleTerminal(){
     updateWebviewSize();
     if(termOpen){
         termInput?.focus();
+        if(termOut) termOut.tabIndex = 0; // 让 Ctrl+C 复制选中日志的 keydown 能触发
         termOut.textContent='';termNodes=0;
         if(termHistory){const d=document.createElement('div');d.textContent=stripAnsi(termHistory);termOut.appendChild(d);termNodes=1;}
         termOut.scrollTop=termOut.scrollHeight;
@@ -127,7 +128,8 @@ window.addEventListener('resize',updateWebviewSize);
     document.addEventListener('mousemove',e=>{
         if(!dragging)return;
         const dh=e.screenY-startY;
-        termHeight=Math.min(termMaxHeight(),Math.max(TERM_HEIGHT_MIN,startH+dh));
+        // 面板 bottom 固定，手柄在顶部：向上拖(screenY 减小)应增高，所以用 startH - dh
+        termHeight=Math.min(termMaxHeight(),Math.max(TERM_HEIGHT_MIN,startH-dh));
         updateWebviewSize();
     });
     document.addEventListener('mouseup',()=>{
@@ -144,7 +146,7 @@ function loadingAppend(text){
     loadBuf+=text;
     loadingLog.classList.add('show');
     if(loadTimer)return;
-    loadTimer=setTimeout(()=>{loadTimer=null;loadingLog.textContent+=loadBuf;loadBuf='';loadingLog.scrollTop=loadingLog.scrollHeight;},80);
+    loadTimer=setTimeout(()=>{loadTimer=null;loadingLog.textContent+=stripAnsi(loadBuf);loadBuf='';loadingLog.scrollTop=loadingLog.scrollHeight;},80);
 }
 
 btnTerm?.addEventListener('click',toggleTerminal);
@@ -164,7 +166,7 @@ btnSettings?.addEventListener('click',openSettings);
 $('#btn-settings-close')?.addEventListener('click',closeSettings);
 $('#btn-settings-cancel')?.addEventListener('click',closeSettings);
 settingsOverlay?.addEventListener('click',e=>{if(e.target===settingsOverlay)closeSettings();});
-$('#btn-settings-save')?.addEventListener('click',async()=>{const sp=$('#setting-server-path').value.trim();const w=parseInt($('#setting-width').value)||1280;const h=parseInt($('#setting-height').value)||800;const cb=$('#setting-close-behavior')?.value||'ask';const pathChanged=sp!==(settingsData.serverPath||'');await ST?.save({serverPath:sp,windowWidth:w,windowHeight:h,closeBehavior:cb});closeSettings();if(pathChanged){alert('服务器路径已保存，重启套壳后生效。');}});
+$('#btn-settings-save')?.addEventListener('click',async()=>{const sp=$('#setting-server-path').value.trim();const w=parseInt($('#setting-width').value)||1280;const h=parseInt($('#setting-height').value)||800;const cb=$('#setting-close-behavior')?.value||'ask';const pathChanged=sp!==(settingsData.serverPath||'');const r=await ST?.save({serverPath:sp,windowWidth:w,windowHeight:h,closeBehavior:cb});if(r?.error){alert('保存失败：' + r.error);return;}closeSettings();if(pathChanged){alert('服务器路径已保存，重启套壳后生效。');}});
 
 // ── Server controls ─────────────────────────
 $('#btn-restart-server')?.addEventListener('click',async()=>{const b=$('#btn-restart-server'),sc=$('#server-ctl-status');if(b)b.disabled=true;if(sc){sc.textContent='正在重启服务器...';sc.className='update-status info';}const r=await window.electronAPI?.server?.restart();if(sc){if(r?.success){sc.textContent='✅ 服务器已重启';sc.className='update-status success';}else{sc.textContent='重启失败: '+(r?.error||'unknown');sc.className='update-status error';}}if(b)b.disabled=false;});
@@ -211,7 +213,7 @@ webview?.addEventListener('ipc-message',e=>{
 
 // Integrity check
 $('#btn-check-integrity')?.addEventListener('click',async()=>{const s=$('#integrity-status');if(!s)return;s.textContent='检测中...';s.className='update-status info';try{
-const script=`const fs=require('fs');let git=false;try{git=require('child_process').execSync('git rev-parse --is-inside-work-tree',{stdio:'pipe'}).toString().trim()==='true';}catch(_){git=false;}const out=[];if(git){try{const del=require('child_process').execSync('git ls-files --deleted',{stdio:'pipe'}).toString().trim().split('\\\\n').filter(l=>l&&!l.startsWith('data/'));del.forEach(l=>out.push('MISSING '+l));}catch(_){out.push('git 检查失败（目录可能未信任，正在使用文件检查）');['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}}else{['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}if(!fs.existsSync('node_modules'))out.push('MISSING node_modules');console.log(JSON.stringify({git,out}));`;
+const script=`const fs=require('fs');let git=false;try{git=require('child_process').execSync('git rev-parse --is-inside-work-tree',{stdio:'pipe'}).toString().trim()==='true';}catch(_){git=false;}const out=[];if(git){try{const del=require('child_process').execSync('git ls-files --deleted',{stdio:'pipe'}).toString().trim().split('\\n').filter(l=>l&&!l.startsWith('data/'));del.forEach(l=>out.push('MISSING '+l));}catch(_){out.push('git 检查失败（目录可能未信任，正在使用文件检查）');['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}}else{['server.js','package.json','public/index.html'].forEach(f=>{if(!fs.existsSync(f))out.push('MISSING '+f);});}if(!fs.existsSync('node_modules'))out.push('MISSING node_modules');console.log(JSON.stringify({git,out}));`;
 const r=await T?.exec('node -e "'+script.replace(/"/g,'\\"')+'"');
 if(r?.error&&!r.stdout){s.textContent='检测失败: '+(r.stderr||r.error);s.className='update-status error';return;}
 let data={git:false,out:[]};try{data=JSON.parse(r?.stdout||'{}');}catch(_){}
@@ -243,6 +245,8 @@ function setNote(el, text) { if (el) el.textContent = text; }
 // XSS 安全：所有动态内容一律转义为纯文本（\n → <br>），绝不直接 innerHTML 数据
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function setDetail(el, text) { if (el) el.innerHTML = escapeHtml(text).replace(/\n/g, '<br>'); }
+// 仅用于可信 HTML（固定按钮/结构）。动态数据必须先 escapeHtml 再拼入。
+function setDetailHtml(el, html) { if (el) el.innerHTML = html; }
 async function renderTools() {
     if (!TL()) return;
     // 备份配置
@@ -266,7 +270,7 @@ async function renderTools() {
     // 回滚列表
     const rl = await TL().rollbackList();
     setNote(tEl.rollbackInfo, rl.length ? `可用 ${rl.length} 个回滚包` : '无回滚包');
-    setDetail(tEl.rollbackList, rl.length ? rl.map(r => `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="${escapeHtml(r.version)}">回滚到 v${escapeHtml(r.version)}</button>`).join('') : '');
+    setDetailHtml(tEl.rollbackList, rl.length ? rl.map(r => `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="${escapeHtml(r.version)}">回滚到 v${escapeHtml(r.version)}</button>`).join('') : '');
     tEl.rollbackList.querySelectorAll('[data-rollback]').forEach(b => b.addEventListener('click', async () => {
         if (confirm(`确定回滚到 v${b.dataset.rollback}？应用将退出并安装旧版。`)) {
             await TL().rollbackInstall(b.dataset.rollback);
@@ -520,8 +524,8 @@ async function doSearch() {
     if (!r) return;
     const res = r.results || [];
     if (!res.length) { setDetail(tEl.searchRes, `未找到「${kw}」相关消息（扫描 ${r.totalFiles} 个聊天文件）`); return; }
-    setDetail(tEl.searchRes, `找到 ${res.length} 条${r.truncated ? '（已截断）' : ''}（扫描 ${r.totalFiles} 个文件）：\n` +
-        res.map(h => `<span class="hit">[${h.char}] ${h.name}: ${h.snippet.replace(/</g, '&lt;')}</span>`).join(''));
+    setDetailHtml(tEl.searchRes, `找到 ${res.length} 条${r.truncated ? '（已截断）' : ''}（扫描 ${r.totalFiles} 个文件）：\n` +
+        res.map(h => `<span class="hit">[${escapeHtml(h.char)}] ${escapeHtml(h.name)}: ${escapeHtml(h.snippet)}</span>`).join(''));
 }
 tEl.searchKw?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 // 统计
@@ -559,11 +563,11 @@ tEl.ollama?.addEventListener('click', async () => {
     if (r?.error) { setDetail(tEl.envRes, '❌ ' + r.error); return; }
     const ps = await TL()?.ollamaPs();
     const loaded = new Set((ps?.models || []).map(m => m.name));
-    setDetail(tEl.envRes, `Ollama 在线，${r.models.length} 个模型：\n` + r.models.map(m =>
-        `${loaded.has(m.name) ? '🟢' : '⚪'} ${m.name} (${m.sizeGB}GB ${m.params} ${m.quant})` +
-        `<br><button class="btn-secondary" style="padding:1px 6px;font-size:10px" data-oa="load|${m.name}">加载</button>` +
-        `<button class="btn-secondary" style="padding:1px 6px;font-size:10px" data-oa="unload|${m.name}">卸载</button>`
-    ).join('\n'));
+    setDetailHtml(tEl.envRes, `Ollama 在线，${r.models.length} 个模型：\n` + r.models.map(m =>
+        `${loaded.has(m.name) ? '🟢' : '⚪'} ${escapeHtml(String(m.name))} (${escapeHtml(String(m.sizeGB))}GB ${escapeHtml(String(m.params))} ${escapeHtml(String(m.quant))})` +
+        `<br><button class="btn-secondary" style="padding:1px 6px;font-size:10px" data-oa="load|${escapeHtml(String(m.name))}">加载</button>` +
+        `<button class="btn-secondary" style="padding:1px 6px;font-size:10px" data-oa="unload|${escapeHtml(String(m.name))}">卸载</button>`
+    ).join('<br>'));
     tEl.envRes.querySelectorAll('[data-oa]').forEach(b => b.addEventListener('click', async () => {
         const [a, m] = b.dataset.oa.split('|');
         await TL()?.ollamaAction(a, m);
@@ -605,7 +609,7 @@ tEl.pinSet?.addEventListener('click', async () => {
     const code = tEl.pin.value.trim();
     await TL()?.pinSet(code || '');
     tEl.pin.value = '';
-    setNote(tEl.pin, code ? '✅ PIN 已设置' : '✅ PIN 已清除');
+    setNote($('#t-pin-status'), code ? '✅ PIN 已设置' : '✅ PIN 已清除');
 });
 tEl.immerse?.addEventListener('click', async () => { await TL()?.immerseSet(); });
 tEl.notify?.addEventListener('change', async () => {
