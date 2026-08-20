@@ -455,6 +455,10 @@ $('#t-lan')?.addEventListener('change', async () => {
 });
 $('#t-lan-user')?.addEventListener('change', async () => { await TL()?.lanSave({ user: $('#t-lan-user').value.trim() }); });
 $('#t-lan-pass')?.addEventListener('change', async () => { await TL()?.lanSave({ pass: $('#t-lan-pass').value }); });
+// 输入即自动保存（防抖），避免失焦未触发导致“保存不了”
+let lanSaveTimer = null;
+$('#t-lan-user')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); lanSaveTimer = setTimeout(() => TL()?.lanSave({ user: $('#t-lan-user').value.trim() }), 400); });
+$('#t-lan-pass')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); lanSaveTimer = setTimeout(() => TL()?.lanSave({ pass: $('#t-lan-pass').value }), 400); });
 $('#t-top')?.addEventListener('change', async () => { await TL()?.uiSet('alwaysOnTop', $('#t-top').value === '1'); });
 $('#t-theme')?.addEventListener('change', async () => { const v = $('#t-theme').value; await TL()?.uiSet('theme', v); document.body.dataset.theme = v; });
 $('#t-font')?.addEventListener('change', async () => { const v = $('#t-font').value; await TL()?.uiSet('fontScale', Number(v)); document.body.dataset.font = v; });
