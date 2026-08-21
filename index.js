@@ -568,6 +568,31 @@ function setupIPC() {
     ipcMain.handle('settings:getDataRoot', () => dataRoot);
     ipcMain.handle('shell:openPath', (_e, p) => { if (typeof p === 'string' && fs.existsSync(p)) shell.openPath(p); });
 
+    // ST 原生弹窗支持：webview-preload 覆盖 alert/confirm/prompt，统一走 Electron dialog
+    ipcMain.on('shell:native-dialog', (event, payload) => {
+        try {
+            const type = String(payload?.type || 'alert');
+            const message = String(payload?.message ?? '');
+            if (type === 'confirm') {
+                const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, buttons: ['否', '是'], defaultId: 1, cancelId: 0 });
+                event.returnValue = r === 1;
+            } else if (type === 'prompt') {
+                const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, detail: '当前 prompt 弹窗为简化版：确认后返回默认值，取消返回 null', buttons: ['取消', '确定'], defaultId: 1, cancelId: 0 });
+                event.returnValue = r === 1 ? String(payload?.defaultValue ?? '') : null;
+            } else {
+                dialog.showMessageBoxSync({ type: 'info', title: 'SillyTavern', message });
+                event.returnValue = true;
+            }
+        } catch (_) { event.returnValue = true; }
+    });
+    ipcMain.handle('shell:native-prompt', async (event, payload) => {
+        try {
+            const message = String(payload?.message ?? '');
+            const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, detail: '当前 prompt 弹窗为简化版：确认后返回默认值，取消返回 null', buttons: ['取消', '确定'], defaultId: 1, cancelId: 0 });
+            return r === 1 ? String(payload?.defaultValue ?? '') : null;
+        } catch (_) { return null; }
+    });
+
     ipcMain.handle('server:restart', async () => {
         stopServer();
         try { await startServer(); return { success: true }; }
@@ -719,6 +744,7 @@ function setupIPC() {
     });
     ipcMain.handle('shell-update:check', async () => {
         try {
+            const s = loadSettings(); autoUpdater.channel = s.shellChannel === 'lite' ? 'lite' : 'latest';
             const result = await autoUpdater.checkForUpdates();
             shellUpdateVersion = result?.updateInfo?.version || null;
             if (!result) return { hasUpdate: false };

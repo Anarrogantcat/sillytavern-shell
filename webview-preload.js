@@ -1,7 +1,7 @@
 // webview-preload.js — runs inside the SillyTavern page.
 // Reports Ctrl+wheel / pinch gestures to the host shell, which applies
 // viewport-level zoom via webview.setZoomFactor() (browser-like zoom).
-const { ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 let last = 0;
 
@@ -32,3 +32,17 @@ window.addEventListener('keydown', (e) => {
         ipcRenderer.sendToHost('hotkey', e.key.toUpperCase());
     }
 });
+
+// ── ST 原生弹窗支持：防止 ST 调用 alert/confirm/prompt 时没有弹窗 ──
+// alert/confirm 使用同步 IPC 返回；prompt 使用异步 IPC（返回 Promise）
+try {
+    contextBridge.exposeInMainWorld('alert', (message) => {
+        ipcRenderer.sendSync('shell:native-dialog', { type: 'alert', message: String(message ?? '') });
+    });
+    contextBridge.exposeInMainWorld('confirm', (message) => {
+        return ipcRenderer.sendSync('shell:native-dialog', { type: 'confirm', message: String(message ?? '') });
+    });
+    contextBridge.exposeInMainWorld('prompt', (message, defaultValue) => {
+        return ipcRenderer.invoke('shell:native-prompt', { message: String(message ?? ''), defaultValue: String(defaultValue ?? '') });
+    });
+} catch (_) { /* 若沙箱不支持 contextBridge 覆盖，则保持原浏览器弹窗 */ }

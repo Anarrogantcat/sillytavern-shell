@@ -447,6 +447,7 @@ async function renderUiSettings() {
     if (bc) $('#t-backup-zip').value = bc.zip ? '1' : '0';
     const s = await window.electronAPI?.settings?.get?.() || {};
     $('#t-crash').value = s.crashAlert === false ? '0' : '1';
+    if ($('#shell-channel')) $('#shell-channel').value = s.shellChannel === 'lite' ? 'lite' : 'full';
 }
 $('#t-lan')?.addEventListener('change', async () => {
     await TL()?.lanSave({ enabled: $('#t-lan').value === '1' });
@@ -458,6 +459,11 @@ $('#t-lan-pass')?.addEventListener('change', async () => { await TL()?.lanSave({
 // 输入即自动保存（防抖），避免失焦未触发导致“保存不了”
 let lanSaveTimer = null;
 $('#t-lan-user')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); lanSaveTimer = setTimeout(() => TL()?.lanSave({ user: $('#t-lan-user').value.trim() }), 400); });
+$('#shell-channel')?.addEventListener('change', async () => {
+    const v = $('#shell-channel').value === 'lite' ? 'lite' : 'full';
+    await window.electronAPI?.settings?.save?.({ shellChannel: v });
+    alert('套壳更新版本已切换为' + (v === 'lite' ? '轻量版' : '完整版') + '，下次检查更新时生效');
+});
 $('#t-lan-pass')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); lanSaveTimer = setTimeout(() => TL()?.lanSave({ pass: $('#t-lan-pass').value }), 400); });
 $('#t-top')?.addEventListener('change', async () => { await TL()?.uiSet('alwaysOnTop', $('#t-top').value === '1'); });
 $('#t-theme')?.addEventListener('change', async () => { const v = $('#t-theme').value; await TL()?.uiSet('theme', v); document.body.dataset.theme = v; });
@@ -577,53 +583,85 @@ TL()?.tunnelOnState?.(tunnelRender);
 
 // ── 状态栏诊断（运行时注入，不修改 ST 本体）──
 function setDiag(text, isError) { const el = document.getElementById('t-diag-res'); if (el) { el.textContent = text; el.style.color = isError ? '#e0556a' : ''; } }
+let lastDiagUnknown = [];
 async function diagStatusBar() {
     setDiag('诊断中…');
     try {
-        const r = await webview.executeJavaScript(`(() => {
-            const out = { readyState: document.readyState, placeholder: false, markers: {}, runtime: false, context: null, statKeys: [] };
+        const saved = await window.electronAPI?.settings?.get?.() || {};
+        const savedSelectors = Array.isArray(saved.knownStatusBarSelectors) ? saved.knownStatusBarSelectors : [];
+        const r = await webview.executeJavaScript(`(savedSelectors) => {
+            const out = { readyState: document.readyState, placeholder: false, markers: {}, runtime: false, context: null, statKeys: [], foundSelectors: [], unknownSelectors: [] };
             const html = document.body ? document.body.innerHTML : '';
             out.placeholder = /<\\s*StatusPlaceHolderImpl\\s*\\/\\s*>/i.test(html);
-            const markers = { typeA: ['.status-wrapper', '.status-card'], typeB: ['#swj-orb', '#swj-panel'], typeC: ['.qp-app', '.qp-title', '#qp-list'] };
-            for (const [type, sels] of Object.entries(markers)) {
-                out.markers[type] = [];
-                for (const sel of sels) {
-                    const el = document.querySelector(sel);
-                    if (el) {
-                        const cs = getComputedStyle(el);
-                        const rect = el.getBoundingClientRect();
-                        out.markers[type].push({ sel, display: cs.display, visibility: cs.visibility, opacity: cs.opacity, width: rect.width, height: rect.height });
+            const builtin = { typeA: ['.status-wrapper', '.status-card'], typeB: ['#swj-orb', '#swj-panel'], typeC: ['.qp-app', '.qp-title', '#qp-list'] };
+            function pushFound(type, sel) {
+                out.markers[type] = out.markers[type] || [];
+                if (!out.markers[type].includes(sel)) out.markers[type].push(sel);
+                if (!out.foundSelectors.includes(sel)) out.foundSelectors.push(sel);
+            }
+            function scan(root) {
+                const doc = root.document || root;
+                for (const [type, sels] of Object.entries(builtin)) {
+                    for (const sel of sels) {
+                        try { if (doc.querySelector(sel)) pushFound(type, sel); } catch (_) {}
                     }
                 }
+                for (const sel of savedSelectors) {
+                    try { if (doc.querySelector(sel)) pushFound('saved', sel); } catch (_) {}
+                }
+                try {
+                    const all = doc.querySelectorAll('*');
+                    for (const el of all) {
+                        if (!el || typeof el.getAttribute !== 'function') continue;
+                        const cls = String(el.className || el.id || '');
+                        if (!/status|orb|panel|card|hud|statusbar/i.test(cls)) continue;
+                        const cs = getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > 50 && rect.height > 20 && (cs.position === 'fixed' || parseInt(cs.zIndex || 0, 10) > 100 || /status|orb|panel|card|hud/i.test(cls))) {
+                            const id = el.id ? '#' + el.id : '';
+                            const className = String(el.className || '').trim().split(/\\s+/)[0];
+                            const sel = id || (className ? '.' + className : el.tagName.toLowerCase());
+                            if (!out.foundSelectors.includes(sel)) { out.foundSelectors.push(sel); out.unknownSelectors.push(sel); }
+                        }
+                    }
+                } catch (_) {}
+                try { for (const f of doc.querySelectorAll('iframe')) { try { if (f.contentDocument) scan(f.contentDocument); } catch (_) {} } } catch (_) {}
+                try { for (const el of doc.querySelectorAll('*')) { if (el.shadowRoot) scan(el.shadowRoot); } } catch (_) {}
             }
+            scan(document);
             try { out.runtime = !!window.__SWJ_STATUSBAR_RUNTIME__; } catch (_) {}
             try {
                 const ctx = window.SillyTavern?.getContext?.();
-                if (ctx) {
-                    out.context = { characterId: ctx.characterId, chatId: ctx.chatId, groupId: ctx.groupId, preset: ctx.preset || ctx.chatCompletionSettings?.preset || null, source: ctx.chatCompletionSettings?.chat_completion_source || null };
-                }
+                if (ctx) out.context = { characterId: ctx.characterId, chatId: ctx.chatId, groupId: ctx.groupId, preset: ctx.preset || ctx.chatCompletionSettings?.preset || null, source: ctx.chatCompletionSettings?.chat_completion_source || null };
             } catch (_) {}
             try {
                 const vars = typeof getAllVariables === 'function' ? getAllVariables() : (window.Mvu?.getMvuData ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null);
                 if (vars && vars.stat_data) out.statKeys = Object.keys(vars.stat_data).slice(0, 50);
             } catch (_) {}
             return out;
-        })()`);
+        })(${JSON.stringify(savedSelectors)})`);
         const lines = [];
         lines.push('页面状态: ' + (r.readyState || 'unknown'));
         lines.push('占位符残留: ' + (r.placeholder ? '是' : '否'));
         lines.push('脚本运行时: ' + (r.runtime ? '存在' : '无'));
         if (r.context) lines.push('角色/聊天: ' + r.context.characterId + ' / ' + r.context.chatId + (r.context.groupId ? ' (群聊)' : '') + ' | 预设: ' + (r.context.preset || '未知'));
-        const found = [];
-        for (const [type, arr] of Object.entries(r.markers || {})) for (const m of arr) found.push(type + ':' + m.sel);
-        lines.push('状态栏标记: ' + (found.length ? found.join(', ') : '未发现'));
+        lines.push('状态栏标记: ' + (r.foundSelectors && r.foundSelectors.length ? r.foundSelectors.join(', ') : '未发现'));
         lines.push('stat_data 字段数: ' + (r.statKeys ? r.statKeys.length : 0));
         if (r.statKeys && r.statKeys.length) lines.push('字段前10: ' + r.statKeys.slice(0, 10).join(', '));
-        if (r.placeholder && !found.length) lines.push('结论: 占位符残留且状态栏 DOM 未注入，很可能为模板/预设替换失败');
-        else if (found.length) lines.push('结论: 状态栏 DOM 已注入，请查看上方标记样式判断是否隐藏');
+        if (r.placeholder && !r.foundSelectors.length) lines.push('结论: 占位符残留且状态栏 DOM 未注入，很可能为模板/预设替换失败');
+        else if (r.foundSelectors && r.foundSelectors.length) lines.push('结论: 检测到状态栏相关元素' + (r.unknownSelectors && r.unknownSelectors.length ? '，包含未识别的新类型（可点“记住新类型”）' : ''));
         else lines.push('结论: 未检测到已知状态栏实现');
+        lastDiagUnknown = r.unknownSelectors || [];
         setDiag(lines.join('\n'));
     } catch (e) { setDiag('诊断失败: ' + e.message, true); }
+document.getElementById('t-remember-statusbar')?.addEventListener('click', async () => {
+    if (!lastDiagUnknown.length) { setDiag('没有可记住的新类型，请先运行诊断', true); return; }
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    const known = Array.isArray(s.knownStatusBarSelectors) ? s.knownStatusBarSelectors.slice() : [];
+    for (const sel of lastDiagUnknown) if (!known.includes(sel)) known.push(sel);
+    await window.electronAPI?.settings?.save?.({ knownStatusBarSelectors: known });
+    setDiag('✅ 已记住 ' + lastDiagUnknown.length + ' 个状态栏选择器：\n' + lastDiagUnknown.join('\n'));
+});
 }
 async function fixStatusBar() {
     setDiag('清理中…');

@@ -1,6 +1,12 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.9.8 (2026-08-21) — ST 原生弹窗 + 状态栏通用识别 + 更新通道选择
+- ST webview 内 alert/confirm/prompt 改为 Electron 原生弹窗，防止 ST 调用弹窗时无响应（prompt 为简化版）
+- 状态栏诊断增强：遍历 iframe/Shadow DOM，通用特征识别（status/orb/panel/card/hud）
+- 新增「记住新类型」：诊断发现未识别状态栏时，可保存选择器，后续自动识别
+- 套壳更新支持选择完整版/轻量版通道
+
 ## v1.9.7 (2026-08-21) — 自动放行 ST 白名单
 - ZeroTier 助手新增「自动放行 ZeroTier/LAN 访问」开关
 - 开启后启动 ST 时自动注入 SILLYTAVERN_WHITELISTMODE=false，不修改 config.yaml，不影响 ST 更新
