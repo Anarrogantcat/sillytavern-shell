@@ -463,6 +463,16 @@ $('#shell-channel')?.addEventListener('change', async () => {
     const v = $('#shell-channel').value === 'lite' ? 'lite' : 'full';
     await window.electronAPI?.settings?.save?.({ shellChannel: v });
     alert('套壳更新版本已切换为' + (v === 'lite' ? '轻量版' : '完整版') + '，下次检查更新时生效');
+document.getElementById('t-lan-qr')?.addEventListener('click', async () => {
+    const ips = await TL()?.lanIps?.() || [];
+    if (!ips.length) { setNote($('#t-lan-ips'), '未获取到局域网 IP'); return; }
+    const url = 'http://' + ips[0] + ':8000';
+    const r = await window.electronAPI?.tools?.qrcode?.(url);
+    const area = document.getElementById('t-qr-area');
+    const img = document.getElementById('t-qr-img');
+    if (r?.url && area && img) { img.src = r.url; area.style.display = ''; setNote($('#t-lan-ips'), '手机扫码访问: ' + url); }
+    else if (area) { area.style.display = 'none'; setNote($('#t-lan-ips'), '二维码生成失败'); }
+});
 });
 $('#t-lan-pass')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); lanSaveTimer = setTimeout(() => TL()?.lanSave({ pass: $('#t-lan-pass').value }), 400); });
 $('#t-top')?.addEventListener('change', async () => { await TL()?.uiSet('alwaysOnTop', $('#t-top').value === '1'); });
