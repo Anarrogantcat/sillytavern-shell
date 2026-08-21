@@ -686,6 +686,47 @@ async function fixStatusBar() {
 }
 document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatusBar);
 document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
+async function renderGenericStatusBar() {
+    setDiag('渲染中…');
+    try {
+        const r = await webview.executeJavaScript(`(() => {
+            const out = { rendered: false, reason: '' };
+            try {
+                let vars = typeof getAllVariables === 'function' ? getAllVariables() : (window.Mvu?.getMvuData ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null);
+                const stat = (vars && vars.stat_data) || {};
+                const charName = (window.SillyTavern?.getContext?.()?.characters?.[window.SillyTavern?.getContext?.()?.characterId]?.name) || stat.角色 || '角色';
+                const d = stat['角色'] && stat['角色'][charName] ? stat['角色'][charName] : stat[charName] || {};
+                const progress = stat.progress || stat['进度'] || '—';
+                const place = stat['所在地'] || stat['当前地点'] || stat['世界']?.['当前地点'] || '—';
+                const love = d['好感度'] || d['好感'] || '—';
+                const state = d['身体状态'] || d['状态'] || '—';
+                const inner = d['内心'] || d['inner'] || '—';
+                const clothes = d['衣着'] || d['clothes'] || '—';
+                const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                const html = '<div style="position:fixed;bottom:8px;right:8px;z-index:2147483000;max-width:340px;background:#1c1c1e;color:#f0ede6;border:1px solid #c9a227;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.6;box-shadow:0 8px 30px rgba(0,0,0,.6);font-family:Microsoft YaHei,sans-serif;">' +
+                    '<div style="font-weight:700;color:#c9a227;margin-bottom:6px;">' + esc(charName) + '</div>' +
+                    '<div>进度：' + esc(progress) + '</div>' +
+                    '<div>所在地：' + esc(place) + '</div>' +
+                    '<div>好感度：' + esc(love) + '</div>' +
+                    '<div>状态：' + esc(state) + '</div>' +
+                    '<div>内心：' + esc(inner) + '</div>' +
+                    '<div>衣着：' + esc(clothes) + '</div>' +
+                    '</div>';
+                let target = document.getElementById('shell-statusbar-fallback');
+                if (!target) {
+                    target = document.createElement('div');
+                    target.id = 'shell-statusbar-fallback';
+                    document.body.appendChild(target);
+                }
+                target.innerHTML = html;
+                out.rendered = true;
+            } catch (e) { out.reason = e.message; }
+            return out;
+        })()`);
+        setDiag(r.rendered ? '✅ 已渲染通用状态栏' : '渲染失败: ' + r.reason, !r.rendered);
+    } catch (e) { setDiag('渲染失败: ' + e.message, true); }
+}
+document.getElementById('t-render-statusbar')?.addEventListener('click', renderGenericStatusBar);
 
 // ── ZeroTier 助手（虚拟局域网，不影响 Clash 代理）──
 const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), netlist: $('#zt-netlist'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), allow: $('#zt-allow'), info: $('#zt-info') };
