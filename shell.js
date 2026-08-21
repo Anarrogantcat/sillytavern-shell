@@ -207,6 +207,7 @@ T?.onOutput(text=>{if(!serverReady&&loadingLog)loadingAppend(text);termAppend(te
 
 // ── Settings ─────────────────────────────────
 let settingsData={};
+let settingsTabsData=null;
 // 设置页 Tab：按现有 DOM 结构分组，不依赖额外 HTML 标记
 function initSettingsTabs() {
     const tabs = document.querySelectorAll('#settings-tabs .settings-tab');
@@ -231,9 +232,21 @@ function initSettingsTabs() {
         for (const tab of tabs) tab.classList.toggle('active', tab.dataset.tab === name);
         try { localStorage.setItem('settingsTab', name); } catch (_) {}
     }
+    settingsTabsData = { children, groups, switchSettingsTab };
     for (const tab of tabs) tab.addEventListener('click', () => switchSettingsTab(tab.dataset.tab));
     switchSettingsTab(localStorage.getItem('settingsTab') || 'general');
 }
+function applySettingsSearch() {
+    const input = document.getElementById('settings-search');
+    if (!settingsTabsData || !input) return;
+    const query = input.value.trim().toLowerCase();
+    if (!query) { settingsTabsData.switchSettingsTab(localStorage.getItem('settingsTab') || 'general'); return; }
+    for (const el of settingsTabsData.children) {
+        const text = (el.textContent || '').toLowerCase();
+        el.style.display = text.includes(query) ? '' : 'none';
+    }
+}
+document.getElementById('settings-search')?.addEventListener('input', applySettingsSearch);
 initSettingsTabs();
 async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
