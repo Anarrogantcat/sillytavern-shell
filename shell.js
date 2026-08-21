@@ -1,3 +1,94 @@
+
+// ── 工具箱自定义排序/折叠（v1.13.0）──────────────────────────────
+function initToolboxGroups() {
+    const body = document.querySelector('.bench-body');
+    if (!body) return;
+    // 按 .tool-sec 将扁平结构运行时分组
+    const children = [...body.children];
+    const groups = [];
+    let cur = null;
+    for (const el of children) {
+        if (el.classList && el.classList.contains('tool-sec')) {
+            cur = { header: el, items: [] };
+            groups.push(cur);
+        } else if (cur) {
+            cur.items.push(el);
+        }
+    }
+    // 清空原 body，重建为 .tool-group
+    body.innerHTML = '';
+    for (const g of groups) {
+        const wrap = document.createElement('div');
+        wrap.className = 'tool-group';
+        wrap.dataset.key = String(g.header.textContent || '').trim();
+        const header = g.header.cloneNode(true);
+        header.classList.add('tool-group-header');
+        header.setAttribute('draggable', 'true');
+        header.title = '拖拽排序，点击折叠/展开';
+        const toggle = document.createElement('span');
+        toggle.className = 'tool-group-toggle';
+        toggle.textContent = '▾';
+        header.appendChild(toggle);
+        const content = document.createElement('div');
+        content.className = 'tool-group-body';
+        for (const item of g.items) content.appendChild(item);
+        wrap.appendChild(header);
+        wrap.appendChild(content);
+        body.appendChild(wrap);
+    }
+    // 恢复排序/折叠
+    const orderKey = 'toolboxGroupOrder';
+    const collapsedKey = 'toolboxGroupCollapsed';
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem(orderKey) || '[]'); } catch (_) {}
+    const wraps = [...body.querySelectorAll('.tool-group')];
+    for (const key of [...order].reverse()) {
+        const w = wraps.find(x => x.dataset.key === key);
+        if (w) body.insertBefore(w, body.firstChild);
+    }
+    let collapsed = [];
+    try { collapsed = JSON.parse(localStorage.getItem(collapsedKey) || '[]'); } catch (_) {}
+    for (const w of wraps) {
+        if (collapsed.includes(w.dataset.key)) w.classList.add('collapsed');
+        w.querySelector('.tool-group-header')?.addEventListener('click', (e) => {
+            if (e.target.closest('.tool-group-toggle')) {
+                w.classList.toggle('collapsed');
+                let arr = [];
+                try { arr = JSON.parse(localStorage.getItem(collapsedKey) || '[]'); } catch (_) {}
+                if (w.classList.contains('collapsed')) { if (!arr.includes(w.dataset.key)) arr.push(w.dataset.key); }
+                else arr = arr.filter(x => x !== w.dataset.key);
+                localStorage.setItem(collapsedKey, JSON.stringify(arr));
+            }
+        });
+    }
+    // 拖拽排序
+    let dragKey = null;
+    body.addEventListener('dragstart', (e) => {
+        const header = e.target.closest('.tool-group-header');
+        if (!header) return;
+        dragKey = header.parentElement.dataset.key;
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    body.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const wrap = e.target.closest('.tool-group');
+        if (!wrap || !dragKey) return;
+        const list = [...body.querySelectorAll('.tool-group')];
+        const from = list.findIndex(x => x.dataset.key === dragKey);
+        const to = list.indexOf(wrap);
+        if (from >= 0 && to >= 0 && from !== to) {
+            if (from < to) body.insertBefore(list[from], list[to].nextSibling);
+            else body.insertBefore(list[from], list[to]);
+        }
+    });
+    body.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragKey = null;
+        const arr = [...body.querySelectorAll('.tool-group')].map(x => x.dataset.key);
+        localStorage.setItem(orderKey, JSON.stringify(arr));
+    });
+}
+initToolboxGroups();
 const { window:W, server:S, terminal:T, settings:ST, app:A, update:U } = window.electronAPI||{};
 const $=s=>document.querySelector(s);
 const webview=$('#sillytavern-webview'),loading=$('#loading-overlay'),loadingLog=$('#loading-log');
@@ -199,6 +290,11 @@ function loadingAppend(text){
 btnTerm?.addEventListener('click',toggleTerminal);
 $('#btn-terminal-close')?.addEventListener('click',toggleTerminal);
 $('#btn-terminal-copy')?.addEventListener('click',async()=>{const t=stripAnsi(termHistory)||termOut?.innerText||'';await navigator.clipboard.writeText(t);const b=$('#btn-terminal-copy');if(b){b.textContent='✅';setTimeout(()=>{b.textContent='📋';},1000);}});
+$('#btn-terminal-export')?.addEventListener('click',async()=>{
+    const r=await window.electronAPI?.terminal?.exportLog?.();
+    if(r?.path) alert('日志已导出到：' + r.path);
+    else if(r?.error) alert('导出失败：' + r.error);
+});
 termOut?.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='c'){const s=window.getSelection()?.toString();if(s){e.preventDefault();navigator.clipboard.writeText(s);}}});
 termInput?.addEventListener('keydown',async e=>{if(e.key!=='Enter'||!termInput.value.trim())return;const cmd=termInput.value.trim();termInput.value='';termInput.disabled=true;termAppend(`> ${cmd}\n`);try{const r=await T?.exec(cmd);if(r.stdout)termAppend(r.stdout);if(r.stderr)termAppend(r.stderr);if(r.error)termAppend(`Error: ${r.error}\n`);}catch(err){termAppend(`${err.message}\n`);}termInput.disabled=false;termInput.focus();});
 

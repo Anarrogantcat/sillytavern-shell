@@ -622,6 +622,22 @@ function setupIPC() {
             resolve({ stdout: stdout || '', stderr: stderr || '', error: err?.message || null });
         });
     }));
+    ipcMain.handle('terminal:export', async () => {
+        try {
+            const r = await dialog.showSaveDialog({ title: '导出日志', defaultPath: `sillytavern-shell-log-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.txt`, filters: [{ name: '文本文件', extensions: ['txt'] }] });
+            if (r.canceled || !r.filePath) return { canceled: true };
+            const info = {
+                time: new Date().toISOString(),
+                shellVersion: (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version; } catch (_) { return 'unknown'; } })(),
+                serverPath: sillyTavernRoot,
+                dataRoot,
+                settings: { ...settings, pin: undefined, lanPass: undefined },
+            };
+            const content = '=== SillyTavern Shell 日志 ===\n' + JSON.stringify(info, null, 2) + '\n\n--- Terminal ---\n' + terminalLines.join('\n');
+            fs.writeFileSync(r.filePath, content, 'utf8');
+            return { path: r.filePath };
+        } catch (e) { return { error: e.message }; }
+    });
 
     ipcMain.handle('app:getShellVersion', () => {
         try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version || '1.0.0'; }

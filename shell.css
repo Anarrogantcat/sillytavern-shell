@@ -50,6 +50,13 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
 .tool-actions{display:flex;gap:6px;align-items:center;padding:4px 0;flex-wrap:wrap}
 .tool-note{color:#8080a0;font-size:11px;word-break:break-all}
 .tool-detail{margin-top:4px;padding:6px 8px;background:rgba(0,0,0,.25);border-radius:6px;font-size:11px;line-height:1.6;color:#a8a8c0;white-space:pre-wrap;max-height:180px;overflow-y:auto}
+.tool-group{background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.04);border-radius:8px;margin-bottom:8px;padding:6px}
+.tool-group-header{display:flex;align-items:center;gap:6px;cursor:grab;user-select:none;font-size:12px;font-weight:600;color:var(--accent);padding:4px 2px}
+.tool-group-header:active{cursor:grabbing}
+.tool-group-toggle{margin-left:auto;color:#8080a0;font-size:12px;transition:transform .2s}
+.tool-group.collapsed .tool-group-toggle{transform:rotate(-90deg)}
+.tool-group.collapsed .tool-group-body{display:none}
+.tool-group-body{display:flex;flex-direction:column;gap:4px;padding-top:2px}
 .tool-detail .hit{display:block;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
 .tool-detail .hit b{color:var(--accent)}
 /* 开关样式 */

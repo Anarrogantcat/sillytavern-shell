@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         onOutput: cb => { const h = (_e, t) => cb(t); ipcRenderer.on('terminal:output', h); return () => ipcRenderer.removeListener('terminal:output', h); },
         getHistory: () => ipcRenderer.invoke('terminal:getHistory'),
         exec: cmd => ipcRenderer.invoke('terminal:exec', cmd),
+        exportLog: () => ipcRenderer.invoke('terminal:export'),
     },
     settings: {
         get: () => ipcRenderer.invoke('settings:get'),
