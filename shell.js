@@ -773,6 +773,7 @@ async function diagStatusBar() {
         lastDiagUnknown = r.unknownSelectors || [];
         setDiag(lines.join('\n'));
     } catch (e) { setDiag('诊断失败: ' + e.message, true); }
+}
 document.getElementById('t-remember-statusbar')?.addEventListener('click', async () => {
     if (!lastDiagUnknown.length) { setDiag('没有可记住的新类型，请先运行诊断', true); return; }
     const s = await window.electronAPI?.settings?.get?.() || {};
@@ -781,7 +782,6 @@ document.getElementById('t-remember-statusbar')?.addEventListener('click', async
     await window.electronAPI?.settings?.save?.({ knownStatusBarSelectors: known });
     setDiag('✅ 已记住 ' + lastDiagUnknown.length + ' 个状态栏选择器：\n' + lastDiagUnknown.join('\n'));
 });
-}
 async function fixStatusBar() {
     setDiag('清理中…');
     try {
