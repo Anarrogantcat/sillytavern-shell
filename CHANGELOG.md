@@ -1,8 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.9.9 (2026-08-21) — 完整版 prompt 原生输入弹窗
+- prompt() 改为真正的完整输入弹窗：独立模态窗口、输入框、确定/取消、Enter/Escape 支持
+- 弹窗样式与套壳深色风格一致，不再使用简化版“返回默认值”的占位弹窗
+- 新增 prompt.html / prompt-preload.js 并加入打包文件
+
 ## v1.9.8 (2026-08-21) — ST 原生弹窗 + 状态栏通用识别 + 更新通道选择
-- ST webview 内 alert/confirm/prompt 改为 Electron 原生弹窗，防止 ST 调用弹窗时无响应（prompt 为简化版）
+- ST webview 内 alert/confirm/prompt 改为 Electron 原生弹窗，防止 ST 调用弹窗时无响应（prompt 完整输入弹窗见 v1.9.9）
 - 状态栏诊断增强：遍历 iframe/Shadow DOM，通用特征识别（status/orb/panel/card/hud）
 - 新增「记住新类型」：诊断发现未识别状态栏时，可保存选择器，后续自动识别
 - 套壳更新支持选择完整版/轻量版通道

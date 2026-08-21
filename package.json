@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-electron",
-  "version": "1.9.8",
+  "version": "1.9.9",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
@@ -34,6 +34,8 @@
       "index.js",
       "preload.js",
       "webview-preload.js",
+      "prompt.html",
+      "prompt-preload.js",
       "shell.html",
       "shell.css",
       "shell.js",

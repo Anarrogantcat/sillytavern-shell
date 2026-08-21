@@ -586,11 +586,27 @@ function setupIPC() {
         } catch (_) { event.returnValue = true; }
     });
     ipcMain.handle('shell:native-prompt', async (event, payload) => {
-        try {
-            const message = String(payload?.message ?? '');
-            const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, detail: '当前 prompt 弹窗为简化版：确认后返回默认值，取消返回 null', buttons: ['取消', '确定'], defaultId: 1, cancelId: 0 });
-            return r === 1 ? String(payload?.defaultValue ?? '') : null;
-        } catch (_) { return null; }
+        // 完整版 prompt：弹出带输入框的原生模态窗口，等待用户输入
+        return new Promise((resolve) => {
+            try {
+                const parent = mainWindow || undefined;
+                const win = new BrowserWindow({
+                    width: 460, height: 250, parent, modal: true, show: false,
+                    resizable: false, minimizable: false, maximizable: false,
+                    title: 'SillyTavern', backgroundColor: '#1c1c1e',
+                    webPreferences: { contextIsolation: true, sandbox: false, nodeIntegration: false, preload: path.join(__dirname, 'prompt-preload.js') },
+                });
+                const onResult = (_e, value) => {
+                    ipcMain.removeListener('prompt-result', onResult);
+                    try { if (!win.isDestroyed()) win.destroy(); } catch (_) {}
+                    resolve(value);
+                };
+                ipcMain.on('prompt-result', onResult);
+                win.on('closed', () => { ipcMain.removeListener('prompt-result', onResult); resolve(null); });
+                win.loadFile(path.join(__dirname, 'prompt.html'), { query: { message: String(payload?.message ?? ''), defaultValue: String(payload?.defaultValue ?? '') } });
+                win.once('ready-to-show', () => { try { win.show(); win.focus(); } catch (_) {} });
+            } catch (_) { resolve(null); }
+        });
     });
 
     ipcMain.handle('server:restart', async () => {

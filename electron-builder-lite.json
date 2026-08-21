@@ -4,7 +4,7 @@
   "productName": "SillyTavern",
   "publish": { "provider": "github", "owner": "Anarrogantcat", "repo": "sillytavern-shell", "channel": "lite" },
   "artifactName": "SillyTavern-Lite-Setup-${version}.exe",
-  "files": ["index.js","preload.js","webview-preload.js","shell.html","shell.css","shell.js","chat.html","lib/","package.json","assets/icon.png","CHANGELOG.md"],
+  "files": ["index.js","preload.js","webview-preload.js","prompt.html","prompt-preload.js","shell.html","shell.css","shell.js","chat.html","lib/","package.json","assets/icon.png","CHANGELOG.md"],
   "extraResources": [{ "from": "assets/icon.png", "to": "icon.png" }, { "from": "vendor/cloudflared.exe", "to": "cloudflared.exe" }],
   "win": { "target": "nsis", "icon": "assets/icon.png" },
   "nsis": {
