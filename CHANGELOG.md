@@ -1,6 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
 
+## v1.15.3 (2026-08-21) — GitHub Actions 仅自动发布轻量版
+- 自动发布工作流改为只构建并发布轻量版，不再自动构建完整版
+
 ## v1.15.2 (2026-08-21) — 修复 GitHub Actions 工作流空文件
 - 修复 .github/workflows/release.yml 为空导致自动发布无法触发的问题
 - 工作流显式指定完整版/轻量版输出目录，确保产物在仓库内

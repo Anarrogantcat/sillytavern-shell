@@ -1,4 +1,4 @@
-name: Release
+name: Release Lite
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  build-lite:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,18 +18,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Clone SillyTavern source
-        run: git clone --depth 1 -b release https://github.com/SillyTavern/SillyTavern.git ../SillyTavern
-
-      - name: Prepare staging (full version)
-        run: node scripts/prebuild.js
-
       - name: Build Lite and publish
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npx electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite' --publish always
-
-      - name: Build Full and publish
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: npx electron-builder --win nsis --config.directories.output='dist-electron-v3' --publish always
