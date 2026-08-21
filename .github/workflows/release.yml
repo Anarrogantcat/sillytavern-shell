@@ -22,3 +22,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npx electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite' --publish always
+
+      - name: Publish draft with changelog
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $ver = $tag -replace '^v', ''
+          $changelog = Get-Content CHANGELOG.md -Raw -Encoding UTF8
+          $pattern = "(?s)## v$ver .*?(?=\n## v|\z)"
+          $m = [regex]::Match($changelog, $pattern)
+          if ($m.Success) {
+            $m.Value.Trim() | Out-File -FilePath notes.md -Encoding utf8
+            gh release edit $tag --draft=false --notes-file notes.md
+          } else {
+            gh release edit $tag --draft=false
+          }
