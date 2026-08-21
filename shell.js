@@ -861,6 +861,12 @@ tEl.env?.addEventListener('click', async () => {
     if (!checks) return;
     setDetail(tEl.envRes, checks.map(c => `${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail}`).join('\n'));
 });
+document.getElementById('t-health')?.addEventListener('click', async () => {
+    setDetail(tEl.envRes, '一键体检中…');
+    const checks = await window.electronAPI?.tools?.healthCheck?.();
+    if (!checks) return;
+    setDetail(tEl.envRes, checks.map(c => `${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail}`).join('\n'));
+});
 tEl.ollama?.addEventListener('click', async () => {
     setDetail(tEl.envRes, '加载中…');
     const r = await TL()?.ollamaModels();

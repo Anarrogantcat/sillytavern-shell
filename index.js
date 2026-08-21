@@ -743,7 +743,7 @@ function setupIPC() {
         ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite,
         win: () => mainWindow, getSettings: loadSettings,
     });
-    registerEnvTools({ ipcMain, terminalWrite, dataRoot });
+    registerEnvTools({ ipcMain, terminalWrite, dataRoot, sillyTavernRoot });
     registerChatTools({ ipcMain, dataRoot, app });
     registerTunnelTools({
         ipcMain, app, terminalWrite,

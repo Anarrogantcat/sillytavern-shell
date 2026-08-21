@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ragSearch: q => ipcRenderer.invoke('tools:ragSearch', q),
         // C 档
         envCheck: () => ipcRenderer.invoke('tools:envCheck'),
+        healthCheck: () => ipcRenderer.invoke('tools:healthCheck'),
         modelService: () => ipcRenderer.invoke('tools:modelService'),
         ollamaModels: () => ipcRenderer.invoke('tools:ollamaModels'),
         ollamaPs: () => ipcRenderer.invoke('tools:ollamaPs'),
