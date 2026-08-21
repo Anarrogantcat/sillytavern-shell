@@ -90,6 +90,20 @@ function initToolboxGroups() {
 }
 initToolboxGroups();
 const { window:W, server:S, terminal:T, settings:ST, app:A, update:U } = window.electronAPI||{};
+// Toast 轻提示（替代部分 alert，套壳内展示）
+function showToast(message, type = 'info') {
+    let toast = document.getElementById('shell-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'shell-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.className = 'shell-toast ' + type;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('show'), 2600);
+}
 const $=s=>document.querySelector(s);
 const webview=$('#sillytavern-webview'),loading=$('#loading-overlay'),loadingLog=$('#loading-log');
 const termPanel=$('#terminal-panel'),termOut=$('#terminal-output'),termInput=$('#terminal-input');
@@ -292,8 +306,8 @@ $('#btn-terminal-close')?.addEventListener('click',toggleTerminal);
 $('#btn-terminal-copy')?.addEventListener('click',async()=>{const t=stripAnsi(termHistory)||termOut?.innerText||'';await navigator.clipboard.writeText(t);const b=$('#btn-terminal-copy');if(b){b.textContent='✅';setTimeout(()=>{b.textContent='📋';},1000);}});
 $('#btn-terminal-export')?.addEventListener('click',async()=>{
     const r=await window.electronAPI?.terminal?.exportLog?.();
-    if(r?.path) alert('日志已导出到：' + r.path);
-    else if(r?.error) alert('导出失败：' + r.error);
+    if(r?.path) showToast('日志已导出到：' + r.path, 'success');
+    else if(r?.error) showToast('导出失败：' + r.error, 'error');
 });
 termOut?.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='c'){const s=window.getSelection()?.toString();if(s){e.preventDefault();navigator.clipboard.writeText(s);}}});
 termInput?.addEventListener('keydown',async e=>{if(e.key!=='Enter'||!termInput.value.trim())return;const cmd=termInput.value.trim();termInput.value='';termInput.disabled=true;termAppend(`> ${cmd}\n`);try{const r=await T?.exec(cmd);if(r.stdout)termAppend(r.stdout);if(r.stderr)termAppend(r.stderr);if(r.error)termAppend(`Error: ${r.error}\n`);}catch(err){termAppend(`${err.message}\n`);}termInput.disabled=false;termInput.focus();});
@@ -350,7 +364,19 @@ btnSettings?.addEventListener('click',openSettings);
 $('#btn-settings-close')?.addEventListener('click',closeSettings);
 $('#btn-settings-cancel')?.addEventListener('click',closeSettings);
 settingsOverlay?.addEventListener('click',e=>{if(e.target===settingsOverlay)closeSettings();});
-$('#btn-settings-save')?.addEventListener('click',async()=>{const sp=$('#setting-server-path').value.trim();const w=parseInt($('#setting-width').value)||1280;const h=parseInt($('#setting-height').value)||800;const cb=$('#setting-close-behavior')?.value||'ask';const pathChanged=sp!==(settingsData.serverPath||'');const r=await ST?.save({serverPath:sp,windowWidth:w,windowHeight:h,closeBehavior:cb});if(r?.error){alert('保存失败：' + r.error);return;}closeSettings();if(pathChanged){alert('服务器路径已保存，重启套壳后生效。');}});
+$('#btn-settings-save')?.addEventListener('click',async()=>{const sp=$('#setting-server-path').value.trim();const w=parseInt($('#setting-width').value)||1280;const h=parseInt($('#setting-height').value)||800;const cb=$('#setting-close-behavior')?.value||'ask';const pathChanged=sp!==(settingsData.serverPath||'');const r=await ST?.save({serverPath:sp,windowWidth:w,windowHeight:h,closeBehavior:cb});if(r?.error){showToast('保存失败：' + r.error, 'error');return;}closeSettings();if(pathChanged){showToast('服务器路径已保存，重启套壳后生效。', 'success');}});
+document.getElementById('setting-server-path-browse')?.addEventListener('click', async () => {
+    const r = await window.electronAPI?.window?.pickDirectory?.();
+    if (r?.path) $('#setting-server-path').value = r.path;
+});
+document.getElementById('t-backup-dir-browse')?.addEventListener('click', async () => {
+    const r = await window.electronAPI?.window?.pickDirectory?.();
+    if (r?.path) {
+        $('#t-backup-dir').value = r.path;
+        await TL()?.backupSave({ dir: r.path });
+        setNote(tEl.backupInfo, '已保存目标目录');
+    }
+});
 
 // ── Server controls ─────────────────────────
 $('#btn-restart-server')?.addEventListener('click',async()=>{const b=$('#btn-restart-server'),sc=$('#server-ctl-status');if(b)b.disabled=true;if(sc){sc.textContent='正在重启服务器...';sc.className='update-status info';}const r=await window.electronAPI?.server?.restart();if(sc){if(r?.success){sc.textContent='✅ 服务器已重启';sc.className='update-status success';}else{sc.textContent='重启失败: '+(r?.error||'unknown');sc.className='update-status error';}}if(b)b.disabled=false;});
@@ -440,6 +466,10 @@ async function renderTools() {
         tEl.backupKeep.value = bc.keep || 5;
         const list = await TL().backupList();
         setNote(tEl.backupInfo, list.length ? `已有 ${list.length} 份备份` : '');
+        const sel = document.getElementById('t-backup-select');
+        if (sel) {
+            sel.innerHTML = '<option value="">选择备份…</option>' + list.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+        }
     }
     // 设置项
     tEl.autostart.value = (await TL().autostartGet()) ? '1' : '0';
@@ -560,7 +590,7 @@ async function renderUiSettings() {
 }
 $('#t-lan')?.addEventListener('change', async () => {
     await TL()?.lanSave({ enabled: $('#t-lan').value === '1' });
-    alert('局域网访问已' + ($('#t-lan').value === '1' ? '开启' : '关闭') + '，重启服务器后生效（设置→服务器控制→重启服务器）');
+    showToast('局域网访问已' + ($('#t-lan').value === '1' ? '开启' : '关闭') + '，重启服务器后生效（设置→服务器控制→重启服务器）', 'info');
     await renderUiSettings();
 });
 $('#t-lan-user')?.addEventListener('change', async () => { await TL()?.lanSave({ user: $('#t-lan-user').value.trim() }); });
@@ -571,7 +601,7 @@ $('#t-lan-user')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); 
 $('#shell-channel')?.addEventListener('change', async () => {
     const v = $('#shell-channel').value === 'lite' ? 'lite' : 'full';
     await window.electronAPI?.settings?.save?.({ shellChannel: v });
-    alert('套壳更新版本已切换为' + (v === 'lite' ? '轻量版' : '完整版') + '，下次检查更新时生效');
+    showToast('套壳更新版本已切换为' + (v === 'lite' ? '轻量版' : '完整版') + '，下次检查更新时生效', 'success');
 document.getElementById('t-lan-qr')?.addEventListener('click', async () => {
     const ips = await TL()?.lanIps?.() || [];
     if (!ips.length) { setNote($('#t-lan-ips'), '未获取到局域网 IP'); return; }
@@ -920,6 +950,16 @@ tEl.backupNow?.addEventListener('click', async () => {
     setNote(tEl.backupNowRes, '备份中…');
     const r = await TL().backupNow();
     setNote(tEl.backupNowRes, r?.ok ? `✅ ${r.dest}` : `❌ ${r?.error || '失败'}`);
+    await renderTools();
+});
+document.getElementById('t-backup-restore')?.addEventListener('click', async () => {
+    const sel = document.getElementById('t-backup-select');
+    const name = sel?.value;
+    if (!name) { setNote(tEl.backupNowRes, '请先选择要恢复的备份'); return; }
+    if (!confirm('确定从备份恢复数据？恢复前会自动备份当前数据，服务器会暂时重启。')) return;
+    setNote(tEl.backupNowRes, '恢复中…');
+    const r = await window.electronAPI?.tools?.backupRestore?.(name);
+    setNote(tEl.backupNowRes, r?.ok ? '✅ 恢复完成' : '❌ 恢复失败: ' + (r?.error || '未知错误'));
     await renderTools();
 });
 tEl.backupDir?.addEventListener('change', async () => {

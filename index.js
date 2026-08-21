@@ -567,6 +567,13 @@ function setupIPC() {
     ipcMain.handle('settings:setServerPath', (_e, p) => { if (typeof p !== 'string') return { error: 'invalid path' }; const clean = p.trim(); if (!clean || isUnsafeRmPath(clean)) return { error: '拒绝设置危险路径（盘符根/系统根/主目录/套壳自身/数据目录或其父目录）' }; settings.serverPath = clean; saveSettings(settings); return { ok: true }; });
     ipcMain.handle('settings:getDataRoot', () => dataRoot);
     ipcMain.handle('shell:openPath', (_e, p) => { if (typeof p === 'string' && fs.existsSync(p)) shell.openPath(p); });
+    ipcMain.handle('shell:pickDirectory', async () => {
+        try {
+            const r = await dialog.showOpenDialog({ title: '选择目录', properties: ['openDirectory'] });
+            if (r.canceled || !r.filePaths[0]) return { canceled: true };
+            return { path: r.filePaths[0] };
+        } catch (e) { return { error: e.message }; }
+    });
 
     // ST 原生弹窗支持：webview-preload 覆盖 alert/confirm/prompt，统一走 Electron dialog
     ipcMain.on('shell:native-dialog', (event, payload) => {
@@ -753,7 +760,7 @@ function setupIPC() {
     // ── Tools 工具箱注册（A/B/C/D 档，全部只读/套壳层）─────────────
     toolsApp = registerAppTools({
         ipcMain, app, dialog, shell, dataRoot, getSettings: loadSettings, saveSettings, terminalWrite,
-        win: () => mainWindow,
+        win: () => mainWindow, stopServer, startServer,
     });
     toolsData = registerDataTools({
         ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite,

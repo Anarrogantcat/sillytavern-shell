@@ -121,6 +121,11 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .settings-body .update-section{background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.04);border-radius:10px;padding:10px 12px}
 .settings-body .update-section:empty{display:none}
 .setting-row{padding:6px 8px;border-radius:6px}
+#shell-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:rgba(20,20,36,.95);color:#f0ede6;border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-size:13px;z-index:2147483646;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#shell-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#shell-toast.success{border-color:#5cb85c}
+#shell-toast.error{border-color:#e0556a}
+#shell-toast.info{border-color:var(--border)}
 .setting-row:hover{background:rgba(255,255,255,.02)}
 .settings-footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--border);flex-shrink:0}
 .setting-row{display:flex;flex-direction:column;gap:4px}

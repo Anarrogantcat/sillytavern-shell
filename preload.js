@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         onMaximizeChange: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('window:maximizeChange', h); return () => ipcRenderer.removeListener('window:maximizeChange', h); },
         openExternal: url => ipcRenderer.invoke('shell:openExternal', url),
         openPath: p => ipcRenderer.invoke('shell:openPath', p),
+        pickDirectory: () => ipcRenderer.invoke('shell:pickDirectory'),
     },
     shellAuth: {
         onRequired: cb => { const h = (_e, info) => cb(info); ipcRenderer.on('shell:auth-required', h); return () => ipcRenderer.removeListener('shell:auth-required', h); },
@@ -57,6 +58,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         // A 档
         backupNow: () => ipcRenderer.invoke('tools:backupNow'),
         backupList: () => ipcRenderer.invoke('tools:backupList'),
+        backupRestore: name => ipcRenderer.invoke('tools:backupRestore', name),
         backupConfig: () => ipcRenderer.invoke('tools:backupConfig'),
         backupSave: cfg => ipcRenderer.invoke('tools:backupSave', cfg),
         rollbackList: () => ipcRenderer.invoke('tools:rollbackList'),
