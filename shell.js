@@ -275,12 +275,19 @@ W?.isMaximized().then(setMaxState);W?.onMaximizeChange(setMaxState);
 
 // ── Server → webview ─────────────────────────
 let serverReady=false;
-S?.onUrl(url=>{serverReady=true;if(webview&&url)webview.src=url;});
+const titlebarStatus={box:$('#titlebar-status'),dot:$('#titlebar-dot'),text:$('#titlebar-status-text'),url:$('#titlebar-url')};
+function setTitlebarStatus(state,text,url){
+    if(titlebarStatus.dot)titlebarStatus.dot.className='titlebar-dot '+state;
+    if(titlebarStatus.text)titlebarStatus.text.textContent=text||'';
+    if(titlebarStatus.url){titlebarStatus.url.textContent=url||'';titlebarStatus.url.title=url||'';}
+}
+titlebarStatus.box?.addEventListener('click',()=>toggleTerminal());
+S?.onUrl(url=>{serverReady=true;if(webview&&url)webview.src=url;setTitlebarStatus('running','运行中',url);});
 // Pull fallback: if the server printed its URL before this page registered
 // its listener (fast-start server), the push event was lost — recover it.
-(async()=>{const u=await S?.getUrl();if(u&&!serverReady){serverReady=true;if(webview)webview.src=u;}})();
-S?.onError(msg=>{if(loading){loading.classList.remove('hidden');const t=loading.querySelector('.loading-text');if(t)t.textContent='启动失败';if(loadingLog){loadingLog.textContent=msg;loadingLog.classList.add('show');}}});
-S?.onSetupStarted?.(()=>{const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
+(async()=>{const u=await S?.getUrl();if(u&&!serverReady){serverReady=true;if(webview)webview.src=u;setTitlebarStatus('running','运行中',u);}})();
+S?.onError(msg=>{setTitlebarStatus('error','启动失败');if(loading){loading.classList.remove('hidden');const t=loading.querySelector('.loading-text');if(t)t.textContent='启动失败';if(loadingLog){loadingLog.textContent=msg;loadingLog.classList.add('show');}}});
+S?.onSetupStarted?.(()=>{setTitlebarStatus('starting','首次安装中');const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
 webview?.addEventListener('dom-ready', async () => {
     loading?.classList.add('hidden'); webview.classList.remove('hidden'); webview.focus();
     // ST 开启 basicAuth 且认证失败时，页面可能已经渲染为 Unauthorized；主动检测并弹出登录框
@@ -331,7 +338,7 @@ webview?.addEventListener('new-window',e=>{e.preventDefault();const u=String(e.u
 // ── Terminal ─────────────────────────────────
 // Batched rendering: ST logs can flood — append via textContent nodes on a 60ms
 // throttle instead of rebuilding innerHTML on every line (was O(n²) → freeze).
-let termOpen=false,termHistory='',termBuf='',termTimer=null,termNodes=0;
+let termOpen=false,termHistory='',termBuf='',termTimer=null,termNodes=0,termAutoScroll=true;
 const TERM_MAX_NODES=800,TERM_HISTORY_MAX=2*1024*1024;
 function stripAnsi(t){return t.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g,'').replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g,'');}
 function termAppend(text){
@@ -352,7 +359,7 @@ function flushTerm(){
     termOut.appendChild(div);
     termNodes++;
     while(termNodes>TERM_MAX_NODES&&termOut.firstChild){termOut.firstChild.remove();termNodes--;}
-    termOut.scrollTop=termOut.scrollHeight;
+    if(termAutoScroll)termOut.scrollTop=termOut.scrollHeight;
 }
 function toggleTerminal(){
     termOpen=!termOpen;
@@ -365,7 +372,7 @@ function toggleTerminal(){
         if(termOut) termOut.tabIndex = 0; // 让 Ctrl+C 复制选中日志的 keydown 能触发
         termOut.textContent='';termNodes=0;
         if(termHistory){const d=document.createElement('div');d.textContent=stripAnsi(termHistory);termOut.appendChild(d);termNodes=1;}
-        termOut.scrollTop=termOut.scrollHeight;
+        if(termAutoScroll)termOut.scrollTop=termOut.scrollHeight;
     }
 }
 // Terminal height: mouse-resizable via the handle at the panel top, persisted per-session
@@ -424,6 +431,18 @@ $('#btn-terminal-export')?.addEventListener('click',async()=>{
     if(r?.path) showToast('日志已导出到：' + r.path, 'success');
     else if(r?.error) showToast('导出失败：' + r.error, 'error');
 });
+$('#btn-terminal-clear')?.addEventListener('click',()=>{
+    termHistory='';termBuf='';termTimer=null;
+    if(termOut){termOut.textContent='';termNodes=0;}
+    showToast('终端已清空','success');
+});
+$('#btn-terminal-autoscroll')?.addEventListener('click',()=>{
+    termAutoScroll=!termAutoScroll;
+    const b=$('#btn-terminal-autoscroll');
+    if(b){b.classList.toggle('active',termAutoScroll);b.title=termAutoScroll?'自动滚动':'已暂停自动滚动';b.textContent=termAutoScroll?'📜':'⏸';}
+    if(termAutoScroll&&termOut)termOut.scrollTop=termOut.scrollHeight;
+});
+
 termOut?.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='c'){const s=window.getSelection()?.toString();if(s){e.preventDefault();navigator.clipboard.writeText(s);}}});
 termInput?.addEventListener('keydown',async e=>{if(e.key!=='Enter'||!termInput.value.trim())return;const cmd=termInput.value.trim();termInput.value='';termInput.disabled=true;termAppend(`> ${cmd}\n`);try{const r=await T?.exec(cmd);if(r.stdout)termAppend(r.stdout);if(r.stderr)termAppend(r.stderr);if(r.error)termAppend(`Error: ${r.error}\n`);}catch(err){termAppend(`${err.message}\n`);}termInput.disabled=false;termInput.focus();});
 

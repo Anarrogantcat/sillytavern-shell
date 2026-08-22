@@ -208,6 +208,20 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .tool-group-header .tool-group-star + .tool-group-toggle{margin-left:auto}
 .tool-group-header{gap:4px}
 
+/* ── v1.19.0 标题栏/浮动 Dock/终端增强 ─────────── */
+.titlebar-status{display:inline-flex;align-items:center;gap:5px;margin-left:12px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);font-size:11px;color:#a8a8c0;cursor:pointer;-webkit-app-region:no-drag;transition:background var(--transition-fast),border-color var(--transition-fast)}
+.titlebar-status:hover{background:rgba(255,255,255,.09);border-color:var(--accent)}
+.titlebar-dot{width:7px;height:7px;border-radius:50%;background:#6a6a88;flex:none}
+.titlebar-dot.starting{background:var(--color-warning);animation:titlebarPulse 1.2s infinite}
+.titlebar-dot.running{background:var(--color-success)}
+.titlebar-dot.error{background:var(--color-danger)}
+@keyframes titlebarPulse{0%,100%{opacity:.45}50%{opacity:1}}
+.titlebar-url{margin-left:10px;font-size:11px;color:#6868a0;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
+#float-buttons{padding:6px;background:rgba(18,18,42,.85);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-md);backdrop-filter:blur(12px)}
+.float-btn,.float-toggle{border-radius:10px}
+.panel-action.active{color:var(--accent);opacity:1}
+.panel-action.active:hover{color:var(--accent)}
+
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:760px){
   .settings-panel{width:calc(100vw - 24px)}
