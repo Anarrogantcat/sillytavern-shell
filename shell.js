@@ -77,14 +77,14 @@ function initToolboxGroups() {
             star.textContent = idx < 0 ? '★' : '☆';
         });
         header?.addEventListener('click', (e) => {
-            if (e.target.closest('.tool-group-toggle')) {
-                w.classList.toggle('collapsed');
-                let arr = [];
-                try { arr = JSON.parse(localStorage.getItem(collapsedKey) || '[]'); } catch (_) {}
-                if (w.classList.contains('collapsed')) { if (!arr.includes(w.dataset.key)) arr.push(w.dataset.key); }
-                else arr = arr.filter(x => x !== w.dataset.key);
-                localStorage.setItem(collapsedKey, JSON.stringify(arr));
-            }
+            if (Date.now() < suppressHeaderClick) return;
+            if (e.target.closest('.tool-group-star')) return;
+            w.classList.toggle('collapsed');
+            let arr = [];
+            try { arr = JSON.parse(localStorage.getItem(collapsedKey) || '[]'); } catch (_) {}
+            if (w.classList.contains('collapsed')) { if (!arr.includes(w.dataset.key)) arr.push(w.dataset.key); }
+            else arr = arr.filter(x => x !== w.dataset.key);
+            localStorage.setItem(collapsedKey, JSON.stringify(arr));
         });
     }
     // 收藏组置顶
@@ -171,13 +171,16 @@ function initToolboxGroups() {
     });
     toolbar.querySelector('#toolbox-expand-all').addEventListener('click', () => {
         for (const w of body.querySelectorAll('.tool-group')) w.classList.remove('collapsed');
+        localStorage.setItem(collapsedKey, '[]');
     });
     toolbar.querySelector('#toolbox-collapse-all').addEventListener('click', () => {
         for (const w of body.querySelectorAll('.tool-group')) w.classList.add('collapsed');
+        localStorage.setItem(collapsedKey, JSON.stringify([...body.querySelectorAll('.tool-group')].map(x => x.dataset.key)));
     });
     applyToolboxSearch();
     // 拖拽排序
     let dragKey = null;
+    let suppressHeaderClick = 0;
     body.addEventListener('dragstart', (e) => {
         const header = e.target.closest('.tool-group-header');
         if (!header) return;
@@ -199,6 +202,7 @@ function initToolboxGroups() {
     body.addEventListener('drop', (e) => {
         e.preventDefault();
         dragKey = null;
+        suppressHeaderClick = Date.now() + 250;
         const arr = [...body.querySelectorAll('.tool-group')].map(x => x.dataset.key);
         localStorage.setItem(orderKey, JSON.stringify(arr));
     });
