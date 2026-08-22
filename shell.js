@@ -983,7 +983,7 @@ async function diagStatusBar() {
     try {
         const saved = await window.electronAPI?.settings?.get?.() || {};
         const savedSelectors = Array.isArray(saved.knownStatusBarSelectors) ? saved.knownStatusBarSelectors : [];
-        const r = await webview.executeJavaScript(`(savedSelectors) => {
+        const r = await webview.executeJavaScript(`((savedSelectors) => {
             const out = { readyState: document.readyState, placeholder: false, markers: {}, runtime: false, context: null, statKeys: [], foundSelectors: [], unknownSelectors: [] };
             const html = document.body ? document.body.innerHTML : '';
             out.placeholder = /<\\s*StatusPlaceHolderImpl\\s*\\/\\s*>/i.test(html);
