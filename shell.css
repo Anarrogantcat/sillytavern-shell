@@ -146,3 +146,57 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 #zoom-badge{position:fixed;right:14px;bottom:48px;background:rgba(18,18,42,.92);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--fg);z-index:900;opacity:0;pointer-events:none;transition:opacity .25s}
 #zoom-badge.show{opacity:1}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.14)}
+
+/* ── v1.17.0 UI Design System ─────────────────────────────── */
+:root{
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;
+  --radius-sm:6px;--radius-md:10px;--radius-lg:14px;
+  --shadow-sm:0 2px 8px rgba(0,0,0,.25);--shadow-md:0 8px 28px rgba(0,0,0,.45);--shadow-lg:0 16px 48px rgba(0,0,0,.6);
+  --color-success:#5cb85c;--color-warning:#e5a83d;--color-danger:#e0556a;--color-info:#5cb8b8;
+  --transition-fast:.15s ease;--transition-normal:.25s ease;
+}
+.btn-sm{padding:5px 12px!important;font-size:12px!important;border-radius:var(--radius-sm)!important}
+.btn-xs{padding:3px 10px!important;font-size:11px!important;border-radius:var(--radius-sm)!important}
+.btn-danger{background:var(--color-danger)!important;color:#fff!important;border:none!important}
+.btn-danger:hover{opacity:.85}
+.action-row{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center}
+.action-start{margin-top:4px}
+.section-title{display:block;font-size:12px;color:#9090a8;font-weight:600;letter-spacing:.02em;margin-bottom:4px}
+.shell-version{font-size:14px;color:var(--accent);font-weight:500}
+.section-spaced{margin-top:12px!important}
+.settings-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:4px}
+.settings-search-wrap .tool-input{padding-right:32px;margin-bottom:0}
+.search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;border:none;background:transparent;color:#8080a0;font-size:16px;line-height:1;cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:.7;transition:opacity var(--transition-fast)}
+.search-clear:hover{opacity:1;color:var(--fg);background:rgba(255,255,255,.08)}
+.search-clear.hidden{display:none}
+.settings-panel{width:620px;max-width:calc(100vw - 32px)}
+.settings-body{background:rgba(0,0,0,.12);border-radius:var(--radius-md)}
+.settings-tabs{flex-basis:132px;background:rgba(0,0,0,.28)}
+.settings-content{gap:10px;padding-right:2px}
+.settings-content .setting-row{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.045);border-radius:8px;padding:7px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;transition:background var(--transition-fast),border-color var(--transition-fast)}
+.settings-content .setting-row:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}
+.settings-content .setting-row > label{width:100%;margin-bottom:2px;font-weight:500}
+.settings-content .setting-row > input:not(.tool-input),.settings-content .setting-row > select:not(.tool-input){flex:1 1 200px;width:auto}
+.settings-content .setting-row > .tool-input{flex:1 1 160px;width:auto;min-width:0}
+.settings-content .setting-row > .btn-secondary,.settings-content .setting-row > .btn-primary{flex:none}
+.settings-content .setting-row > .tool-note{width:100%}
+.settings-content .update-section{box-shadow:var(--shadow-sm)}
+.settings-footer{padding:14px 20px;background:rgba(0,0,0,.18)}
+.settings-footer .btn-primary{padding:9px 22px}
+.settings-footer .btn-secondary{padding:9px 18px}
+.bench-body{font-size:12px}
+.tool-sec{display:flex;align-items:center;gap:6px;color:#b8b8d0;font-size:12px}
+.tool-group-header{color:#b8b8d0}
+.tool-group{background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:6px 8px;box-shadow:var(--shadow-sm)}
+.tool-actions .btn-sm,.tool-actions .btn-xs{flex:none}
+.panel-header{background:rgba(0,0,0,.16)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:760px){
+  .settings-panel{width:calc(100vw - 24px)}
+  .settings-body{flex-direction:column}
+  .settings-tabs{flex-direction:row;flex-basis:auto;width:100%;overflow-x:auto}
+  .settings-tab{text-align:center;white-space:nowrap}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}

@@ -324,7 +324,8 @@ function initSettingsTabs() {
     if (!tabs.length) return;
     const body = document.querySelector('.settings-content') || document.querySelector('.settings-body');
     if (!body) return;
-    const children = [...body.children].filter(el => el.id !== 'settings-tabs');
+    const searchWrap = body.querySelector('.settings-search-wrap');
+    const children = [...body.children].filter(el => el !== searchWrap && el.id !== 'settings-tabs');
     const firstSectionIdx = children.findIndex(el => el.classList.contains('update-section'));
     const generalEls = firstSectionIdx >= 0 ? children.slice(0, firstSectionIdx) : children;
     const sections = children.filter(el => el.classList.contains('update-section') && el.children.length > 0);
@@ -338,18 +339,21 @@ function initSettingsTabs() {
     function switchSettingsTab(name) {
         const show = groups[name] || [];
         for (const el of children) el.style.display = 'none';
+        if (searchWrap) searchWrap.style.display = '';
         for (const el of show) if (el) el.style.display = '';
         for (const tab of tabs) tab.classList.toggle('active', tab.dataset.tab === name);
         try { localStorage.setItem('settingsTab', name); } catch (_) {}
     }
-    settingsTabsData = { children, groups, switchSettingsTab };
+    settingsTabsData = { children, groups, switchSettingsTab, searchWrap };
     for (const tab of tabs) tab.addEventListener('click', () => switchSettingsTab(tab.dataset.tab));
     switchSettingsTab(localStorage.getItem('settingsTab') || 'general');
 }
 function applySettingsSearch() {
     const input = document.getElementById('settings-search');
     if (!settingsTabsData || !input) return;
+    const clear = document.getElementById('settings-search-clear');
     const query = input.value.trim().toLowerCase();
+    if (clear) clear.classList.toggle('hidden', !query);
     if (!query) { settingsTabsData.switchSettingsTab(localStorage.getItem('settingsTab') || 'general'); return; }
     for (const el of settingsTabsData.children) {
         const text = (el.textContent || '').toLowerCase();
@@ -357,6 +361,11 @@ function applySettingsSearch() {
     }
 }
 document.getElementById('settings-search')?.addEventListener('input', applySettingsSearch);
+document.getElementById('settings-search-clear')?.addEventListener('click', () => {
+    const input = document.getElementById('settings-search');
+    if (input) { input.value = ''; input.focus(); }
+    applySettingsSearch();
+});
 initSettingsTabs();
 async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}

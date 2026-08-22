@@ -40,69 +40,69 @@
 </div>
 <div id="tools-panel" class="bench-panel hidden">
 <div class="panel-header"><span>🧰 工具箱</span><button class="panel-close" id="btn-tools-close">&times;</button></div>
-<div class="bench-body" style="font-size:12px">
+<div class="bench-body">
 
 <div class="tool-sec">📁 数据备份</div>
-<div class="tool-actions"><button id="t-backup-now" class="btn-primary" style="padding:4px 10px;font-size:11px">立即备份</button><span id="t-backup-now-res" class="tool-note"></span></div>
-<div class="tool-row"><select id="t-backup-select" class="tool-input"><option value="">选择备份…</option></select><button id="t-backup-restore" class="btn-secondary" style="padding:4px 10px;font-size:11px">恢复备份</button></div>
+<div class="tool-actions"><button id="t-backup-now" class="btn-primary btn-sm">立即备份</button><span id="t-backup-now-res" class="tool-note"></span></div>
+<div class="tool-row"><select id="t-backup-select" class="tool-input"><option value="">选择备份…</option></select><button id="t-backup-restore" class="btn-secondary btn-sm">恢复备份</button></div>
 
 <div class="tool-sec">🔍 聊天全文搜索</div>
 <div class="tool-row"><input type="text" id="t-search-kw" class="tool-input" placeholder="输入关键词，回车搜索（跨全部角色卡）"></div>
 <div id="t-search-res" class="tool-detail"></div>
 
 <div class="tool-sec">📊 聊天统计</div>
-<div class="tool-actions"><button id="t-stats" class="btn-secondary" style="padding:4px 10px;font-size:11px">统计</button><span id="t-stats-res" class="tool-note"></span></div>
+<div class="tool-actions"><button id="t-stats" class="btn-secondary btn-sm">统计</button><span id="t-stats-res" class="tool-note"></span></div>
 
 <div class="tool-sec">📤 导出</div>
 <div class="tool-actions">
-<button id="t-export-cards" class="btn-secondary" style="padding:4px 10px;font-size:11px">导出角色卡</button>
-<button id="t-summarize" class="btn-secondary" style="padding:4px 10px;font-size:11px">剧情总结</button>
-<button id="t-export-html" class="btn-secondary" style="padding:4px 10px;font-size:11px">聊天导出 HTML</button>
-<button id="t-portable" class="btn-secondary" style="padding:4px 10px;font-size:11px">便携包导出</button>
+<button id="t-export-cards" class="btn-secondary btn-sm">导出角色卡</button>
+<button id="t-summarize" class="btn-secondary btn-sm">剧情总结</button>
+<button id="t-export-html" class="btn-secondary btn-sm">聊天导出 HTML</button>
+<button id="t-portable" class="btn-secondary btn-sm">便携包导出</button>
 <span id="t-export-res" class="tool-note"></span>
 </div>
 
 <div class="tool-sec">👁 角色卡速览 / 世界书</div>
-<div class="tool-row"><select id="t-card-list" class="tool-input"><option value="">选择角色卡…</option></select><button id="t-card-view" class="btn-secondary" style="padding:3px 8px;font-size:11px">查看</button></div>
+<div class="tool-row"><select id="t-card-list" class="tool-input"><option value="">选择角色卡…</option></select><button id="t-card-view" class="btn-secondary btn-xs">查看</button></div>
 <div id="t-card-res" class="tool-detail"></div>
-<div class="tool-actions"><button id="t-worlds" class="btn-secondary" style="padding:4px 10px;font-size:11px">世界书列表</button><span id="t-worlds-note" class="tool-note"></span></div>
+<div class="tool-actions"><button id="t-worlds" class="btn-secondary btn-sm">世界书列表</button><span id="t-worlds-note" class="tool-note"></span></div>
 
 <div class="tool-sec">🤖 模型服务 / 环境</div>
-<div class="tool-actions"><button id="t-model-service" class="btn-secondary" style="padding:4px 10px;font-size:11px">服务状态</button><button id="t-env" class="btn-secondary" style="padding:4px 10px;font-size:11px">环境体检</button><button id="t-health" class="btn-secondary" style="padding:4px 10px;font-size:11px">一键体检</button><button id="t-ollama" class="btn-secondary" style="padding:4px 10px;font-size:11px">Ollama 模型</button><button id="t-gpu" class="btn-secondary" style="padding:4px 10px;font-size:11px">显存/温度</button><button id="t-clash" class="btn-secondary" style="padding:4px 10px;font-size:11px">Clash 状态</button></div>
+<div class="tool-actions"><button id="t-model-service" class="btn-secondary btn-sm">服务状态</button><button id="t-env" class="btn-secondary btn-sm">环境体检</button><button id="t-health" class="btn-secondary btn-sm">一键体检</button><button id="t-ollama" class="btn-secondary btn-sm">Ollama 模型</button><button id="t-gpu" class="btn-secondary btn-sm">显存/温度</button><button id="t-clash" class="btn-secondary btn-sm">Clash 状态</button></div>
 <div id="t-env-res" class="tool-detail"></div>
 
 <div class="tool-sec">📚 本地知识库 (RAG)</div>
 <div class="tool-row"><input type="text" id="t-rag-q" class="tool-input" placeholder="输入关键词检索（文档放 userData/rag-docs/）"></div>
-<div class="tool-actions"><button id="t-rag" class="btn-secondary" style="padding:4px 10px;font-size:11px">检索</button></div>
+<div class="tool-actions"><button id="t-rag" class="btn-secondary btn-sm">检索</button></div>
 <div id="t-rag-res" class="tool-detail"></div>
 
 <div class="tool-sec">✏️ 草稿生成器（直连模型）</div>
 <div class="tool-row"><input type="text" id="t-draft-prompt" class="tool-input" placeholder="输入生成要求，如：写一段雨夜相遇的场景描写"></div>
-<div class="tool-actions"><button id="t-draft" class="btn-primary" style="padding:4px 10px;font-size:11px">生成</button><button id="t-draft-copy" class="btn-secondary" style="padding:4px 10px;font-size:11px">复制</button></div>
+<div class="tool-actions"><button id="t-draft" class="btn-primary btn-sm">生成</button><button id="t-draft-copy" class="btn-secondary btn-sm">复制</button></div>
 <div id="t-draft-res" class="tool-detail"></div>
 
 <div class="tool-sec">💬 独立对话助手</div>
-<div class="tool-actions"><button id="t-chat" class="btn-primary" style="padding:4px 10px;font-size:11px">打开独立对话窗口</button></div>
+<div class="tool-actions"><button id="t-chat" class="btn-primary btn-sm">打开独立对话窗口</button></div>
 
 <div class="tool-sec">🖥 界面</div>
-<div class="tool-actions"><button id="t-immerse" class="btn-secondary" style="padding:4px 10px;font-size:11px">沉浸模式 (F11)</button></div>
+<div class="tool-actions"><button id="t-immerse" class="btn-secondary btn-sm">沉浸模式 (F11)</button></div>
 
 <div class="tool-sec">🌐 公网隧道</div>
 <div class="tool-row"><select id="t-tunnel" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">需先设访问密码</span></div>
 <div id="t-tunnel-status" class="update-status"></div>
-<div class="tool-actions"><button id="t-tunnel-copy" class="btn-secondary" style="display:none;padding:3px 8px;font-size:11px">复制公网地址</button></div>
+<div class="tool-actions"><button id="t-tunnel-copy" class="btn-secondary btn-xs" style="display:none">复制公网地址</button></div>
 
 <div class="tool-row"><label>局域网访问</label><select id="t-lan" class="tool-input" style="width:70px"><option value="0">关</option><option value="1">开</option></select><span class="tool-note" id="t-lan-ips"></span></div>
 <div class="tool-row"><label>访问账号</label><input type="text" id="t-lan-user" class="tool-input" placeholder="留空=不认证"></div>
 <div class="tool-row"><label>访问密码</label><input type="password" id="t-lan-pass" class="tool-input" placeholder="留空=不认证"></div>
-<div class="tool-actions"><button id="t-lan-qr" class="btn-secondary" style="padding:4px 10px;font-size:11px">局域网二维码</button></div>
+<div class="tool-actions"><button id="t-lan-qr" class="btn-secondary btn-sm">局域网二维码</button></div>
 <div id="t-qr-area" class="tool-detail" style="display:none;text-align:center"><img id="t-qr-img" alt="二维码" style="max-width:220px;border-radius:6px"></div>
 
 <div class="tool-sec">🛰 ZeroTier 助手</div>
 <div id="zt-status" class="tool-note">检测中…</div>
 <div class="tool-row"><input type="text" id="zt-netid" class="tool-input" placeholder="输入 16 位网络 ID"></div>
 <div class="tool-row"><select id="zt-netlist" class="tool-input"><option value="">检测已加入网络…</option></select></div>
-<div class="tool-actions"><button id="zt-join" class="btn-secondary" style="padding:4px 10px;font-size:11px">加入网络</button><button id="zt-leave" class="btn-secondary" style="padding:4px 10px;font-size:11px">离开网络</button><button id="zt-copy" class="btn-secondary" style="padding:4px 10px;font-size:11px">复制访问地址</button></div>
+<div class="tool-actions"><button id="zt-join" class="btn-secondary btn-sm">加入网络</button><button id="zt-leave" class="btn-secondary btn-sm">离开网络</button><button id="zt-copy" class="btn-secondary btn-sm">复制访问地址</button></div>
 <div class="tool-row"><label class="auth-remember"><input type="checkbox" id="zt-allow"> 自动放行 ZeroTier/LAN 访问（关闭 ST 白名单，重启服务器生效）</label></div>
 <div id="zt-info" class="tool-detail"></div>
 
@@ -110,7 +110,7 @@
 <div class="tool-row"><label>迷你状态窗</label><select id="t-mini" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 
 <div class="tool-sec">🔍 状态栏诊断</div>
-<div class="tool-actions"><button id="t-diag-statusbar" class="btn-secondary" style="padding:4px 10px;font-size:11px">诊断</button><button id="t-fix-statusbar" class="btn-secondary" style="padding:4px 10px;font-size:11px">清理占位符</button><button id="t-render-statusbar" class="btn-secondary" style="padding:4px 10px;font-size:11px">渲染通用状态栏</button><button id="t-remember-statusbar" class="btn-secondary" style="padding:4px 10px;font-size:11px">记住新类型</button></div>
+<div class="tool-actions"><button id="t-diag-statusbar" class="btn-secondary btn-sm">诊断</button><button id="t-fix-statusbar" class="btn-secondary btn-sm">清理占位符</button><button id="t-render-statusbar" class="btn-secondary btn-sm">渲染通用状态栏</button><button id="t-remember-statusbar" class="btn-secondary btn-sm">记住新类型</button></div>
 <div id="t-diag-res" class="tool-detail"></div>
 
 </div>
@@ -150,17 +150,17 @@
 <button class="settings-tab" data-tab="integrity">完整性</button>
 </nav>
 <div class="settings-content">
-<input type="text" id="settings-search" class="tool-input" placeholder="搜索设置项…" style="margin-bottom:4px">
-<div class="setting-row"><label>服务器路径</label><input type="text" id="setting-server-path" placeholder="D:\AI\SillyTavern"><button id="setting-server-path-browse" class="btn-secondary" style="padding:2px 8px;font-size:11px">浏览…</button></div>
+<div class="settings-search-wrap"><input type="text" id="settings-search" class="tool-input" placeholder="搜索设置项…"><button id="settings-search-clear" class="search-clear" title="清除搜索" type="button">&times;</button></div>
+<div class="setting-row"><label>服务器路径</label><input type="text" id="setting-server-path" placeholder="D:\AI\SillyTavern"><button id="setting-server-path-browse" class="btn-secondary btn-xs">浏览…</button></div>
 <div class="setting-row"><label>数据路径 (--dataRoot)</label><input type="text" id="setting-data-root" disabled></div>
 <div class="setting-row"><label>窗口宽度</label><input type="number" id="setting-width" min="640" max="3840"></div>
 <div class="setting-row"><label>窗口高度</label><input type="number" id="setting-height" min="480" max="2160"></div>
 <div class="setting-row"><label>关闭窗口行为</label><select id="setting-close-behavior"><option value="ask">首次询问</option><option value="tray">最小化到托盘</option><option value="quit">直接退出</option></select></div>
 <div class="setting-row version-row"><label>SillyTavern 版本</label><span id="version-display">检测中...</span></div>
-<div class="setting-row version-row"><label>套壳版本</label><span id="shell-version-display" style="font-size:14px;color:var(--accent);font-weight:500">检测中...</span> <button id="btn-shell-changelog" class="btn-secondary" style="margin-top:4px;padding:4px 10px;font-size:11px">查看更新日志</button></div>
-<div class="update-section" style="margin-top:8px">
-<label style="font-size:12px;color:#9090a8;font-weight:500">🧰 工具设置</label>
-<div class="setting-row"><label>备份目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"><button id="t-backup-dir-browse" class="btn-secondary" style="padding:2px 8px;font-size:11px">浏览…</button></div>
+<div class="setting-row version-row"><label>套壳版本</label><span id="shell-version-display" class="shell-version">检测中...</span> <button id="btn-shell-changelog" class="btn-secondary btn-sm" style="margin-top:4px">查看更新日志</button></div>
+<div class="update-section section-spaced">
+<label class="section-title">🧰 工具设置</label>
+<div class="setting-row"><label>备份目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"><button id="t-backup-dir-browse" class="btn-secondary btn-xs">浏览…</button></div>
 <div class="setting-row"><label>自动备份</label><label class="tool-switch"><input type="checkbox" id="t-backup-auto"><span class="tool-slider"></span></label><select id="t-backup-interval" class="tool-input" style="width:110px;flex:none"><option value="24">每 24 小时</option><option value="48">每 48 小时</option><option value="72">每 72 小时</option></select></div>
 <div class="setting-row"><label>保留份数</label><input type="number" id="t-backup-keep" class="tool-input" min="1" max="20" value="5" style="width:70px"></div>
 <div class="setting-row"><label>zip 压缩</label><select id="t-backup-zip" class="tool-input" style="width:70px"><option value="1">开</option><option value="0">关</option></select><span class="tool-note">压缩省空间</span></div>
@@ -174,21 +174,21 @@
 <div class="setting-row"><label>UI 字体</label><select id="t-font" class="tool-input"><option value="1">100%</option><option value="1.1">110%</option><option value="0.9">90%</option></select></div>
 
 <div class="setting-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
-<div class="setting-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary" style="padding:3px 8px;font-size:11px">设置</button><span id="t-pin-status" class="tool-note"></span></div>
+<div class="setting-row"><label>PIN 锁</label><input type="password" id="t-pin" class="tool-input" placeholder="留空清除" style="width:110px"><button id="t-pin-set" class="btn-secondary btn-xs">设置</button><span id="t-pin-status" class="tool-note"></span></div>
 <div class="setting-row"><label>生成通知</label><select id="t-notify" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>崩溃提醒</label><select id="t-crash" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
 <div id="t-rollback-list" class="tool-detail"></div>
 </div>
-<div class="update-section" style="margin-top:8px">
+<div class="update-section section-spaced">
 
 
 
 
 </div>
-<div class="update-section" style="margin-top:8px">
-<label style="font-size:12px;color:#9090a8;font-weight:500">服务器控制</label>
-<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+<div class="update-section section-spaced">
+<label class="section-title">服务器控制</label>
+<div class="action-row">
 <button id="btn-restart-server" class="btn-primary">重启服务器</button>
 <button id="btn-open-st-dir" class="btn-secondary">打开 ST 目录</button>
 <button id="btn-open-data-dir" class="btn-secondary">打开数据目录</button>
@@ -196,23 +196,23 @@
 <div id="server-ctl-status" class="update-status"></div>
 </div>
 <div class="update-section" id="update-section-st">
-<label style="font-size:12px;color:#9090a8;font-weight:500">SillyTavern 更新</label>
+<label class="section-title">SillyTavern 更新</label>
 <button id="btn-check-update" class="btn-primary">检查更新</button>
 <div id="update-status" class="update-status"></div>
 <div id="update-progress" class="update-progress hidden"><div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div><span id="progress-text"></span></div>
 </div>
-<div class="update-section" id="update-section-shell" style="margin-top:8px">
-<label style="font-size:12px;color:#9090a8;font-weight:500">套壳更新</label>
+<div class="update-section section-spaced" id="update-section-shell">
+<label class="section-title">套壳更新</label>
 <div class="setting-row"><label>更新版本</label><select id="shell-channel"><option value="full">完整版</option><option value="lite">轻量版</option></select></div>
 <div id="shell-update-status" class="update-status"></div>
 <div id="shell-update-progress" class="update-progress hidden"><div class="progress-bar"><div class="progress-fill" id="shell-progress-fill"></div></div><span id="shell-progress-text"></span></div>
-<div style="display:flex;gap:8px;margin-top:4px">
+<div class="action-row">
 <button id="btn-check-shell-update" class="btn-primary">检查套壳更新</button>
 </div>
 </div>
-<div class="update-section" style="margin-top:8px">
-<label style="font-size:12px;color:#9090a8;font-weight:500">完整性检测</label>
-<button id="btn-check-integrity" class="btn-primary" style="margin-top:4px">检测 SillyTavern 完整性</button>
+<div class="update-section section-spaced">
+<label class="section-title">完整性检测</label>
+<button id="btn-check-integrity" class="btn-primary action-start">检测 SillyTavern 完整性</button>
 <div id="integrity-status" class="update-status"></div>
 </div>
 </div>
