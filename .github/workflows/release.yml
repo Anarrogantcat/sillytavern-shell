@@ -39,3 +39,45 @@ jobs:
           } else {
             gh release edit $tag --draft=false
           }
+
+      - name: Verify and upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $ver = $tag -replace '^v', ''
+          $dir = 'dist-electron-v3-lite'
+          $expected = @(
+            "SillyTavern-Lite-Setup-$ver.exe",
+            "SillyTavern-Lite-Setup-$ver.exe.blockmap",
+            'lite.yml'
+          )
+          $releaseOk = $false
+          for ($i = 0; $i -lt 12; $i++) {
+            $null = gh release view $tag --json tagName 2>$null
+            if ($LASTEXITCODE -eq 0) { $releaseOk = $true; break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $releaseOk) {
+            Write-Error "Release $tag not found after waiting"
+            exit 1
+          }
+          $existing = @(gh release view $tag --json assets --jq '.assets[].name' 2>$null)
+          foreach ($name in $expected) {
+            $file = Join-Path $dir $name
+            if (-not (Test-Path $file)) {
+              Write-Host "SKIP missing local file: $file"
+              continue
+            }
+            if ($existing -contains $name) {
+              Write-Host "OK asset exists: $name"
+            } else {
+              Write-Host "Uploading missing asset: $name"
+              gh release upload $tag $file --clobber
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Failed to upload $name"
+                exit 1
+              }
+            }
+          }

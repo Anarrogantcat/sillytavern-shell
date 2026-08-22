@@ -1,5 +1,6 @@
 {
   "directories": { "output": "../../dist-electron-v3-lite" },
+  "compression": "maximum",
   "appId": "com.sillytavern.desktop.lite",
   "productName": "SillyTavern",
   "publish": { "provider": "github", "owner": "Anarrogantcat", "repo": "sillytavern-shell", "channel": "lite" },
