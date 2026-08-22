@@ -188,6 +188,20 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .settings-footer{padding:14px 20px;background:rgba(0,0,0,.18)}
 .settings-footer .btn-primary{padding:9px 22px}
 .settings-footer .btn-secondary{padding:9px 18px}
+/* 用户可调 UI：密度/面板宽度 */
+body[data-ui-density="compact"] .settings-body{padding:8px 10px}
+body[data-ui-density="compact"] .settings-content{gap:6px}
+body[data-ui-density="compact"] .settings-content .setting-row{min-height:28px;padding:3px 8px}
+body[data-ui-density="compact"] .settings-content .setting-row > input:not(.tool-input),body[data-ui-density="compact"] .settings-content .setting-row > select:not(.tool-input),body[data-ui-density="compact"] .settings-content .setting-row > .tool-input{min-height:26px;height:26px;padding:3px 8px;font-size:12px}
+body[data-ui-density="comfortable"] .settings-body{padding:16px 18px}
+body[data-ui-density="comfortable"] .settings-content{gap:12px}
+body[data-ui-density="comfortable"] .settings-content .setting-row{min-height:44px;padding:8px 12px}
+body[data-ui-density="comfortable"] .settings-content .setting-row > input:not(.tool-input),body[data-ui-density="comfortable"] .settings-content .setting-row > select:not(.tool-input),body[data-ui-density="comfortable"] .settings-content .setting-row > .tool-input{min-height:34px;height:34px;padding:6px 12px;font-size:13px}
+body[data-settings-width="narrow"] .settings-panel{width:600px}
+body[data-settings-width="wide"] .settings-panel{width:860px}
+body[data-tools-width="narrow"] #tools-panel{width:340px}
+body[data-tools-width="wide"] #tools-panel{width:480px}
+
 .bench-body{font-size:12px}
 .tool-sec{display:flex;align-items:center;gap:6px;color:#b8b8d0;font-size:12px}
 .tool-group-header{color:#b8b8d0}

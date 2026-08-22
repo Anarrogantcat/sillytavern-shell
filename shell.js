@@ -801,6 +801,37 @@ try {
         if (sel && sel.value === 'system') applyTheme('system');
     });
 } catch (_) {}
+function applyUiLayoutPrefs() {
+    const density = localStorage.getItem('uiDensity') || 'normal';
+    const settingsWidth = localStorage.getItem('settingsPanelWidth') || 'medium';
+    const toolsWidth = localStorage.getItem('toolsPanelWidth') || 'medium';
+    document.body.dataset.uiDensity = density;
+    document.body.dataset.settingsWidth = settingsWidth;
+    document.body.dataset.toolsWidth = toolsWidth;
+    const d = document.getElementById('t-ui-density');
+    const sw = document.getElementById('t-settings-width');
+    const tw = document.getElementById('t-tools-width');
+    if (d) d.value = density;
+    if (sw) sw.value = settingsWidth;
+    if (tw) tw.value = toolsWidth;
+}
+applyUiLayoutPrefs();
+document.getElementById('t-ui-density')?.addEventListener('change', (e) => {
+    localStorage.setItem('uiDensity', e.target.value);
+    applyUiLayoutPrefs();
+    showToast('界面密度已更新', 'success');
+});
+document.getElementById('t-settings-width')?.addEventListener('change', (e) => {
+    localStorage.setItem('settingsPanelWidth', e.target.value);
+    applyUiLayoutPrefs();
+    showToast('设置面板宽度已更新', 'success');
+});
+document.getElementById('t-tools-width')?.addEventListener('change', (e) => {
+    localStorage.setItem('toolsPanelWidth', e.target.value);
+    applyUiLayoutPrefs();
+    showToast('工具箱宽度已更新', 'success');
+});
+
 
 async function renderUiSettings() {
     const u = await TL()?.uiGet();
