@@ -591,6 +591,22 @@ document.getElementById('settings-search-clear')?.addEventListener('click', () =
 });
 initSettingsTabs();
 applySettingsSearch();
+function normalizeSettingRows() {
+    document.querySelectorAll('.settings-content .setting-row').forEach(row => {
+        if (row.dataset.normalized) return;
+        const label = row.querySelector(':scope > label:not(.tool-switch)');
+        const notes = [...row.querySelectorAll(':scope > .tool-note')];
+        const controls = [...row.children].filter(el => el !== label && !notes.includes(el));
+        if (!controls.length) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'setting-controls';
+        controls.forEach(el => wrap.appendChild(el));
+        row.insertBefore(wrap, notes[0] || null);
+        notes.forEach(n => n.classList.add('setting-hint'));
+        row.dataset.normalized = '1';
+    });
+}
+normalizeSettingRows();
 async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
 btnSettings?.addEventListener('click',openSettings);
