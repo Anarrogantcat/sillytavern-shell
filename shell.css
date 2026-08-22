@@ -176,7 +176,7 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .settings-tabs{flex:0 0 120px;background:transparent;border-radius:0}
 .settings-content{gap:0;padding:0 6px 0 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;overflow-y:auto;scrollbar-gutter:stable;min-height:0;flex:1}
 .settings-content > .settings-search-wrap{grid-column:1 / -1;position:sticky;top:0;z-index:2;background:var(--panel-bg);padding:0 0 6px;margin-bottom:6px;border-bottom:1px solid var(--border)}
-.settings-content .setting-row{background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);border-radius:0;padding:5px 4px;min-height:34px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;transition:background var(--transition-fast)}
+.settings-content .setting-row{background:transparent;border:none;border-radius:0;padding:5px 4px;min-height:34px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;transition:background var(--transition-fast)}
 .settings-content .setting-row:hover{background:rgba(255,255,255,.025)}
 .settings-content .setting-row > label:not(.tool-switch){width:132px;flex:none;margin:0;font-weight:500;font-size:12px}
 .settings-content .setting-row > label.tool-switch{width:36px;height:20px;margin:0;flex:none}
@@ -202,6 +202,11 @@ body[data-settings-width="narrow"] .settings-panel{width:600px}
 body[data-settings-width="wide"] .settings-panel{width:860px}
 body[data-tools-width="narrow"] #tools-panel{width:340px}
 body[data-tools-width="wide"] #tools-panel{width:480px}
+/* 圆角控件：减少方块感 */
+.settings-content .setting-row input:not(.tool-input),.settings-content .setting-row select:not(.tool-input),.settings-content .setting-row .tool-input,.tool-input{border-radius:8px}
+.settings-content .setting-row .btn-secondary,.settings-content .setting-row .btn-primary,.btn-secondary,.btn-primary,.btn-sm,.btn-xs{border-radius:8px}
+.settings-tab{border-radius:8px}
+
 
 .bench-body{font-size:12px}
 .tool-sec{display:flex;align-items:center;gap:6px;color:#b8b8d0;font-size:12px}
