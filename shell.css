@@ -84,6 +84,7 @@ body.night #titlebar,body.night #terminal-panel,body.night #bench-panel,body.nig
 /* ── 主题变量（深紫/深蓝/纯黑）── */
 body[data-theme="blue"]{--accent:#4a7ccf;--bg:#0d1520;--bg2:#13202f;--panel-bg:#122033}
 body[data-theme="black"]{--accent:#8a8a9a;--bg:#0a0a0a;--bg2:#121212;--panel-bg:#141414;--border:rgba(255,255,255,.08)}
+body[data-theme="light"]{--bg:#f2f2f7;--bg2:#ffffff;--panel-bg:#ffffff;--fg:#2a2a38;--btn-hover:rgba(0,0,0,.06);--btn-active:rgba(0,0,0,.1);--accent:#6a4fc0;--border:rgba(0,0,0,.1);--input-bg:#f4f4f8;color-scheme:light}
 body[data-font="1.1"]{--ui-font:1.1}
 body[data-font="0.9"]{--ui-font:0.9}
 body{font-size:calc(14px * var(--ui-font, 1))}
@@ -221,6 +222,28 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .float-btn,.float-toggle{border-radius:10px}
 .panel-action.active{color:var(--accent);opacity:1}
 .panel-action.active:hover{color:var(--accent)}
+
+/* ── v1.20.0 Toast/确认框/浅色主题 ───────────────── */
+#toast-container{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;width:auto;max-width:min(92vw,520px)}
+.toast{display:flex;align-items:center;gap:8px;background:rgba(20,20,36,.96);color:#f0ede6;border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;box-shadow:var(--shadow-md);opacity:0;transform:translateY(12px);transition:opacity .25s,transform .25s;pointer-events:auto;max-width:100%}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.out{opacity:0;transform:translateY(8px)}
+.toast.success{border-color:var(--color-success)}
+.toast.error{border-color:var(--color-danger)}
+.toast.info{border-color:var(--border)}
+.toast.warning{border-color:var(--color-warning)}
+.toast-icon{flex:none;font-size:14px;line-height:1}
+.toast-msg{flex:1;min-width:0;word-break:break-word}
+.toast-action{flex:none;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+.toast-close{flex:none;background:none;border:none;color:#9090a8;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
+.toast-close:hover{color:#fff}
+.confirm-overlay{z-index:2147483646}
+.confirm-panel{width:380px;max-width:calc(100vw - 32px);background:var(--panel-bg);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);padding:20px;display:flex;flex-direction:column;gap:12px}
+.confirm-title{font-size:15px;font-weight:600;color:var(--fg)}
+.confirm-message{font-size:13px;line-height:1.6;color:#a8a8c0;white-space:pre-wrap;word-break:break-word}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+body[data-theme="light"] .toast{background:rgba(255,255,255,.96);color:#2a2a38}
+body[data-theme="light"] .confirm-message{color:#55556a}
 
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:760px){

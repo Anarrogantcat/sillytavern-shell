@@ -206,19 +206,104 @@ function initToolboxGroups() {
 initToolboxGroups();
 const { window:W, server:S, terminal:T, settings:ST, app:A, update:U } = window.electronAPI||{};
 // Toast 轻提示（替代部分 alert，套壳内展示）
-function showToast(message, type = 'info') {
-    let toast = document.getElementById('shell-toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'shell-toast';
-        document.body.appendChild(toast);
+function showToast(message, type = 'info', opts = {}) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
     }
-    toast.textContent = message;
-    toast.className = 'shell-toast ' + type;
-    toast.classList.add('show');
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => toast.classList.remove('show'), 2600);
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    const iconMap = { success: '✓', error: '✕', info: 'ℹ', warning: '⚠' };
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.textContent = iconMap[type] || iconMap.info;
+    const msg = document.createElement('span');
+    msg.className = 'toast-msg';
+    msg.textContent = message;
+    toast.appendChild(icon);
+    toast.appendChild(msg);
+    if (opts && typeof opts === 'object' && opts.actionText && typeof opts.action === 'function') {
+        const btn = document.createElement('button');
+        btn.className = 'toast-action';
+        btn.textContent = opts.actionText;
+        btn.addEventListener('click', () => { try { opts.action(); } catch (_) {} dismiss(); });
+        toast.appendChild(btn);
+    }
+    const close = document.createElement('button');
+    close.className = 'toast-close';
+    close.textContent = '×';
+    close.setAttribute('aria-label', '关闭提示');
+    const dismiss = () => {
+        toast.classList.add('out');
+        setTimeout(() => toast.remove(), 250);
+    };
+    close.addEventListener('click', dismiss);
+    toast.appendChild(close);
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    const duration = (opts && typeof opts.duration === 'number') ? opts.duration : 3200;
+    setTimeout(dismiss, duration);
 }
+function showConfirm({ title = '确认操作', message = '', confirmText = '确定', cancelText = '取消', danger = false } = {}) {
+    return new Promise(resolve => {
+        let overlay = document.getElementById('confirm-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'confirm-overlay';
+            overlay.className = 'overlay confirm-overlay hidden';
+            overlay.innerHTML = `<div class="confirm-panel" role="dialog" aria-modal="true" aria-label="确认操作">
+                <div class="confirm-title"></div>
+                <div class="confirm-message"></div>
+                <div class="confirm-actions">
+                    <button type="button" class="btn-secondary confirm-cancel"></button>
+                    <button type="button" class="btn-primary confirm-ok"></button>
+                </div>
+            </div>`;
+            document.body.appendChild(overlay);
+        }
+        const titleEl = overlay.querySelector('.confirm-title');
+        const msgEl = overlay.querySelector('.confirm-message');
+        const okBtn = overlay.querySelector('.confirm-ok');
+        const cancelBtn = overlay.querySelector('.confirm-cancel');
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        okBtn.textContent = confirmText;
+        cancelBtn.textContent = cancelText;
+        okBtn.className = 'btn-primary confirm-ok' + (danger ? ' btn-danger' : '');
+        overlay.classList.remove('hidden');
+        const done = (v) => {
+            overlay.classList.add('hidden');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            overlay.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKey);
+            resolve(v);
+        };
+        const onOk = () => done(true);
+        const onCancel = () => done(false);
+        const onBackdrop = e => { if (e.target === overlay) done(false); };
+        const onKey = e => {
+            if (e.key === 'Escape') done(false);
+            if (e.key === 'Enter' && e.target === okBtn) done(true);
+            if (e.key === 'Tab') {
+                const focusables = overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+                if (!focusables.length) return;
+                const list = [...focusables];
+                const first = list[0], last = list[list.length - 1];
+                if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+                else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+            }
+        };
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        overlay.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKey);
+        cancelBtn.focus();
+    });
+}
+
 const $=s=>document.querySelector(s);
 const webview=$('#sillytavern-webview'),loading=$('#loading-overlay'),loadingLog=$('#loading-log');
 const termPanel=$('#terminal-panel'),termOut=$('#terminal-output'),termInput=$('#terminal-input');
@@ -628,7 +713,8 @@ async function renderTools() {
     setNote(tEl.rollbackInfo, rl.length ? `可用 ${rl.length} 个回滚包` : '无回滚包');
     setDetailHtml(tEl.rollbackList, rl.length ? rl.map(r => `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="${escapeHtml(r.version)}">回滚到 v${escapeHtml(r.version)}</button>`).join('') : '');
     tEl.rollbackList.querySelectorAll('[data-rollback]').forEach(b => b.addEventListener('click', async () => {
-        if (confirm(`确定回滚到 v${b.dataset.rollback}？应用将退出并安装旧版。`)) {
+        const ok = await showConfirm({ title: '版本回滚', message: `确定回滚到 v${b.dataset.rollback}？应用将退出并安装旧版。`, confirmText: '回滚', danger: true });
+        if (ok) {
             await TL().rollbackInstall(b.dataset.rollback);
         }
     }));
@@ -697,6 +783,21 @@ try {
 } catch (_) {}
 
 // ── 设置项绑定（局域网/置顶/主题/字体/迷你窗/zip/崩溃提醒）─────────
+function applyTheme(theme) {
+    let resolved = theme || 'purple';
+    if (resolved === 'system') {
+        resolved = window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'purple';
+    }
+    document.body.dataset.theme = resolved;
+    document.body.dataset.themePref = resolved === 'light' || resolved === 'purple' || resolved === 'blue' || resolved === 'black' ? resolved : theme;
+}
+try {
+    window.matchMedia?.('(prefers-color-scheme: light)')?.addEventListener?.('change', () => {
+        const sel = document.getElementById('t-theme');
+        if (sel && sel.value === 'system') applyTheme('system');
+    });
+} catch (_) {}
+
 async function renderUiSettings() {
     const u = await TL()?.uiGet();
     if (u) {
@@ -706,7 +807,7 @@ async function renderUiSettings() {
         $('#t-mini').value = u.miniStatus ? '1' : '0';
         document.body.dataset.miniEnabled = u.miniStatus ? '1' : '0';
         if (u.miniStatus) miniDismissed = false; // 重新开启后恢复自动显示
-        document.body.dataset.theme = u.theme || 'purple';
+        applyTheme(u.theme || 'purple');
         document.body.dataset.font = String(u.fontScale || 1);
         // 迷你窗：启动即显示空闲状态（清除 v1.8.8 及以前 × 按钮的 localStorage 残留）
         localStorage.removeItem('miniHidden');
@@ -759,7 +860,7 @@ document.getElementById('t-lan-qr')?.addEventListener('click', async () => {
 });
 $('#t-lan-pass')?.addEventListener('input', () => { clearTimeout(lanSaveTimer); lanSaveTimer = setTimeout(() => TL()?.lanSave({ pass: $('#t-lan-pass').value }), 400); });
 $('#t-top')?.addEventListener('change', async () => { await TL()?.uiSet('alwaysOnTop', $('#t-top').value === '1'); });
-$('#t-theme')?.addEventListener('change', async () => { const v = $('#t-theme').value; await TL()?.uiSet('theme', v); document.body.dataset.theme = v; });
+$('#t-theme')?.addEventListener('change', async () => { const v = $('#t-theme').value; await TL()?.uiSet('theme', v); applyTheme(v); });
 $('#t-font')?.addEventListener('change', async () => { const v = $('#t-font').value; await TL()?.uiSet('fontScale', Number(v)); document.body.dataset.font = v; });
 $('#t-mini')?.addEventListener('change', async () => {
     const on = $('#t-mini').value === '1';
@@ -1100,7 +1201,8 @@ document.getElementById('t-backup-restore')?.addEventListener('click', async () 
     const sel = document.getElementById('t-backup-select');
     const name = sel?.value;
     if (!name) { setNote(tEl.backupNowRes, '请先选择要恢复的备份'); return; }
-    if (!confirm('确定从备份恢复数据？恢复前会自动备份当前数据，服务器会暂时重启。')) return;
+    const ok = await showConfirm({ title: '恢复备份', message: '确定从备份恢复数据？恢复前会自动备份当前数据，服务器会暂时重启。', confirmText: '恢复', danger: true });
+    if (!ok) return;
     setNote(tEl.backupNowRes, '恢复中…');
     const r = await window.electronAPI?.tools?.backupRestore?.(name);
     setNote(tEl.backupNowRes, r?.ok ? '✅ 恢复完成' : '❌ 恢复失败: ' + (r?.error || '未知错误'));

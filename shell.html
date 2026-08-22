@@ -117,7 +117,7 @@
 </div>
 <div id="mini-status" class="mini-status hidden"><span id="mini-dot" class="mini-dot"></span><span id="mini-text">-</span><button id="mini-close" title="隐藏迷你状态窗">&times;</button></div>
 <div id="lock-overlay" class="lock-overlay hidden">
-<div class="lock-box">
+<div class="lock-box" role="dialog" aria-modal="true" aria-label="已锁定">
 <div style="font-size:28px;margin-bottom:8px">🔒</div>
 <div class="lock-title">已锁定</div>
 <input type="password" id="lock-pin" class="lock-input" placeholder="输入 PIN 解锁" autocomplete="off">
@@ -127,7 +127,7 @@
 </div>
 
 <div id="auth-overlay" class="overlay hidden">
-<div class="auth-panel">
+<div class="auth-panel" role="dialog" aria-modal="true" aria-label="需要登录">
 <div class="panel-header"><span>🔐 需要登录</span><button class="panel-close" id="btn-auth-cancel">&times;</button></div>
 <div class="auth-body">
 <input type="text" id="auth-user" class="tool-input" placeholder="basicAuth 账号" autocomplete="off">
@@ -138,7 +138,7 @@
 </div>
 </div>
 <div id="settings-overlay" class="overlay hidden">
-<div class="settings-panel">
+<div class="settings-panel" role="dialog" aria-modal="true" aria-label="设置">
 <div class="panel-header"><span>⚙ 设置</span><button class="panel-close" id="btn-settings-close">&times;</button></div>
 <div class="settings-body">
 
@@ -170,7 +170,7 @@
 
 <div class="setting-row"><label>开机自启</label><select id="t-autostart" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
 <div class="setting-row"><label>窗口置顶</label><select id="t-top" class="tool-input"><option value="0">关</option><option value="1">开</option></select></div>
-<div class="setting-row"><label>界面主题</label><select id="t-theme" class="tool-input"><option value="purple">深紫</option><option value="blue">深蓝</option><option value="black">纯黑</option></select></div>
+<div class="setting-row"><label>界面主题</label><select id="t-theme" class="tool-input"><option value="system">跟随系统</option><option value="purple">深紫</option><option value="blue">深蓝</option><option value="black">纯黑</option><option value="light">浅色</option></select></div>
 <div class="setting-row"><label>UI 字体</label><select id="t-font" class="tool-input"><option value="1">100%</option><option value="1.1">110%</option><option value="0.9">90%</option></select></div>
 
 <div class="setting-row"><label>深夜模式</label><select id="t-night" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">22:00-07:00 自动暖色</span></div>
