@@ -175,10 +175,11 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .settings-content{gap:10px;padding-right:2px}
 .settings-content .setting-row{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.045);border-radius:8px;padding:7px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;transition:background var(--transition-fast),border-color var(--transition-fast)}
 .settings-content .setting-row:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}
-.settings-content .setting-row > label{width:100%;margin-bottom:2px;font-weight:500}
+.settings-content .setting-row > label:not(.tool-switch){width:100%;margin-bottom:2px;font-weight:500}
+.settings-content .setting-row > label.tool-switch{width:36px;height:20px;margin:0;flex:none}
 .settings-content .setting-row > input:not(.tool-input),.settings-content .setting-row > select:not(.tool-input){flex:1 1 200px;width:auto}
 .settings-content .setting-row > .tool-input{flex:1 1 160px;width:auto;min-width:0}
-.settings-content .setting-row > .btn-secondary,.settings-content .setting-row > .btn-primary{flex:none}
+.settings-content .setting-row > .btn-secondary,.settings-content .setting-row > .btn-primary,.settings-content .setting-row > .tool-switch{flex:none}
 .settings-content .setting-row > .tool-note{width:100%}
 .settings-content .update-section{box-shadow:var(--shadow-sm)}
 .settings-footer{padding:14px 20px;background:rgba(0,0,0,.18)}
