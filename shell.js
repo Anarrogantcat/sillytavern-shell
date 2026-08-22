@@ -48,9 +48,35 @@ function initToolboxGroups() {
     }
     let collapsed = [];
     try { collapsed = JSON.parse(localStorage.getItem(collapsedKey) || '[]'); } catch (_) {}
+    const favKey = 'toolboxFavoriteGroups';
+    const getFavorites = () => {
+        try { return JSON.parse(localStorage.getItem(favKey) || '[]'); } catch (_) { return []; }
+    };
     for (const w of wraps) {
         if (collapsed.includes(w.dataset.key)) w.classList.add('collapsed');
-        w.querySelector('.tool-group-header')?.addEventListener('click', (e) => {
+        const header = w.querySelector('.tool-group-header');
+        // 收藏星标
+        const star = document.createElement('span');
+        star.className = 'tool-group-star';
+        star.title = '收藏/取消收藏';
+        star.setAttribute('role', 'button');
+        star.textContent = '☆';
+        header?.insertBefore(star, header.querySelector('.tool-group-toggle'));
+        if (getFavorites().includes(w.dataset.key)) {
+            w.classList.add('favorite');
+            star.textContent = '★';
+        }
+        star?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const favs = getFavorites();
+            const key = w.dataset.key;
+            const idx = favs.indexOf(key);
+            if (idx >= 0) favs.splice(idx, 1); else favs.push(key);
+            localStorage.setItem(favKey, JSON.stringify(favs));
+            w.classList.toggle('favorite', idx < 0);
+            star.textContent = idx < 0 ? '★' : '☆';
+        });
+        header?.addEventListener('click', (e) => {
             if (e.target.closest('.tool-group-toggle')) {
                 w.classList.toggle('collapsed');
                 let arr = [];
@@ -61,6 +87,95 @@ function initToolboxGroups() {
             }
         });
     }
+    // 收藏组置顶
+    for (const key of [...getFavorites()].reverse()) {
+        const w = wraps.find(x => x.dataset.key === key);
+        if (w) body.insertBefore(w, body.firstChild);
+    }
+    // 工具箱工具栏：搜索 + 展开/折叠
+    const toolbar = document.createElement('div');
+    toolbar.className = 'toolbox-toolbar';
+    toolbar.innerHTML = `
+        <div class="toolbox-search-wrap">
+            <input type="text" id="toolbox-search" class="tool-input" placeholder="搜索工具…">
+            <button id="toolbox-search-clear" class="search-clear" type="button" title="清除搜索">&times;</button>
+        </div>
+        <div class="toolbox-toolbar-actions">
+            <button id="toolbox-expand-all" class="btn-secondary btn-xs" type="button">全部展开</button>
+            <button id="toolbox-collapse-all" class="btn-secondary btn-xs" type="button">全部折叠</button>
+        </div>
+    `;
+    body.insertBefore(toolbar, body.firstChild);
+    // 最近使用
+    const recentBox = document.createElement('div');
+    recentBox.id = 'toolbox-recent';
+    recentBox.className = 'toolbox-recent hidden';
+    body.insertBefore(recentBox, toolbar.nextSibling);
+    const recentKey = 'toolboxRecent';
+    const getRecent = () => {
+        try { return JSON.parse(localStorage.getItem(recentKey) || '[]'); } catch (_) { return []; }
+    };
+    function recordRecent(key) {
+        const arr = getRecent().filter(x => x !== key);
+        arr.unshift(key);
+        if (arr.length > 6) arr.length = 6;
+        localStorage.setItem(recentKey, JSON.stringify(arr));
+        renderRecent();
+    }
+    function renderRecent() {
+        const arr = getRecent();
+        const chips = arr.map(key => {
+            const w = body.querySelector(`.tool-group[data-key="${String(key).replace(/"/g, '\\"')}"]`);
+            if (!w) return '';
+            return `<button type="button" class="recent-chip" data-key="${String(key).replace(/"/g, '&quot;')}">${String(w.dataset.key).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</button>`;
+        }).join('');
+        if (!chips) { recentBox.classList.add('hidden'); recentBox.innerHTML = ''; return; }
+        recentBox.classList.remove('hidden');
+        recentBox.innerHTML = '<span class="recent-label">最近使用</span>' + chips;
+        recentBox.querySelectorAll('.recent-chip').forEach(chip => chip.addEventListener('click', () => {
+            const w = body.querySelector(`.tool-group[data-key="${String(chip.dataset.key).replace(/"/g, '\\"')}"]`);
+            if (!w) return;
+            if (searchInput) { searchInput.value = ''; applyToolboxSearch(); }
+            w.classList.remove('collapsed');
+            w.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }));
+    }
+    body.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn || !btn.closest('.tool-group-body')) return;
+        const w = btn.closest('.tool-group');
+        if (w && w.dataset.key) recordRecent(w.dataset.key);
+    });
+    body.addEventListener('change', (e) => {
+        const w = e.target.closest('.tool-group');
+        if (w && w.dataset.key && (e.target.matches('select,input'))) recordRecent(w.dataset.key);
+    });
+    renderRecent();
+    // 搜索过滤
+    const searchInput = toolbar.querySelector('#toolbox-search');
+    const searchClear = toolbar.querySelector('#toolbox-search-clear');
+    function applyToolboxSearch() {
+        const q = searchInput.value.trim().toLowerCase();
+        searchClear.classList.toggle('hidden', !q);
+        for (const w of body.querySelectorAll('.tool-group')) {
+            const hit = !q || (w.textContent || '').toLowerCase().includes(q);
+            w.style.display = hit ? '' : 'none';
+            if (q && hit) w.classList.remove('collapsed');
+        }
+    }
+    searchInput.addEventListener('input', applyToolboxSearch);
+    searchClear.addEventListener('click', () => {
+        searchInput.value = '';
+        applyToolboxSearch();
+        searchInput.focus();
+    });
+    toolbar.querySelector('#toolbox-expand-all').addEventListener('click', () => {
+        for (const w of body.querySelectorAll('.tool-group')) w.classList.remove('collapsed');
+    });
+    toolbar.querySelector('#toolbox-collapse-all').addEventListener('click', () => {
+        for (const w of body.querySelectorAll('.tool-group')) w.classList.add('collapsed');
+    });
+    applyToolboxSearch();
     // 拖拽排序
     let dragKey = null;
     body.addEventListener('dragstart', (e) => {
