@@ -202,10 +202,12 @@ body[data-settings-width="narrow"] .settings-panel{width:600px}
 body[data-settings-width="wide"] .settings-panel{width:860px}
 body[data-tools-width="narrow"] #tools-panel{width:340px}
 body[data-tools-width="wide"] #tools-panel{width:480px}
-/* 圆角控件：减少方块感 */
-.settings-content .setting-row input:not(.tool-input),.settings-content .setting-row select:not(.tool-input),.settings-content .setting-row .tool-input,.tool-input{border-radius:8px}
-.settings-content .setting-row .btn-secondary,.settings-content .setting-row .btn-primary,.btn-secondary,.btn-primary,.btn-sm,.btn-xs{border-radius:8px}
-.settings-tab{border-radius:8px}
+/* 无边框/下划线控件：去掉方块感 */
+.settings-content .setting-row input:not(.tool-input),.settings-content .setting-row select:not(.tool-input),.settings-content .setting-row .tool-input{background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.18);border-radius:0;box-shadow:none;padding-left:2px;padding-right:2px}
+.settings-content .setting-row input:not(.tool-input):focus,.settings-content .setting-row select:not(.tool-input):focus,.settings-content .setting-row .tool-input:focus{border-bottom-color:var(--accent);border-radius:0}
+.settings-content .setting-row .btn-secondary,.settings-content .setting-row .btn-primary,.btn-secondary,.btn-primary,.btn-sm,.btn-xs{border-radius:999px}
+.settings-tab{border-radius:6px}
+.settings-tab.active{background:transparent;color:var(--accent);box-shadow:inset 3px 0 0 var(--accent);border-radius:0}
 
 
 .bench-body{font-size:12px}
