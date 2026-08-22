@@ -177,8 +177,8 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .settings-content .setting-row:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}
 .settings-content .setting-row > label:not(.tool-switch){width:100%;margin-bottom:2px;font-weight:500}
 .settings-content .setting-row > label.tool-switch{width:36px;height:20px;margin:0;flex:none}
-.settings-content .setting-row > input:not(.tool-input),.settings-content .setting-row > select:not(.tool-input){flex:1 1 200px;width:auto}
-.settings-content .setting-row > .tool-input{flex:1 1 160px;width:auto;min-width:0}
+.settings-content .setting-row > input:not(.tool-input),.settings-content .setting-row > select:not(.tool-input){flex:1 1 200px;width:auto;min-height:30px;height:30px;padding:4px 10px;font-size:12.5px}
+.settings-content .setting-row > .tool-input{flex:1 1 160px;width:auto;min-width:0;min-height:30px;height:30px;padding:4px 10px;font-size:12.5px}
 .settings-content .setting-row > .btn-secondary,.settings-content .setting-row > .btn-primary,.settings-content .setting-row > .tool-switch{flex:none}
 .settings-content .setting-row > .tool-note{width:100%}
 .settings-content .update-section{box-shadow:var(--shadow-sm)}
