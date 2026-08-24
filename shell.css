@@ -171,12 +171,12 @@ body{font-size:calc(14px * var(--ui-font, 1))}
 .search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;border:none;background:transparent;color:#8080a0;font-size:16px;line-height:1;cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:.7;transition:opacity var(--transition-fast)}
 .search-clear:hover{opacity:1;color:var(--fg);background:rgba(255,255,255,.08)}
 .search-clear.hidden{display:none}
-.settings-panel{width:720px;max-width:calc(100vw - 24px);height:min(80vh,720px);max-height:90vh}
+.settings-panel{width:720px;max-width:calc(100vw - 24px);height:76vh;max-height:720px;min-height:480px}
 .settings-body{background:transparent;border-radius:0;padding:12px 14px;overflow:hidden;flex:1;min-height:0}
 .settings-tabs{flex:0 0 120px;background:transparent;border-radius:0}
 .settings-content{gap:0;padding:0 6px 0 14px;display:grid;grid-template-columns:1fr;align-content:start;overflow-y:auto;scrollbar-gutter:stable;min-height:0;flex:1}
 .settings-content > .settings-search-wrap{grid-column:1 / -1;position:sticky;top:0;z-index:2;background:var(--panel-bg);padding:0 0 6px;margin-bottom:6px;border-bottom:1px solid var(--border)}
-.settings-content .setting-row{background:transparent;border:none;border-radius:0;padding:5px 4px;min-height:34px;display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:6px 10px;transition:background var(--transition-fast)}
+.settings-content .setting-row{background:transparent;border:none;border-radius:0;padding:5px 4px;min-height:40px;display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:6px 10px;transition:background var(--transition-fast)}
 .settings-content .setting-row:hover{background:rgba(255,255,255,.025)}
 .settings-content .setting-row > label:not(.tool-switch){grid-column:1;width:auto;margin:0;font-weight:500;font-size:12px}
 .settings-content .setting-row > label.tool-switch{width:36px;height:20px;margin:0;flex:none}
