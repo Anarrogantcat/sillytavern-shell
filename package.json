@@ -1,12 +1,13 @@
 {
   "name": "sillytavern-electron",
-  "version": "1.24.5",
+  "version": "1.25.0",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "electron .",
+    "ui:check": "electron scripts/ui-snapshot.mjs",
     "st-prep": "node scripts/prebuild.js",
     "clean": "node scripts/clean-build.mjs",
     "build:full": "npm run clean -- full && npm run st-prep && electron-builder --win nsis --config.directories.output='dist-electron-v3'",

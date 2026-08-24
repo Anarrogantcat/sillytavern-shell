@@ -368,9 +368,10 @@ const titlebarStatus={box:$('#titlebar-status'),dot:$('#titlebar-dot'),text:$('#
 function setTitlebarStatus(state,text,url){
     if(titlebarStatus.dot)titlebarStatus.dot.className='titlebar-dot '+state;
     if(titlebarStatus.text)titlebarStatus.text.textContent=text||'';
-    if(titlebarStatus.url){titlebarStatus.url.textContent=url||'';titlebarStatus.url.title=url||'';}
+    if(titlebarStatus.url){titlebarStatus.url.textContent=url||'';titlebarStatus.url.title=url||'';titlebarStatus.url.style.display=url?'':'none';}
 }
 titlebarStatus.box?.addEventListener('click',()=>toggleTerminal());
+titlebarStatus.url?.addEventListener('click',async(e)=>{e.stopPropagation();const u=titlebarStatus.url.textContent||'';if(u){try{await navigator.clipboard.writeText(u);showToast('地址已复制','success');}catch(_){}}});
 S?.onUrl(url=>{serverReady=true;if(webview&&url)webview.src=url;setTitlebarStatus('running','运行中',url);});
 // Pull fallback: if the server printed its URL before this page registered
 // its listener (fast-start server), the push event was lost — recover it.
@@ -533,7 +534,34 @@ $('#btn-terminal-autoscroll')?.addEventListener('click',()=>{
 });
 
 termOut?.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='c'){const s=window.getSelection()?.toString();if(s){e.preventDefault();navigator.clipboard.writeText(s);}}});
-termInput?.addEventListener('keydown',async e=>{if(e.key!=='Enter'||!termInput.value.trim())return;const cmd=termInput.value.trim();termInput.value='';termInput.disabled=true;termAppend(`> ${cmd}\n`);try{const r=await T?.exec(cmd);if(r.stdout)termAppend(r.stdout);if(r.stderr)termAppend(r.stderr);if(r.error)termAppend(`Error: ${r.error}\n`);}catch(err){termAppend(`${err.message}\n`);}termInput.disabled=false;termInput.focus();});
+let termHistoryList = [], termHistIdx = -1;
+termInput?.addEventListener('keydown', async e => {
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (termHistoryList.length) {
+            if (termHistIdx === -1) termHistIdx = termHistoryList.length - 1;
+            else if (termHistIdx > 0) termHistIdx--;
+            termInput.value = termHistoryList[termHistIdx];
+        }
+        return;
+    }
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (termHistIdx !== -1) {
+            termHistIdx++;
+            if (termHistIdx >= termHistoryList.length) { termHistIdx = -1; termInput.value = ''; }
+            else termInput.value = termHistoryList[termHistIdx];
+        }
+        return;
+    }
+    if (e.key !== 'Enter' || !termInput.value.trim()) return;
+    const cmd = termInput.value.trim();
+    termInput.value = ''; termHistIdx = -1;
+    termInput.disabled = true; termAppend(`> ${cmd}\n`);
+    if (termHistoryList[termHistoryList.length - 1] !== cmd) termHistoryList.push(cmd);
+    try { const r = await T?.exec(cmd); if (r.stdout) termAppend(r.stdout); if (r.stderr) termAppend(r.stderr); if (r.error) termAppend(`Error: ${r.error}\n`); } catch (err) { termAppend(`${err.message}\n`); }
+    termInput.disabled = false; termInput.focus();
+});
 
 T?.onOutput(text=>{if(!serverReady&&loadingLog)loadingAppend(text);termAppend(text);});
 (async()=>{const h=await T?.getHistory();if(h){termHistory=h;if(!serverReady&&loadingLog){loadingLog.classList.add('show');loadingLog.textContent=stripAnsi(h);loadingLog.scrollTop=loadingLog.scrollHeight;}}})();
@@ -577,10 +605,16 @@ function applySettingsSearch() {
     const clear = document.getElementById('settings-search-clear');
     const query = input.value.trim().toLowerCase();
     if (clear) clear.classList.toggle('hidden', !query);
-    if (!query) { settingsTabsData.switchSettingsTab(localStorage.getItem('settingsTab') || 'general'); return; }
+    if (!query) { for (const el of settingsTabsData.children) { el.classList.remove('search-hit-row'); el.querySelectorAll('.setting-row').forEach(row => row.classList.remove('search-hit-row')); } settingsTabsData.switchSettingsTab(localStorage.getItem('settingsTab') || 'general'); return; }
     for (const el of settingsTabsData.children) {
         const text = (el.textContent || '').toLowerCase();
-        el.style.display = text.includes(query) ? '' : 'none';
+        const match = text.includes(query);
+        el.style.display = match ? '' : 'none';
+        el.classList.toggle('search-hit-row', match);
+        el.querySelectorAll('.setting-row').forEach(row => {
+            const rtext = (row.textContent || '').toLowerCase();
+            row.classList.toggle('search-hit-row', rtext.includes(query));
+        });
     }
 }
 document.getElementById('settings-search')?.addEventListener('input', applySettingsSearch);
@@ -607,13 +641,13 @@ function normalizeSettingRows() {
     });
 }
 normalizeSettingRows();
-async function openSettings(){settingsOverlay.classList.remove('hidden');settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
+async function openSettings(){settingsOverlay.classList.remove('hidden');setSettingsDirty(false);settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
 btnSettings?.addEventListener('click',openSettings);
-$('#btn-settings-close')?.addEventListener('click',closeSettings);
-$('#btn-settings-cancel')?.addEventListener('click',closeSettings);
-settingsOverlay?.addEventListener('click',e=>{if(e.target===settingsOverlay)closeSettings();});
-$('#btn-settings-save')?.addEventListener('click',async()=>{const sp=$('#setting-server-path').value.trim();const w=parseInt($('#setting-width').value)||1280;const h=parseInt($('#setting-height').value)||800;const cb=$('#setting-close-behavior')?.value||'ask';const pathChanged=sp!==(settingsData.serverPath||'');const r=await ST?.save({serverPath:sp,windowWidth:w,windowHeight:h,closeBehavior:cb});if(r?.error){showToast('保存失败：' + r.error, 'error');return;}closeSettings();if(pathChanged){showToast('服务器路径已保存，重启套壳后生效。', 'success');}});
+$('#btn-settings-close')?.addEventListener('click',confirmCloseSettings);
+$('#btn-settings-cancel')?.addEventListener('click',confirmCloseSettings);
+settingsOverlay?.addEventListener('click',e=>{if(e.target===settingsOverlay)confirmCloseSettings();});
+$('#btn-settings-save')?.addEventListener('click',async()=>{const sp=$('#setting-server-path').value.trim();const w=parseInt($('#setting-width').value)||1280;const h=parseInt($('#setting-height').value)||800;const cb=$('#setting-close-behavior')?.value||'ask';const pathChanged=sp!==(settingsData.serverPath||'');const r=await ST?.save({serverPath:sp,windowWidth:w,windowHeight:h,closeBehavior:cb});if(r?.error){showToast('保存失败：' + r.error, 'error');return;}setSettingsDirty(false);closeSettings();if(pathChanged){showToast('服务器路径已保存，重启套壳后生效。', 'success');}});
 document.getElementById('setting-server-path-browse')?.addEventListener('click', async () => {
     const r = await window.electronAPI?.window?.pickDirectory?.();
     if (r?.path) $('#setting-server-path').value = r.path;
@@ -847,6 +881,107 @@ document.getElementById('t-tools-width')?.addEventListener('change', (e) => {
     applyUiLayoutPrefs();
     showToast('工具箱宽度已更新', 'success');
 });
+// —— 强调色 ——
+const accentInput = document.getElementById('t-accent');
+function applyAccent() {
+    const a = localStorage.getItem('uiAccent') || '#7c5cbf';
+    document.body.style.setProperty('--accent', a);
+    if (accentInput) accentInput.value = a;
+}
+applyAccent();
+accentInput?.addEventListener('input', (e) => {
+    localStorage.setItem('uiAccent', e.target.value);
+    applyAccent();
+    showToast('强调色已更新', 'success');
+});
+
+// —— 设置未保存状态 ——
+let settingsDirty = false;
+function setSettingsDirty(v) {
+    settingsDirty = v;
+    const ind = document.getElementById('settings-dirty-indicator');
+    const save = document.getElementById('btn-settings-save');
+    if (ind) ind.classList.toggle('hidden', !v);
+    if (save) save.classList.toggle('has-changes', v);
+}
+const settingsContentEl = document.querySelector('#settings-overlay .settings-content');
+settingsContentEl?.addEventListener('input', () => setSettingsDirty(true));
+settingsContentEl?.addEventListener('change', () => setSettingsDirty(true));
+
+// —— 设置导出 / 导入 / 恢复默认 ——
+async function exportSettings() {
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    const ui = {
+        density: localStorage.getItem('uiDensity') || 'normal',
+        settingsWidth: localStorage.getItem('settingsPanelWidth') || 'medium',
+        toolsWidth: localStorage.getItem('toolsPanelWidth') || 'medium',
+        accent: localStorage.getItem('uiAccent') || '#7c5cbf',
+        fontScale: localStorage.getItem('uiFontScale') || '',
+    };
+    const data = { version: 1, settings: s, ui, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sillytavern-settings.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    showToast('设置已导出', 'success');
+}
+async function importSettingsFile(file) {
+    try {
+        const data = JSON.parse(await file.text());
+        if (data.settings) await window.electronAPI?.settings?.save?.(data.settings);
+        if (data.ui) {
+            if (data.ui.density) localStorage.setItem('uiDensity', data.ui.density);
+            if (data.ui.settingsWidth) localStorage.setItem('settingsPanelWidth', data.ui.settingsWidth);
+            if (data.ui.toolsWidth) localStorage.setItem('toolsPanelWidth', data.ui.toolsWidth);
+            if (data.ui.accent) localStorage.setItem('uiAccent', data.ui.accent);
+            if (data.ui.fontScale) localStorage.setItem('uiFontScale', data.ui.fontScale);
+        }
+        applyUiLayoutPrefs();
+        applyAccent();
+        if (typeof renderUiSettings === 'function') renderUiSettings().catch(() => {});
+        setSettingsDirty(false);
+        showToast('设置已导入', 'success');
+    } catch (e) {
+        showToast('导入失败: ' + e.message, 'error');
+    }
+}
+document.getElementById('btn-export-settings')?.addEventListener('click', exportSettings);
+document.getElementById('btn-import-settings')?.addEventListener('click', () => document.getElementById('import-settings-file')?.click());
+document.getElementById('import-settings-file')?.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (f) await importSettingsFile(f);
+    e.target.value = '';
+});
+document.getElementById('btn-reset-settings')?.addEventListener('click', async () => {
+    const ok = await showConfirm({ title: '恢复默认设置', message: '将恢复套壳设置为默认值（服务器路径、窗口、UI 比例等）。确定继续？', confirmText: '恢复默认', danger: true });
+    if (!ok) return;
+    await window.electronAPI?.settings?.save?.({ serverPath: '', windowWidth: 1280, windowHeight: 800, closeBehavior: 'ask' });
+    localStorage.removeItem('uiDensity'); localStorage.removeItem('settingsPanelWidth'); localStorage.removeItem('toolsPanelWidth'); localStorage.removeItem('uiAccent'); localStorage.removeItem('uiFontScale');
+    applyUiLayoutPrefs(); applyAccent();
+    if (typeof renderUiSettings === 'function') renderUiSettings().catch(() => {});
+    setSettingsDirty(false);
+    showToast('已恢复默认设置', 'success');
+});
+
+// —— 取消 / 关闭时若有未保存修改则确认 ——
+async function confirmCloseSettings() {
+    if (settingsDirty) {
+        const ok = await showConfirm({ title: '放弃修改?', message: '有未保存的修改，确定放弃吗？', confirmText: '放弃', danger: true });
+        if (!ok) return;
+    }
+    closeSettings();
+}
+
+// —— 快捷键帮助 ——
+document.addEventListener('keydown', (e) => {
+    if (e.key === '?' ) {
+        e.preventDefault();
+        showConfirm({ title: '快捷键', message: 'Ctrl+`  打开/关闭终端\nCtrl+Shift+T  工具箱\nCtrl+Shift+R  刷新页面\nCtrl+Shift+L  打开设置\nCtrl+0  缩放归位\nCtrl+= / Ctrl+-  缩放\nF11  沉浸模式\n?  显示本帮助', confirmText: '知道了', cancelText: '关闭' });
+    }
+});
+
 
 
 async function renderUiSettings() {
