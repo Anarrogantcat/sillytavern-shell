@@ -28,15 +28,24 @@ for (const stream of [process.stdout, process.stderr]) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+const SETTINGS_BAK_PATH = SETTINGS_PATH + '.bak';
 const TERMINAL_RING_SIZE = 5000;
 
 // ── Settings ─────────────────────────────────────────────────────────
 function loadSettings() {
-    try { return fs.existsSync(SETTINGS_PATH) ? JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8')) : {}; }
-    catch (_) { return {}; }
+    try { if (fs.existsSync(SETTINGS_PATH)) return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8')); } catch (_) {}
+    try {
+        if (fs.existsSync(SETTINGS_BAK_PATH)) {
+            const bak = JSON.parse(fs.readFileSync(SETTINGS_BAK_PATH, 'utf-8'));
+            try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(bak, null, 2)); } catch (_) {}
+            return bak;
+        }
+    } catch (_) {}
+    return {};
 }
 function saveSettings(obj) {
     fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
+    try { if (fs.existsSync(SETTINGS_PATH)) fs.copyFileSync(SETTINGS_PATH, SETTINGS_BAK_PATH); } catch (_) {}
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(obj, null, 2));
 }
 
