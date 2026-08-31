@@ -100,6 +100,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ollamaModels: () => ipcRenderer.invoke('tools:ollamaModels'),
         ollamaPs: () => ipcRenderer.invoke('tools:ollamaPs'),
         ollamaAction: (a, m) => ipcRenderer.invoke('tools:ollamaAction', a, m),
+        ollamaStatus: () => ipcRenderer.invoke('tools:ollamaStatus'),
+        ollamaStart: () => ipcRenderer.invoke('tools:ollamaStart'),
         gpuStats: () => ipcRenderer.invoke('tools:gpuStats'),
         clashCheck: () => ipcRenderer.invoke('tools:clashCheck'),
         // D 档

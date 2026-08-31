@@ -1459,6 +1459,7 @@ document.getElementById('t-health')?.addEventListener('click', async () => {
     setDetail(tEl.envRes, checks.map(c => `${c.ok ? '✅' : '❌'} ${c.name}: ${c.detail}`).join('\n'));
 });
 tEl.ollama?.addEventListener('click', async () => {
+    refreshOllamaStatus();
     setDetail(tEl.envRes, '加载中…');
     const r = await TL()?.ollamaModels();
     if (r?.error) { setDetail(tEl.envRes, '❌ ' + r.error); return; }
@@ -1475,6 +1476,30 @@ tEl.ollama?.addEventListener('click', async () => {
         tEl.ollama.click();
     }));
 });
+
+async function refreshOllamaStatus() {
+    const st = await TL()?.ollamaStatus();
+    const el = document.getElementById('t-ollama-status');
+    if (!el) return;
+    if (!st) { el.textContent = ''; el.className = 'tool-note'; return; }
+    if (st.running) { el.textContent = '✅ 运行中'; el.className = 'tool-note update-status success'; }
+    else if (st.binary) { el.textContent = '未运行'; el.className = 'tool-note update-status error'; }
+    else { el.textContent = '未安装'; el.className = 'tool-note update-status error'; }
+}
+document.getElementById('t-ollama-start')?.addEventListener('click', async () => {
+    const st = await TL()?.ollamaStatus();
+    const el = document.getElementById('t-ollama-status');
+    if (!st) return;
+    if (st.running) { refreshOllamaStatus(); return; }
+    if (!st.binary) { if (el) el.textContent = '未安装 Ollama'; return; }
+    if (el) el.textContent = '启动中…';
+    const r = await TL()?.ollamaStart();
+    if (r?.ok) { showToast('Ollama 已启动', 'success'); }
+    else if (el) el.textContent = '启动失败: ' + (r?.error || '');
+    refreshOllamaStatus();
+});
+refreshOllamaStatus();
+
 tEl.gpu?.addEventListener('click', async () => {
     const g = await TL()?.gpuStats();
     setDetail(tEl.envRes, g ? `🖥 ${g.usedGB}/${g.totalGB} GB 显存 | ${g.temp}°C | 利用率 ${g.util}%` : '无法读取 nvidia-smi');
