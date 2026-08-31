@@ -71,6 +71,13 @@
 <div class="tool-actions"><button id="t-model-service" class="btn-secondary btn-sm">服务状态</button><button id="t-env" class="btn-secondary btn-sm">环境体检</button><button id="t-health" class="btn-secondary btn-sm">一键体检</button><button id="t-ollama-start" class="btn-secondary btn-sm">启动 Ollama</button><button id="t-ollama" class="btn-secondary btn-sm">Ollama 模型</button><button id="t-gpu" class="btn-secondary btn-sm">显存/温度</button><button id="t-clash" class="btn-secondary btn-sm">Clash 状态</button><span id="t-ollama-status" class="tool-note"></span></div>
 <div id="t-env-res" class="tool-detail"></div>
 
+<div class="tool-sec">🦙 llama.cpp 服务器</div>
+<div class="tool-row"><label>服务器路径</label><input type="text" id="llama-bin" class="tool-input" placeholder="C:\...\llama-server.exe 路径"></div>
+<div class="tool-row"><label>模型路径</label><input type="text" id="llama-model" class="tool-input" placeholder="C:\...\model.gguf 路径"></div>
+<div class="tool-row"><label>端口</label><input type="number" id="llama-port" class="tool-input" value="8080" style="width:80px"><label>上下文</label><input type="number" id="llama-ctx" class="tool-input" value="4096" style="width:90px"><label>线程</label><input type="number" id="llama-threads" class="tool-input" value="0" style="width:80px"><label>GPU层</label><input type="number" id="llama-gpu" class="tool-input" value="99" style="width:80px"></div>
+<div class="tool-actions"><button id="llama-start" class="btn-primary btn-sm">启动</button><button id="llama-stop" class="btn-secondary btn-sm">停止</button><button id="llama-status" class="btn-secondary btn-sm">刷新</button><span id="llama-status-note" class="tool-note"></span></div>
+<div id="llama-info" class="tool-detail"></div>
+
 <div class="tool-sec">📚 本地知识库 (RAG)</div>
 <div class="tool-row"><input type="text" id="t-rag-q" class="tool-input" placeholder="输入关键词检索（文档放 userData/rag-docs/）"></div>
 <div class="tool-actions"><button id="t-rag" class="btn-secondary btn-sm">检索</button></div>

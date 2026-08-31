@@ -102,6 +102,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ollamaAction: (a, m) => ipcRenderer.invoke('tools:ollamaAction', a, m),
         ollamaStatus: () => ipcRenderer.invoke('tools:ollamaStatus'),
         ollamaStart: () => ipcRenderer.invoke('tools:ollamaStart'),
+        llamaStatus: (port) => ipcRenderer.invoke('tools:llamaStatus', port),
+        llamaStart: (cfg) => ipcRenderer.invoke('tools:llamaStart', cfg),
+        llamaStop: (port) => ipcRenderer.invoke('tools:llamaStop', port),
         gpuStats: () => ipcRenderer.invoke('tools:gpuStats'),
         clashCheck: () => ipcRenderer.invoke('tools:clashCheck'),
         // D 档

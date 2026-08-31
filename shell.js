@@ -1500,6 +1500,57 @@ document.getElementById('t-ollama-start')?.addEventListener('click', async () =>
 });
 refreshOllamaStatus();
 
+const llamaCfgKey = 'llamaCfg';
+function llamaLoadCfg() { try { return JSON.parse(localStorage.getItem(llamaCfgKey) || '{}'); } catch (_) { return {}; } }
+function llamaSaveCfg(cfg) { localStorage.setItem(llamaCfgKey, JSON.stringify(cfg)); }
+function llamaCfgFromInputs() {
+    return {
+        bin: ($('#llama-bin')?.value || '').trim(),
+        model: ($('#llama-model')?.value || '').trim(),
+        port: parseInt($('#llama-port')?.value) || 8080,
+        ctx: parseInt($('#llama-ctx')?.value) || 4096,
+        threads: parseInt($('#llama-threads')?.value) || 0,
+        gpuLayers: parseInt($('#llama-gpu')?.value) ?? 0,
+    };
+}
+function llamaCfgToInputs(cfg) {
+    if (!cfg) return;
+    if ($('#llama-bin')) $('#llama-bin').value = cfg.bin || '';
+    if ($('#llama-model')) $('#llama-model').value = cfg.model || '';
+    if ($('#llama-port')) $('#llama-port').value = cfg.port || 8080;
+    if ($('#llama-ctx')) $('#llama-ctx').value = cfg.ctx || 4096;
+    if ($('#llama-threads')) $('#llama-threads').value = cfg.threads || 0;
+    if ($('#llama-gpu')) $('#llama-gpu').value = cfg.gpuLayers ?? 0;
+}
+async function llamaRefresh() {
+    const cfg = llamaCfgFromInputs();
+    const st = await TL()?.llamaStatus(cfg.port);
+    const note = document.getElementById('llama-status-note');
+    if (!note) return;
+    if (!st) { note.textContent = '…'; note.className = 'tool-note'; return; }
+    if (st.running) { note.textContent = '✅ 运行中 :' + st.port; note.className = 'tool-note update-status success'; }
+    else { note.textContent = '未运行'; note.className = 'tool-note update-status error'; }
+}
+function llamaBind() { llamaCfgToInputs(llamaLoadCfg()); ['llama-bin','llama-model','llama-port','llama-ctx','llama-threads','llama-gpu'].forEach(id => document.getElementById(id)?.addEventListener('input', () => llamaSaveCfg(llamaCfgFromInputs()))); }
+llamaBind();
+document.getElementById('llama-start')?.addEventListener('click', async () => {
+    const cfg = llamaCfgFromInputs(); llamaSaveCfg(cfg);
+    const note = document.getElementById('llama-status-note'); if (note) note.textContent = '启动中…';
+    const r = await TL()?.llamaStart(cfg);
+    if (r?.ok) { showToast('llama.cpp 已启动 :' + r.port, 'success'); }
+    else if (note) note.textContent = '启动失败: ' + (r?.error || '');
+    llamaRefresh();
+});
+document.getElementById('llama-stop')?.addEventListener('click', async () => {
+    const cfg = llamaCfgFromInputs(); llamaSaveCfg(cfg);
+    const r = await TL()?.llamaStop(cfg.port);
+    if (r?.ok) showToast('llama.cpp 已停止', 'success');
+    else showToast('停止失败: ' + (r?.error || ''), 'error');
+    llamaRefresh();
+});
+document.getElementById('llama-status')?.addEventListener('click', llamaRefresh);
+llamaRefresh();
+
 tEl.gpu?.addEventListener('click', async () => {
     const g = await TL()?.gpuStats();
     setDetail(tEl.envRes, g ? `🖥 ${g.usedGB}/${g.totalGB} GB 显存 | ${g.temp}°C | 利用率 ${g.util}%` : '无法读取 nvidia-smi');
