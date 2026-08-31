@@ -758,22 +758,22 @@ function setupIPC() {
     });
 
     // ── Tools 工具箱注册（A/B/C/D 档，全部只读/套壳层）─────────────
-    toolsApp = registerAppTools({
+    try { toolsApp = registerAppTools({
         ipcMain, app, dialog, shell, dataRoot, getSettings: loadSettings, saveSettings, terminalWrite,
         win: () => mainWindow, stopServer, startServer,
-    });
-    toolsData = registerDataTools({
+    }); } catch (e) { console.error('[register] appTools:' + e.message); }
+    try { toolsData = registerDataTools({
         ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite,
         win: () => mainWindow, getSettings: loadSettings,
-    });
-    registerEnvTools({ ipcMain, terminalWrite, dataRoot, sillyTavernRoot });
-    registerChatTools({ ipcMain, dataRoot, app });
-    registerTunnelTools({
+    }); } catch (e) { console.error('[register] dataTools:' + e.message); }
+    try { registerEnvTools({ ipcMain, terminalWrite, dataRoot, sillyTavernRoot }); } catch (e) { console.error('[register] envTools:' + e.message); }
+    try { registerChatTools({ ipcMain, dataRoot, app }); } catch (e) { console.error('[register] chatTools:' + e.message); }
+    try { registerTunnelTools({
         ipcMain, app, terminalWrite,
         getSettings: loadSettings, saveSettings, win: () => mainWindow,
         restartServer: async () => { stopServer(); try { await startServer(); return { success: true }; } catch (e) { return { success: false, error: e.message }; } },
-    });
-    registerZtTools({ ipcMain, terminalWrite, getSettings: loadSettings, saveSettings });
+    }); } catch (e) { console.error('[register] tunnelTools:' + e.message); }
+    try { registerZtTools({ ipcMain, terminalWrite, getSettings: loadSettings, saveSettings }); } catch (e) { console.error('[register] ztTools:' + e.message); }
     // 更新下载完成后保留回滚包
     // 审计 #8：downloadedUpdateHelper 无 installerPath；真实路径是 autoUpdater.installerPath（BaseUpdater 属性）
     autoUpdater.on('update-downloaded', () => {
