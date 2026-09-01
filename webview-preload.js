@@ -33,6 +33,17 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
+// ── ST 界面缩放补偿：宿主可注入 --mainFontSize 乘数，匹配外部壳比例 ──
+let stScale = 1;
+function applyStScale(scale) {
+    const v = Number(scale) || 1;
+    stScale = v;
+    try {
+        document.documentElement.style.setProperty('--mainFontSize', `calc(var(--fontScale) * ${15 * v}px)`, 'important');
+    } catch (_) {}
+}
+ipcRenderer.on('st-scale', (_e, scale) => applyStScale(scale));
+
 // ── ST 原生弹窗支持：防止 ST 调用 alert/confirm/prompt 时没有弹窗 ──
 // alert/confirm 使用同步 IPC 返回；prompt 使用异步 IPC（返回 Promise）
 try {
