@@ -380,7 +380,7 @@ S?.onError(msg=>{setTitlebarStatus('error','启动失败');if(loading){loading.c
 S?.onSetupStarted?.(()=>{setTitlebarStatus('starting','首次安装中');const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
 webview?.addEventListener('dom-ready', async () => {
     loading?.classList.add('hidden'); webview.classList.remove('hidden'); webview.focus();
-    (async () => { try { const s = await window.electronAPI?.settings?.get?.() || {}; const v = s.stUiScale || 1; try { webview?.send('st-scale', v); } catch (_) {} } catch (_) {} })();
+    (async () => { try { const s = await window.electronAPI?.settings?.get?.() || {}; const v = Number(s.stUiScale) || 1; if (v > 1.001) { try { webview?.send('st-scale', v); } catch (_) {} } } catch (_) {} })();
     // ST 开启 basicAuth 且认证失败时，页面可能已经渲染为 Unauthorized；主动检测并弹出登录框
     try {
         const text = await webview.executeJavaScript('document.body ? document.body.innerText : ""');
@@ -903,7 +903,7 @@ async function applyStScale() {
     if (!(v >= 0.8 && v <= 2)) v = 1;
     if (stScaleInput) stScaleInput.value = v;
     try { await window.electronAPI?.settings?.save?.({ stUiScale: v }); } catch (_) {}
-    try { webview?.send('st-scale', v); } catch (_) {}
+    if (v > 1.001) { try { webview?.send('st-scale', v); } catch (_) {} }
 }
 stScaleInput?.addEventListener('change', () => applyStScale());
 
