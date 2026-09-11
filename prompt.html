@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<title>SillyTavern</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;background:#1c1c1e;color:#e8e8ee;font-family:'Microsoft YaHei',system-ui,sans-serif;font-size:13px;overflow:hidden;user-select:none}
+.box{display:flex;flex-direction:column;gap:12px;height:100%;padding:18px 20px}
+.msg{flex:1;min-height:32px;line-height:1.6;color:#c9c9d6;white-space:pre-wrap;word-break:break-word;overflow-y:auto;user-select:text}
+#input{width:100%;background:#26262c;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#e8e8ee;padding:8px 10px;font-size:13px;outline:none}
+#input:focus{border-color:#7c5cbf}
+.row{display:flex;justify-content:flex-end;gap:8px}
+button{border:1px solid rgba(255,255,255,.12);background:transparent;color:#e8e8ee;border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.08)}
+button.primary{background:#7c5cbf;border-color:#7c5cbf;color:#fff}
+button.primary:hover{opacity:.88}
+</style>
+</head>
+<body>
+<div class="box">
+    <div class="msg" id="msg"></div>
+    <input type="text" id="input" autocomplete="off" spellcheck="false">
+    <div class="row">
+        <button id="cancel">取消</button>
+        <button id="ok" class="primary">确定</button>
+    </div>
+</div>
+<script>
+(function () {
+    var api = window.promptAPI;
+    var msg = document.getElementById('msg');
+    var input = document.getElementById('input');
+    var ok = document.getElementById('ok');
+    var cancel = document.getElementById('cancel');
+    var data = api ? api.get() : { message: '', defaultValue: '' };
+    msg.textContent = data.message;
+    input.value = data.defaultValue;
+    function finish(v) { if (api) api.done(v); }
+    ok.addEventListener('click', function () { finish(input.value); });
+    cancel.addEventListener('click', function () { finish(null); });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); finish(input.value); }
+        else if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+    });
+    function focusInput() { try { input.focus(); input.select(); } catch (_) {} }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', focusInput);
+    else focusInput();
+})();
+</script>
+</body>
+</html>

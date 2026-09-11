@@ -1,7 +1,7 @@
 // webview-preload.js — runs inside the SillyTavern page.
 // Reports Ctrl+wheel / pinch gestures to the host shell, which applies
 // viewport-level zoom via webview.setZoomFactor() (browser-like zoom).
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
 
 let last = 0;
 
