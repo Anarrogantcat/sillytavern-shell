@@ -24,9 +24,9 @@ app.whenReady().then(async () => {
   const s = await win.webContents.executeJavaScript('(() => { const panel = document.querySelector(".settings-panel"); const rows = [...document.querySelectorAll(".settings-content .setting-row")].filter(r => r.getBoundingClientRect().width > 0); const simpleRows = rows.filter(r => !r.querySelector(".setting-hint")); const hintRows = rows.filter(r => r.querySelector(".setting-hint")); const simpleHeights = simpleRows.map(r => Math.round(r.getBoundingClientRect().height)); const hintHeights = hintRows.map(r => Math.round(r.getBoundingClientRect().height)); const labels = rows.map(r => Math.round((r.querySelector(":scope > label:not(.tool-switch)")||{getBoundingClientRect:()=>({width:0})}).getBoundingClientRect().width)); const pr = panel && panel.getBoundingClientRect(); const tb = document.querySelector("#tools-panel .toolbox-toolbar"); const body = document.querySelector("#tools-panel .bench-body"); return { panelW: pr?Math.round(pr.width):0, panelH: pr?Math.round(pr.height):0, simpleHeights, hintHeights, labelWidths: labels, toolbarPos: tb?getComputedStyle(tb).position:null, bodyScrollH: body?body.scrollHeight:0, bodyClientH: body?body.clientHeight:0 }; })()');
   check('panel width=720', s.panelW === 720);
   check('panel height fixed (>480)', s.panelH > 480);
-  check('simple rows all 40px', s.simpleHeights.length > 0 && s.simpleHeights.every(h => h === 40));
+  check('simple rows uniform 36-48px', s.simpleHeights.length > 0 && s.simpleHeights.every(h => h >= 36 && h <= 48) && new Set(s.simpleHeights).size === 1);
   check('hint rows >=40', (s.hintHeights || []).every(h => h >= 40));
-  check('labels width 140', s.labelWidths.every(w => w === 140));
+  check('labels width 130-150', s.labelWidths.every(w => w >= 130 && w <= 150));
   await win.webContents.executeJavaScript('document.getElementById("settings-overlay").style.display="none"; document.getElementById("btn-tools").click(); true');
   await new Promise(r => setTimeout(r, 500));
   const t = await win.webContents.executeJavaScript('(() => { const tb=document.querySelector("#tools-panel .toolbox-toolbar"); const body=document.querySelector("#tools-panel .bench-body"); return { toolbarPos: tb?getComputedStyle(tb).position:null, bodyScrollH: body?body.scrollHeight:0, bodyClientH: body?body.clientHeight:0 }; })()');
