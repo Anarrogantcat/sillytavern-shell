@@ -18,6 +18,9 @@ jobs:
 
       - run: npm ci
 
+      - name: UI snapshot check
+        run: npm run ui:check
+
       - name: Build Lite and publish
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

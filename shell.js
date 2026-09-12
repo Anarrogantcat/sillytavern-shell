@@ -207,7 +207,8 @@ function initToolboxGroups() {
         localStorage.setItem(orderKey, JSON.stringify(arr));
     });
 }
-initToolboxGroups();
+let toolboxInited = false;
+function ensureToolboxInit() { if (toolboxInited) return; toolboxInited = true; try { initToolboxGroups(); } catch (_) {} }
 const { window:W, server:S, terminal:T, settings:ST, app:A, update:U } = window.electronAPI||{};
 // Toast 轻提示（替代部分 alert，套壳内展示）
 function showToast(message, type = 'info', opts = {}) {
@@ -380,7 +381,6 @@ S?.onError(msg=>{setTitlebarStatus('error','启动失败');if(loading){loading.c
 S?.onSetupStarted?.(()=>{setTitlebarStatus('starting','首次安装中');const t=loading?.querySelector('.loading-text');if(t)t.textContent='首次启动 — 正在安装 SillyTavern...';if(loadingLog){loadingLog.classList.add('show');loadingLog.scrollTop=loadingLog.scrollHeight;}});
 webview?.addEventListener('dom-ready', async () => {
     loading?.classList.add('hidden'); webview.classList.remove('hidden'); webview.focus();
-    (async () => { try { const s = await window.electronAPI?.settings?.get?.() || {}; const v = Number(s.stUiScale) || 1; if (v > 1.001) { try { webview?.send('st-scale', v); } catch (_) {} } } catch (_) {} })();
     // ST 开启 basicAuth 且认证失败时，页面可能已经渲染为 Unauthorized；主动检测并弹出登录框
     try {
         const text = await webview.executeJavaScript('document.body ? document.body.innerText : ""');
@@ -896,17 +896,6 @@ accentInput?.addEventListener('input', (e) => {
     showToast('强调色已更新', 'success');
 });
 
-// —— ST 界面缩放（补偿 ST 基础字号，匹配外部壳比例）——
-const stScaleInput = document.getElementById('t-st-scale');
-async function applyStScale() {
-    let v = parseFloat(stScaleInput?.value);
-    if (!(v >= 0.8 && v <= 2)) v = 1;
-    if (stScaleInput) stScaleInput.value = v;
-    try { await window.electronAPI?.settings?.save?.({ stUiScale: v }); } catch (_) {}
-    if (v > 1.001) { try { webview?.send('st-scale', v); } catch (_) {} }
-}
-stScaleInput?.addEventListener('change', () => applyStScale());
-
 // —— 设置未保存状态 ——
 let settingsDirty = false;
 function setSettingsDirty(v) {
@@ -1030,8 +1019,15 @@ async function renderUiSettings() {
     const s = await window.electronAPI?.settings?.get?.() || {};
     $('#t-crash').value = s.crashAlert === false ? '0' : '1';
     if ($('#shell-channel')) $('#shell-channel').value = s.shellChannel === 'lite' ? 'lite' : 'full';
-    if ($('#t-st-scale')) $('#t-st-scale').value = s.stUiScale || 1;
+    if ($('#t-gpu-mode')) $('#t-gpu-mode').value = ['high','balanced','low'].includes(s.gpuMode) ? s.gpuMode : 'high';
 }
+$('#t-gpu-mode')?.addEventListener('change', async () => {
+    const v = ['high','balanced','low'].includes($('#t-gpu-mode').value) ? $('#t-gpu-mode').value : 'high';
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    s.gpuMode = v;
+    await window.electronAPI?.settings?.save?.(s);
+    showToast('GPU 模式已设为' + ({ high: '高性能', balanced: '均衡', low: '低显存' }[v]) + '，重启套壳后生效', 'success');
+});
 $('#t-lan')?.addEventListener('change', async () => {
     await TL()?.lanSave({ enabled: $('#t-lan').value === '1' });
     showToast('局域网访问已' + ($('#t-lan').value === '1' ? '开启' : '关闭') + '，重启服务器后生效（设置→服务器控制→重启服务器）', 'info');
@@ -1384,6 +1380,7 @@ ztEl.allow?.addEventListener('change', async () => {
 // 工具箱打开时也渲染设置项（设置面板共用 renderTools）
 tEl.btn?.addEventListener('click', () => {
     if (!tEl.panel) return;
+    ensureToolboxInit();
     const open = tEl.panel.classList.toggle('hidden');
     if (!open) { renderTools(); renderUiSettings().catch(() => {}); (async () => { const t = await TL()?.tunnelStatus(); if (t) tunnelRender(t); })(); ztRefresh(); }
 });

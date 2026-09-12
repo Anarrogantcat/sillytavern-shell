@@ -293,6 +293,13 @@ body[data-theme="light"] .btn-primary.has-changes{box-shadow:0 0 0 2px rgba(106,
   .settings-content .setting-row{min-height:30px;padding:4px 8px}
   .settings-footer{padding:8px 14px}
 }
+
+/* ── v1.29.0 工具箱卡片 + 结果抽屉 ───────────────── */
+.tool-group{border-radius:12px;box-shadow:var(--shadow-sm);transition:border-color var(--transition-fast),background var(--transition-fast)}
+.tool-group:hover{border-color:rgba(124,92,191,.35);background:rgba(0,0,0,.2)}
+.tool-actions .btn-secondary{background:var(--input-bg)}
+.tool-detail{border-left:3px solid var(--accent);background:rgba(0,0,0,.28)}
+.tool-detail:empty{display:none}
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important}
 }

@@ -27,7 +27,7 @@ app.whenReady().then(async () => {
   check('simple rows all 40px', s.simpleHeights.length > 0 && s.simpleHeights.every(h => h === 40));
   check('hint rows >=40', (s.hintHeights || []).every(h => h >= 40));
   check('labels width 140', s.labelWidths.every(w => w === 140));
-  await win.webContents.executeJavaScript('document.getElementById("settings-overlay").style.display="none"; document.getElementById("tools-panel").classList.remove("hidden"); true');
+  await win.webContents.executeJavaScript('document.getElementById("settings-overlay").style.display="none"; document.getElementById("btn-tools").click(); true');
   await new Promise(r => setTimeout(r, 500));
   const t = await win.webContents.executeJavaScript('(() => { const tb=document.querySelector("#tools-panel .toolbox-toolbar"); const body=document.querySelector("#tools-panel .bench-body"); return { toolbarPos: tb?getComputedStyle(tb).position:null, bodyScrollH: body?body.scrollHeight:0, bodyClientH: body?body.clientHeight:0 }; })()');
   check('toolbar sticky', t.toolbarPos === 'sticky');

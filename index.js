@@ -57,6 +57,23 @@ const cliArguments = yargs(hideBin(process.argv))
     .parseSync();
 
 const settings = loadSettings();
+
+// ── GPU 模式：必须在 app ready 之前应用 ──────────────────────────
+// high（默认）：不干预；balanced：软件 ANGLE + 关闭 GPU 光栅/合成；low：完全软件渲染
+(function applyGpuMode() {
+    const mode = ['high', 'balanced', 'low'].includes(settings.gpuMode) ? settings.gpuMode : 'high';
+    try {
+        if (mode === 'low') {
+            app.disableHardwareAcceleration();
+        } else if (mode === 'balanced') {
+            app.commandLine.appendSwitch('disable-features', 'Vulkan');
+            app.commandLine.appendSwitch('use-angle', 'swiftshader');
+            app.commandLine.appendSwitch('disable-gpu-rasterization');
+            app.commandLine.appendSwitch('disable-gpu-compositing');
+        }
+    } catch (_) {}
+})();
+
 // Default closeBehavior to 'ask' — first close always asks (only when never set)
 if (settings.closeBehavior === undefined) {
     settings.closeBehavior = 'ask';
@@ -94,6 +111,42 @@ function assertSafeRmPath(p) {
 const dataRoot = settings.dataRoot || (app.isPackaged
     ? path.join(path.dirname(process.resourcesPath), '..', 'Data')
     : path.join(path.resolve(__dirname, '../..'), 'Data'));
+
+
+// ── ST 本体字号自检：修复 ST 更新后被还原的设置 ────────────────────
+// 1) public/index.html: 字体缩放缓动条上限 1.5 -> 2.0
+// 2) Data/_css/user.css: 确保基础字号覆盖存在（用户数据，ST 更新不覆盖）
+function ensureStFontTweaks() {
+    try {
+        const idx = path.join(sillyTavernRoot, 'public', 'index.html');
+        if (fs.existsSync(idx)) {
+            let html = fs.readFileSync(idx, 'utf8');
+            const before = html;
+            html = html.replace(/<input[^>]*>/g, (tag) => {
+                if (!/font_scale/.test(tag)) return tag;
+                return tag.replace(/max="1\.5"/, 'max="2.0"');
+            });
+            if (html !== before) {
+                const bak = idx + '.bak';
+                if (!fs.existsSync(bak)) { try { fs.copyFileSync(idx, bak); } catch (_) {} }
+                fs.writeFileSync(idx, html);
+                terminalWrite('[font] 已将 ST 字体缩放上限修正为 2.0\n');
+            }
+        }
+    } catch (e) { try { terminalWrite('[font] 修正字体上限失败: ' + e.message + '\n'); } catch (_) {} }
+    try {
+        const cssDir = path.join(dataRoot, '_css');
+        const cssPath = path.join(cssDir, 'user.css');
+        const rule = ':root,\nhtml {\n    --mainFontSize: calc(var(--fontScale) * 18px) !important;\n}\n';
+        fs.mkdirSync(cssDir, { recursive: true });
+        let css = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, 'utf8') : '/* Put custom styles here. */\n';
+        if (!/--mainFontSize/.test(css)) {
+            css = css.replace(/\s*$/, '\n') + rule;
+            fs.writeFileSync(cssPath, css);
+            terminalWrite('[font] 已写入 ST 基础字号覆盖 (user.css)\n');
+        }
+    } catch (e) { try { terminalWrite('[font] 写入 user.css 失败: ' + e.message + '\n'); } catch (_) {} }
+}
 
 // 修复旧版本已保存的危险 serverPath（例如 D:\）：能用安全路径时自动纠偏，不能则下面的拦截会退出
 if (settings.serverPath && isUnsafeRmPath(settings.serverPath)) {
@@ -935,7 +988,9 @@ app.whenReady().then(async () => {
             // 认证结果由 shell:auth-respond 回传后调用 callback
         } catch (_) { callback(); }
     });
+    try { ensureStFontTweaks(); } catch (_) {}
     createTray(); createWindow(); setupIPC();
+    try { toolsApp?.backupCheck?.(); } catch (_) {}
     // Start the chat watcher (read-only token statistics, auto restarts on activate)
     benchStartWatcher();
 
