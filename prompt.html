@@ -35,6 +35,10 @@ button.primary:hover{opacity:.88}
     var ok = document.getElementById('ok');
     var cancel = document.getElementById('cancel');
     var data = api ? api.get() : { message: '', defaultValue: '' };
+    var params = new URLSearchParams(window.location.search);
+    var lang = params.get('lang') || 'system';
+    var useEn = lang === 'en' || (lang === 'system' && !String(navigator.language || '').toLowerCase().startsWith('zh'));
+    if (useEn) { ok.textContent = 'OK'; cancel.textContent = 'Cancel'; }
     msg.textContent = data.message;
     input.value = data.defaultValue;
     function finish(v) { if (api) api.done(v); }

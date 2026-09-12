@@ -208,7 +208,7 @@ function initToolboxGroups() {
     });
 }
 let toolboxInited = false;
-function ensureToolboxInit() { if (toolboxInited) return; toolboxInited = true; try { initToolboxGroups(); } catch (_) {} }
+function ensureToolboxInit() { if (toolboxInited) return; toolboxInited = true; try { initToolboxGroups(); } catch (_) {} try { applyI18n(); } catch (_) {} }
 const { window:W, server:S, terminal:T, settings:ST, app:A, update:U } = window.electronAPI||{};
 // Toast 轻提示（替代部分 alert，套壳内展示）
 function showToast(message, type = 'info', opts = {}) {
@@ -310,6 +310,56 @@ function showConfirm({ title = '确认操作', message = '', confirmText = '确�
 }
 
 const $=s=>document.querySelector(s);
+
+// ── 界面语言（i18n）：按文本字典整体替换，中英可切换 ────────────────
+const I18N_EN = window.SHELL_I18N_EN || {};
+let uiLang = 'zh';
+const i18nNodeOrig = new Map();
+const i18nAttrOrig = new Map();
+function resolveLang(pref) {
+    if (pref === 'en') return 'en';
+    if (pref === 'zh') return 'zh';
+    return String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+function i18nSkip(el) {
+    if (!el) return true;
+    if (['SCRIPT', 'STYLE', 'TEXTAREA'].includes(el.tagName)) return true;
+    return !!el.closest('#sillytavern-webview,#terminal-output,#loading-log,#shell-toast,.tool-detail,.confirm-panel,pre,code');
+}
+function applyI18n() {
+    const en = uiLang === 'en';
+    try {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+            acceptNode: (n) => i18nSkip(n.parentElement) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+        });
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        for (const n of nodes) {
+            if (!i18nNodeOrig.has(n)) i18nNodeOrig.set(n, n.nodeValue);
+            const orig = i18nNodeOrig.get(n);
+            const key = String(orig).trim();
+            if (!key) continue;
+            const hit = en ? I18N_EN[key] : null;
+            n.nodeValue = hit ? String(orig).replace(key, hit) : orig;
+        }
+        for (const el of document.querySelectorAll('[title],[placeholder]')) {
+            if (i18nSkip(el)) continue;
+            let rec = i18nAttrOrig.get(el);
+            if (!rec) { rec = { title: el.getAttribute('title'), placeholder: el.getAttribute('placeholder') }; i18nAttrOrig.set(el, rec); }
+            for (const attr of ['title', 'placeholder']) {
+                const base = rec[attr];
+                if (base == null) continue;
+                const key = base.trim();
+                const hit = en ? I18N_EN[key] : null;
+                el.setAttribute(attr, hit ? base.replace(key, hit) : base);
+            }
+        }
+    } catch (_) {}
+}
+function setUiLang(pref) {
+    uiLang = resolveLang(pref);
+    applyI18n();
+}
 const webview=$('#sillytavern-webview'),loading=$('#loading-overlay'),loadingLog=$('#loading-log');
 const termPanel=$('#terminal-panel'),termOut=$('#terminal-output'),termInput=$('#terminal-input');
 const btnTerm=$('#btn-terminal'),btnSettings=$('#btn-settings'),settingsOverlay=$('#settings-overlay');
@@ -1020,6 +1070,8 @@ async function renderUiSettings() {
     $('#t-crash').value = s.crashAlert === false ? '0' : '1';
     if ($('#shell-channel')) $('#shell-channel').value = s.shellChannel === 'lite' ? 'lite' : 'full';
     if ($('#t-gpu-mode')) $('#t-gpu-mode').value = ['high','balanced','low'].includes(s.gpuMode) ? s.gpuMode : 'high';
+    if ($('#t-lang')) $('#t-lang').value = ['system','zh','en'].includes(s.uiLang) ? s.uiLang : 'system';
+    setUiLang(s.uiLang || 'system');
 }
 $('#t-gpu-mode')?.addEventListener('change', async () => {
     const v = ['high','balanced','low'].includes($('#t-gpu-mode').value) ? $('#t-gpu-mode').value : 'high';
@@ -1027,6 +1079,13 @@ $('#t-gpu-mode')?.addEventListener('change', async () => {
     s.gpuMode = v;
     await window.electronAPI?.settings?.save?.(s);
     showToast('GPU 模式已设为' + ({ high: '高性能', balanced: '均衡', low: '低显存' }[v]) + '，重启套壳后生效', 'success');
+});
+$('#t-lang')?.addEventListener('change', async () => {
+    const v = ['system','zh','en'].includes($('#t-lang').value) ? $('#t-lang').value : 'system';
+    const s = await window.electronAPI?.settings?.get?.() || {};
+    s.uiLang = v;
+    await window.electronAPI?.settings?.save?.(s);
+    setUiLang(v);
 });
 $('#t-lan')?.addEventListener('change', async () => {
     await TL()?.lanSave({ enabled: $('#t-lan').value === '1' });
@@ -1632,3 +1691,11 @@ document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefa
 
 $('#btn-check-shell-update')?.addEventListener('click',checkShellUpdate);
 async function checkShellUpdate(){const s=$('#shell-update-status');if(!s)return;s.textContent='检查中...';s.className='update-status info';const cur=await A?.getShellVersion();const SU=window.electronAPI?.shellUpdate;if(!SU){s.textContent='自动更新不可用';s.className='update-status error';return;}try{const r=await SU.check();const newer=r?.version&&cur&&String(r.version)!==String(cur)&&(String(r.version).localeCompare(String(cur),undefined,{numeric:true})>0);if(r?.hasUpdate&&newer){s.innerHTML=`发现新版本 <b>v${escapeHtml(String(r.version))}</b> (当前 v${escapeHtml(String(cur))})`;s.className='update-status success';let dl=$('#btn-dl-shell');if(!dl){dl=document.createElement('button');dl.id='btn-dl-shell';dl.className='btn-primary';dl.style.marginTop='6px';dl.textContent='下载并安装';dl.addEventListener('click',async()=>{if(dl.dataset.done)return;dl.disabled=true;dl.textContent='下载中...';s.innerHTML='下载中...';s.className='update-status info';const sp=$('#shell-update-progress'),sf=$('#shell-progress-fill'),st=$('#shell-progress-text');if(sp){sp.classList.remove('hidden');if(sf)sf.style.width='0%';if(st)st.textContent='0%';}let cleanup=SU.onProgress(({percent})=>{if(sf)sf.style.width=`${Math.round(percent||0)}%`;if(st)st.textContent=`${Math.round(percent||0)}%`;dl.textContent=`下载中 ${Math.round(percent||0)}%`;});let dc=SU.onDownloaded(()=>{cleanup();dc();if(sp)sp.classList.add('hidden');dl.dataset.done='1';s.innerHTML='✅ 下载完成，正在安装...';s.className='update-status success';dl.textContent='安装中...';setTimeout(()=>SU.install(),800);});let ec=SU.onError(e=>{cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';});try{await SU.download();}catch(e){cleanup();dc();ec();if(sp)sp.classList.add('hidden');delete dl.dataset.done;s.textContent='下载失败: '+e;s.className='update-status error';dl.disabled=false;dl.textContent='重试';}});s.appendChild(dl);}}else if(r?.error){s.textContent=(/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|network|Network/i.test(r.error))?'⚠ 网络连接失败 — 请检查网络或代理 (127.0.0.1:7890)':'检查失败: '+r.error;s.className='update-status error';}else{s.textContent='已是最新版本 (v'+cur+')';s.className='update-status info';}}catch(e){s.textContent='检查失败: '+e.message;s.className='update-status error';}}
+
+// 启动时应用界面语言
+(async () => {
+    try {
+        const s = await window.electronAPI?.settings?.get?.() || {};
+        setUiLang(s.uiLang || 'system');
+    } catch (_) {}
+})();

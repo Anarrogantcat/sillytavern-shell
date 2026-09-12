@@ -672,7 +672,7 @@ function setupIPC() {
                 };
                 ipcMain.on('prompt-result', onResult);
                 win.on('closed', () => { ipcMain.removeListener('prompt-result', onResult); resolve(null); });
-                win.loadFile(path.join(__dirname, 'prompt.html'), { query: { message: String(payload?.message ?? ''), defaultValue: String(payload?.defaultValue ?? '') } });
+                win.loadFile(path.join(__dirname, 'prompt.html'), { query: { message: String(payload?.message ?? ''), defaultValue: String(payload?.defaultValue ?? ''), lang: String(loadSettings().uiLang || 'system') } });
                 win.once('ready-to-show', () => { try { win.show(); win.focus(); } catch (_) {} });
             } catch (_) { resolve(null); }
         });
