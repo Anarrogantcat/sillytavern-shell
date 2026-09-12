@@ -207,8 +207,84 @@ function initToolboxGroups() {
         localStorage.setItem(orderKey, JSON.stringify(arr));
     });
 }
+
+// ── 工具箱插件（用户目录 shell-tools/*.json）────────────────────────
+let pluginGroupEl = null;
+async function renderPluginTools() {
+    const PT = window.electronAPI?.tools;
+    if (!PT?.pluginsList) return;
+    let data = null;
+    try { data = await PT.pluginsList(); } catch (_) { return; }
+    const body = document.querySelector('.bench-body');
+    if (!body || !data) return;
+    if (!pluginGroupEl || !pluginGroupEl.isConnected) {
+        pluginGroupEl = document.createElement('div');
+        pluginGroupEl.className = 'tool-group plugin-group';
+        pluginGroupEl.dataset.key = '🧩 插件工具';
+        pluginGroupEl.dataset.plugin = '1';
+    }
+    pluginGroupEl.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'tool-group-header';
+    const name = document.createElement('span');
+    name.textContent = '🧩 插件工具';
+    const toggle = document.createElement('span');
+    toggle.className = 'tool-group-toggle';
+    toggle.textContent = '▾';
+    header.appendChild(name);
+    header.appendChild(toggle);
+    header.addEventListener('click', () => pluginGroupEl.classList.toggle('collapsed'));
+    const content = document.createElement('div');
+    content.className = 'tool-group-body';
+    const actions = document.createElement('div');
+    actions.className = 'tool-actions';
+    const openBtn = document.createElement('button');
+    openBtn.className = 'btn-secondary btn-sm';
+    openBtn.textContent = '打开插件目录';
+    openBtn.addEventListener('click', () => PT.pluginsOpenDir?.());
+    actions.appendChild(openBtn);
+    const dirNote = document.createElement('span');
+    dirNote.className = 'tool-note';
+    dirNote.textContent = data.dir || '';
+    actions.appendChild(dirNote);
+    content.appendChild(actions);
+    const detail = document.createElement('div');
+    detail.className = 'tool-detail';
+    for (const g of (data.groups || [])) {
+        const sec = document.createElement('div');
+        sec.className = 'tool-sec';
+        sec.textContent = g.name;
+        content.appendChild(sec);
+        const row = document.createElement('div');
+        row.className = 'tool-actions';
+        for (const t of g.tools) {
+            const b = document.createElement('button');
+            b.className = 'btn-secondary btn-sm';
+            b.textContent = t.label;
+            b.addEventListener('click', async () => {
+                detail.textContent = '运行中…';
+                const r = await PT.pluginRun(t);
+                detail.textContent = (r?.ok ? '' : '❌ ') + (r?.output || '');
+            });
+            row.appendChild(b);
+        }
+        content.appendChild(row);
+    }
+    if ((data.errors || []).length) {
+        const err = document.createElement('div');
+        err.className = 'tool-note';
+        err.textContent = '插件加载警告: ' + data.errors.join('; ');
+        content.appendChild(err);
+    }
+    content.appendChild(detail);
+    pluginGroupEl.appendChild(header);
+    pluginGroupEl.appendChild(content);
+    body.insertBefore(pluginGroupEl, body.firstChild);
+    try { applyI18n(); } catch (_) {}
+}
+
 let toolboxInited = false;
-function ensureToolboxInit() { if (toolboxInited) return; toolboxInited = true; try { initToolboxGroups(); } catch (_) {} try { applyI18n(); } catch (_) {} }
+function ensureToolboxInit() { if (toolboxInited) return; toolboxInited = true; try { initToolboxGroups(); } catch (_) {} try { applyI18n(); } catch (_) {} renderPluginTools(); }
 const { window:W, server:S, terminal:T, settings:ST, app:A, update:U } = window.electronAPI||{};
 // Toast 轻提示（替代部分 alert，套壳内展示）
 function showToast(message, type = 'info', opts = {}) {
@@ -1440,6 +1516,7 @@ ztEl.allow?.addEventListener('change', async () => {
 tEl.btn?.addEventListener('click', () => {
     if (!tEl.panel) return;
     ensureToolboxInit();
+    renderPluginTools();
     const open = tEl.panel.classList.toggle('hidden');
     if (!open) { renderTools(); renderUiSettings().catch(() => {}); (async () => { const t = await TL()?.tunnelStatus(); if (t) tunnelRender(t); })(); ztRefresh(); }
 });

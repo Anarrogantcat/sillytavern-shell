@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification, screen, clipboard } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,6 +15,7 @@ import { registerEnvTools } from './lib/tools-env.js';
 import { registerChatTools } from './lib/tools-chat.js';
 import { registerTunnelTools } from './lib/tools-tunnel.js';
 import { registerZtTools } from './lib/tools-zt.js';
+import { registerPluginTools } from './lib/tools-plugins.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
 // electron-updater's default logger writes to console (stdout). When the
@@ -836,6 +837,7 @@ function setupIPC() {
         restartServer: async () => { stopServer(); try { await startServer(); return { success: true }; } catch (e) { return { success: false, error: e.message }; } },
     }); } catch (e) { console.error('[register] tunnelTools:' + e.message); }
     try { registerZtTools({ ipcMain, terminalWrite, getSettings: loadSettings, saveSettings }); } catch (e) { console.error('[register] ztTools:' + e.message); }
+    try { registerPluginTools({ ipcMain, app, terminalWrite, shell, clipboard }); } catch (e) { console.error('[register] pluginTools:' + e.message); }
     // 更新下载完成后保留回滚包
     // 审计 #8：downloadedUpdateHelper 无 installerPath；真实路径是 autoUpdater.installerPath（BaseUpdater 属性）
     autoUpdater.on('update-downloaded', () => {

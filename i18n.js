@@ -179,5 +179,7 @@ window.SHELL_I18N_EN = {
     "🤖 模型服务 / 环境": "🤖 Model Service / Env",
     "🦙 llama.cpp 服务器": "🦙 llama.cpp Server",
     "🧰 工具箱": "🧰 Toolbox",
-    "🧰 工具设置": "🧰 Tool Settings"
+    "🧰 工具设置": "🧰 Tool Settings",
+    "🧩 插件工具": "🧩 Plugins",
+    "打开插件目录": "Open plugins folder"
 };

@@ -105,6 +105,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         llamaStatus: (port) => ipcRenderer.invoke('tools:llamaStatus', port),
         llamaStart: (cfg) => ipcRenderer.invoke('tools:llamaStart', cfg),
         llamaStop: (port) => ipcRenderer.invoke('tools:llamaStop', port),
+        pluginsList: () => ipcRenderer.invoke('tools:pluginsList'),
+        pluginRun: (tool) => ipcRenderer.invoke('tools:pluginRun', tool),
+        pluginsOpenDir: () => ipcRenderer.invoke('tools:pluginsOpenDir'),
+        pluginsDir: () => ipcRenderer.invoke('tools:pluginsDir'),
         gpuStats: () => ipcRenderer.invoke('tools:gpuStats'),
         clashCheck: () => ipcRenderer.invoke('tools:clashCheck'),
         // D 档
