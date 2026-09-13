@@ -181,5 +181,8 @@ window.SHELL_I18N_EN = {
     "🧰 工具箱": "🧰 Toolbox",
     "🧰 工具设置": "🧰 Tool Settings",
     "🧩 插件工具": "🧩 Plugins",
-    "打开插件目录": "Open plugins folder"
+    "打开插件目录": "Open plugins folder",
+    "全部展开": "Expand all",
+    "全部折叠": "Collapse all",
+    "简体中文": "Simplified Chinese"
 };
