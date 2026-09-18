@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getServerPath: () => ipcRenderer.invoke('settings:getServerPath'),
         setServerPath: p => ipcRenderer.invoke('settings:setServerPath', p),
         getDataRoot: () => ipcRenderer.invoke('settings:getDataRoot'),
+        onUiLang: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('ui-lang', h); return () => ipcRenderer.removeListener('ui-lang', h); },
     },
     app: { getVersion: () => ipcRenderer.invoke('app:getVersion'), getShellVersion: () => ipcRenderer.invoke('app:getShellVersion'), getChangelog: () => ipcRenderer.invoke('app:getChangelog'), contextMenu: opts => ipcRenderer.send('app:contextMenu', opts), onCtxCmd: cb => { const h = (_e, cmd) => cb(cmd); ipcRenderer.on('ctx:cmd', h); return () => ipcRenderer.removeListener('ctx:cmd', h); }, onShellAction: cb => { const h = (_e, a) => cb(a); ipcRenderer.on('shell:action', h); return () => ipcRenderer.removeListener('shell:action', h); } },
     update: {

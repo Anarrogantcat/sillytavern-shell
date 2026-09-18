@@ -40,6 +40,8 @@ body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSyst
 <textarea id="input" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
 <button id="send">发送</button>
 </div>
+<script src="i18n.js"></script>
+<script src="i18n-runtime.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const msgs = $('#msgs'), input = $('#input'), send = $('#send');
@@ -68,6 +70,10 @@ async function loadSession(id) {
     if (s) { currentSession = id; renderMsgs(s.messages); }
 }
 (async () => {
+    // 界面语言跟随套壳设置，并在设置里切换语言时实时跟随
+    const st = await window.electronAPI?.settings?.get?.() || {};
+    window.ShellI18n?.init?.({ lang: st.uiLang || 'system' });
+    window.electronAPI?.settings?.onUiLang?.(v => window.ShellI18n?.setLang?.(v));
     const m = await window.electronAPI?.chatModel?.();
     $('#model-label').textContent = m?.model ? '模型: ' + m.model : '未检测到模型配置';
     await refreshSessions('default');

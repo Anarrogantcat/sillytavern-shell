@@ -387,55 +387,21 @@ function showConfirm({ title = '确认操作', message = '', confirmText = '确�
 
 const $=s=>document.querySelector(s);
 
-// ── 界面语言（i18n）：按文本字典整体替换，中英可切换 ────────────────
-const I18N_EN = window.SHELL_I18N_EN || {};
+// ── 界面语言（i18n）：替换引擎在 i18n-runtime.js，此处只提供跳过规则与语言入口 ──
+// 与旧实现相比：① 动态文案（状态/toast/确认框）也会翻译 ② 状态更新后自动重译 ③ 中英互切可逆
+const shellI18n = window.ShellI18n;
 let uiLang = 'zh';
-const i18nNodeOrig = new Map();
-const i18nAttrOrig = new Map();
-function resolveLang(pref) {
-    if (pref === 'en') return 'en';
-    if (pref === 'zh') return 'zh';
-    return String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
-}
 function i18nSkip(el) {
-    if (!el) return true;
-    if (['SCRIPT', 'STYLE', 'TEXTAREA'].includes(el.tagName)) return true;
-    return !!el.closest('#sillytavern-webview,#terminal-output,#loading-log,#shell-toast,.tool-detail,.confirm-panel,pre,code');
+    // ST 页面内容、终端输出、启动日志、工具输出属于数据，不翻译
+    if (!el || !el.closest) return true;
+    return !!el.closest('#sillytavern-webview,#terminal-output,#loading-log,.tool-detail,pre,code');
 }
-function applyI18n() {
-    const en = uiLang === 'en';
-    try {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-            acceptNode: (n) => i18nSkip(n.parentElement) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
-        });
-        const nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        for (const n of nodes) {
-            if (!i18nNodeOrig.has(n)) i18nNodeOrig.set(n, n.nodeValue);
-            const orig = i18nNodeOrig.get(n);
-            const key = String(orig).trim();
-            if (!key) continue;
-            const hit = en ? I18N_EN[key] : null;
-            n.nodeValue = hit ? String(orig).replace(key, hit) : orig;
-        }
-        for (const el of document.querySelectorAll('[title],[placeholder]')) {
-            if (i18nSkip(el)) continue;
-            let rec = i18nAttrOrig.get(el);
-            if (!rec) { rec = { title: el.getAttribute('title'), placeholder: el.getAttribute('placeholder') }; i18nAttrOrig.set(el, rec); }
-            for (const attr of ['title', 'placeholder']) {
-                const base = rec[attr];
-                if (base == null) continue;
-                const key = base.trim();
-                const hit = en ? I18N_EN[key] : null;
-                el.setAttribute(attr, hit ? base.replace(key, hit) : base);
-            }
-        }
-    } catch (_) {}
-}
+function applyI18n() { try { shellI18n?.apply?.(); } catch (_) {} }
 function setUiLang(pref) {
-    uiLang = resolveLang(pref);
-    applyI18n();
+    try { uiLang = shellI18n ? shellI18n.setLang(pref) : 'zh'; } catch (_) { uiLang = 'zh'; }
+    return uiLang;
 }
+try { shellI18n?.init?.({ skip: i18nSkip }); } catch (_) {}
 const webview=$('#sillytavern-webview'),loading=$('#loading-overlay'),loadingLog=$('#loading-log');
 const termPanel=$('#terminal-panel'),termOut=$('#terminal-output'),termInput=$('#terminal-input');
 const btnTerm=$('#btn-terminal'),btnSettings=$('#btn-settings'),settingsOverlay=$('#settings-overlay');

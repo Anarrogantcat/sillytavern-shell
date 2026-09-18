@@ -479,6 +479,42 @@ function createTrayIconRaw() {
     }
     return nativeImage.createFromBuffer(buf, { width: s, height: s, scaleFactor: 1 });
 }
+// ── 主进程文案中英切换：复用渲染进程同一份字典（i18n.js），不重复维护翻译 ──
+let i18nDict = {}, i18nRules = [];
+try {
+    const src = fs.readFileSync(path.join(__dirname, 'i18n.js'), 'utf8');
+    const box = {};
+    new Function('window', src)(box);
+    i18nDict = box.SHELL_I18N_EN || {};
+    i18nRules = (box.SHELL_I18N_EXTRA || []).slice().sort((a, b) => String(b[0]).length - String(a[0]).length);
+} catch (e) { console.error('[i18n] 主进程字典加载失败: ' + e.message); }
+function uiLangIsEn() {
+    const p = String(loadSettings().uiLang || 'system');
+    if (p === 'en') return true;
+    if (p === 'zh') return false;
+    try { return !String(app.getLocale() || '').toLowerCase().startsWith('zh'); } catch (_) { return false; }
+}
+// 主进程 UI 文案（托盘/原生对话框/通知/右键菜单）统一走这里
+function t(zh) {
+    const raw = String(zh == null ? '' : zh);
+    const key = raw.trim();
+    if (!key || !uiLangIsEn()) return raw;
+    const exact = i18nDict[key];
+    if (exact) return raw.replace(key, exact);
+    let out = raw;
+    for (let pass = 0; pass < 4; pass++) {
+        let changed = false;
+        for (let i = 0; i < i18nRules.length; i++) {
+            const z = i18nRules[i][0];
+            if (out.indexOf(z) === -1) continue;
+            out = out.split(z).join(i18nRules[i][1]);
+            changed = true;
+        }
+        if (!changed) break;
+    }
+    return out;
+}
+
 let tray = null, isQuitting = false;
 function createTray() {
     const iconPath = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, 'assets/icon.png');
@@ -487,16 +523,16 @@ function createTray() {
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
     tray.setToolTip('SillyTavern');
     tray.setContextMenu(Menu.buildFromTemplate([
-        { label: '显示窗口', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+        { label: t('显示窗口'), click: () => { mainWindow?.show(); mainWindow?.focus(); } },
         { type: 'separator' },
-        { label: '立即备份数据', click: async () => { try { const d = await toolsApp?.doBackup(); terminalWrite(`[tray] ${d}\n`); } catch (e) { terminalWrite(`[tray] 备份失败: ${e.message}\n`); } } },
+        { label: t('立即备份数据'), click: async () => { try { const d = await toolsApp?.doBackup(); terminalWrite(`[tray] ${d}\n`); } catch (e) { terminalWrite(`[tray] 备份失败: ${e.message}\n`); } } },
         { type: 'separator' },
-        { label: '打开数据目录', click: () => shell.openPath(dataRoot) },
-        { label: '打开角色卡目录', click: () => shell.openPath(path.join(dataRoot, 'default-user', 'characters')) },
-        { label: '打开 ST 目录', click: () => shell.openPath(sillyTavernRoot) },
-        { label: '打开 Ollama 目录', click: () => shell.openPath(process.env.OLLAMA_MODELS ? path.dirname(process.env.OLLAMA_MODELS) : 'D:\\AI\\ollama-models') },
+        { label: t('打开数据目录'), click: () => shell.openPath(dataRoot) },
+        { label: t('打开角色卡目录'), click: () => shell.openPath(path.join(dataRoot, 'default-user', 'characters')) },
+        { label: t('打开 ST 目录'), click: () => shell.openPath(sillyTavernRoot) },
+        { label: t('打开 Ollama 目录'), click: () => shell.openPath(process.env.OLLAMA_MODELS ? path.dirname(process.env.OLLAMA_MODELS) : 'D:\\AI\\ollama-models') },
         { type: 'separator' },
-        { label: '退出', click: () => { isQuitting = true; app.quit(); } },
+        { label: t('退出'), click: () => { isQuitting = true; app.quit(); } },
     ]));
     tray.on('click', () => { mainWindow?.show(); mainWindow?.focus(); });
 }
@@ -536,18 +572,18 @@ function createWindow() {
         const behavior = settings.closeBehavior || 'ask';
         if (behavior === 'tray') {
             mainWindow.hide();
-            try { new Notification({ title: 'SillyTavern 仍在后台运行', body: '已最小化到系统托盘。点击托盘图标可恢复窗口,右键托盘图标选择"退出"可完全关闭。' }).show(); } catch (_) {}
+            try { new Notification({ title: t('SillyTavern 仍在后台运行'), body: t('已最小化到系统托盘。点击托盘图标可恢复窗口,右键托盘图标选择"退出"可完全关闭。') }).show(); } catch (_) {}
         }
         else if (behavior === 'quit') { isQuitting = true; app.quit(); }
         else {
             const choice = dialog.showMessageBoxSync(mainWindow, {
-                type: 'question', title: '关闭 SillyTavern',
-                message: '关闭窗口时如何处理？',
-                detail: '你可以随时在设置中更改此选项。',
-                buttons: ['最小化到托盘', '直接退出', '取消'],
+                type: 'question', title: t('关闭 SillyTavern'),
+                message: t('关闭窗口时如何处理？'),
+                detail: t('你可以随时在设置中更改此选项。'),
+                buttons: [t('最小化到托盘'), t('直接退出'), t('取消')],
                 defaultId: 0, cancelId: 2,
             });
-            if (choice === 0) { settings.closeBehavior = 'tray'; saveSettings(settings); mainWindow.hide(); try { new Notification({ title: 'SillyTavern 仍在后台运行', body: '已最小化到系统托盘。点击托盘图标可恢复窗口,右键托盘图标选择"退出"可完全关闭。' }).show(); } catch (_) {} }
+            if (choice === 0) { settings.closeBehavior = 'tray'; saveSettings(settings); mainWindow.hide(); try { new Notification({ title: t('SillyTavern 仍在后台运行'), body: t('已最小化到系统托盘。点击托盘图标可恢复窗口,右键托盘图标选择"退出"可完全关闭。') }).show(); } catch (_) {} }
             else if (choice === 1) { settings.closeBehavior = 'quit'; saveSettings(settings); isQuitting = true; app.quit(); }
         }
     });
@@ -623,6 +659,8 @@ function setupIPC() {
             }
             Object.assign(settings, s);
             saveSettings(settings);
+            // 界面语言变更广播：常驻窗口（独立对话助手等）需要跟随切换，不必重开
+            try { BrowserWindow.getAllWindows().forEach(w => { if (!w.isDestroyed()) w.webContents.send('ui-lang', settings.uiLang || 'system'); }); } catch (_) {}
         }
         return { ok: true };
     });
@@ -647,7 +685,7 @@ function setupIPC() {
                 const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, buttons: ['否', '是'], defaultId: 1, cancelId: 0 });
                 event.returnValue = r === 1;
             } else if (type === 'prompt') {
-                const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, detail: '当前 prompt 弹窗为简化版：确认后返回默认值，取消返回 null', buttons: ['取消', '确定'], defaultId: 1, cancelId: 0 });
+                const r = dialog.showMessageBoxSync({ type: 'question', title: 'SillyTavern', message, detail: t('当前 prompt 弹窗为简化版：确认后返回默认值，取消返回 null'), buttons: [t('取消'), t('确定')], defaultId: 1, cancelId: 0 });
                 event.returnValue = r === 1 ? String(payload?.defaultValue ?? '') : null;
             } else {
                 dialog.showMessageBoxSync({ type: 'info', title: 'SillyTavern', message });
@@ -694,7 +732,7 @@ function setupIPC() {
     }));
     ipcMain.handle('terminal:export', async () => {
         try {
-            const r = await dialog.showSaveDialog({ title: '导出日志', defaultPath: `sillytavern-shell-log-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.txt`, filters: [{ name: '文本文件', extensions: ['txt'] }] });
+            const r = await dialog.showSaveDialog({ title: t('导出日志'), defaultPath: `sillytavern-shell-log-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.txt`, filters: [{ name: t('文本文件'), extensions: ['txt'] }] });
             if (r.canceled || !r.filePath) return { canceled: true };
             const info = {
                 time: new Date().toISOString(),
@@ -805,32 +843,32 @@ function setupIPC() {
                 { label: '缩小', click: () => toShell('zoomOut') },
                 { label: '重置缩放', click: () => toShell('zoomReset') },
                 { type: 'separator' },
-                { label: '检查元素', click: () => toShell('inspect') },
+                { label: t('检查元素'), click: () => toShell('inspect') },
             ])
             : Menu.buildFromTemplate([
-                { label: '设置', click: () => w.webContents.send('shell:action', 'settings') },
-                { label: '工具箱', click: () => w.webContents.send('shell:action', 'tools') },
-                { label: '终端', click: () => w.webContents.send('shell:action', 'terminal') },
+                { label: t('设置'), click: () => w.webContents.send('shell:action', 'settings') },
+                { label: t('工具箱'), click: () => w.webContents.send('shell:action', 'tools') },
+                { label: t('终端'), click: () => w.webContents.send('shell:action', 'terminal') },
                 { type: 'separator' },
-                { label: '刷新页面', click: () => toShell('reload') },
-                { label: '检查套壳更新', click: () => w.webContents.send('shell:action', 'update') },
+                { label: t('刷新页面'), click: () => toShell('reload') },
+                { label: t('检查套壳更新'), click: () => w.webContents.send('shell:action', 'update') },
                 { type: 'separator' },
-                { label: '退出', click: () => { isQuitting = true; app.quit(); } },
+                { label: t('退出'), click: () => { isQuitting = true; app.quit(); } },
             ]);
         menu.popup({ window: w });
     });
 
     // ── Tools 工具箱注册（A/B/C/D 档，全部只读/套壳层）─────────────
     try { toolsApp = registerAppTools({
-        ipcMain, app, dialog, shell, dataRoot, getSettings: loadSettings, saveSettings, terminalWrite,
+        ipcMain, app, dialog, shell, dataRoot, getSettings: loadSettings, saveSettings, terminalWrite, t,
         win: () => mainWindow, stopServer, startServer,
     }); } catch (e) { console.error('[register] appTools:' + e.message); }
     try { toolsData = registerDataTools({
-        ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite,
+        ipcMain, app, dialog, shell, dataRoot, sillyTavernRoot, terminalWrite, t,
         win: () => mainWindow, getSettings: loadSettings,
     }); } catch (e) { console.error('[register] dataTools:' + e.message); }
-    try { registerEnvTools({ ipcMain, terminalWrite, dataRoot, sillyTavernRoot }); } catch (e) { console.error('[register] envTools:' + e.message); }
-    try { registerChatTools({ ipcMain, dataRoot, app }); } catch (e) { console.error('[register] chatTools:' + e.message); }
+    try { registerEnvTools({ ipcMain, terminalWrite, dataRoot, sillyTavernRoot, t }); } catch (e) { console.error('[register] envTools:' + e.message); }
+    try { registerChatTools({ ipcMain, dataRoot, app, t }); } catch (e) { console.error('[register] chatTools:' + e.message); }
     try { registerTunnelTools({
         ipcMain, app, terminalWrite,
         getSettings: loadSettings, saveSettings, win: () => mainWindow,
