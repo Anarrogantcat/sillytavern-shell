@@ -1,6 +1,0 @@
-v1.31.1: 修复英文模式残留中文 + 整理 CHANGELOG
-
-- i18n 字典补充 3 条（简体中文 / 全部展开 / 全部折叠），英文模式下不再残留中文
-- 语言下拉与工具箱展开/折叠按钮中英切换实测通过（EN: Simplified Chinese / Expand all / Collapse all；ZH 可还原）
-- 移除 CHANGELOG 顶部 18 行空行，并补充 v1.31.1 条目
-- 清理 .smoke 下冒烟测试残留的 userData 目录（bench-ud / user-ud，约 6 MB，未跟踪）；保留受版本控制的 .smoke/SillyTavern 测试夹具
