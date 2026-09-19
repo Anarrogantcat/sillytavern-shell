@@ -1,8 +1,10 @@
-#cc-panel .inline-drawer-content > * { margin: 3px 0; }
-#cc-panel label { display: block; margin-top: 6px; font-size: 12px; }
-#cc-panel .checkbox_label { display: flex; align-items: center; gap: 6px; margin: 3px 0; line-height: 1.4; }
+/* 面板字号跟随 ST 界面字号（--cc-font 由扩展设置控制，默认 1em） */
+#cc-panel { font-size: var(--cc-font, 1em); line-height: 1.5; }
+#cc-panel .inline-drawer-content > * { margin: 4px 0; }
+#cc-panel label { display: block; margin-top: 6px; font-size: inherit; }
+#cc-panel .checkbox_label { display: flex; align-items: center; gap: 8px; margin: 5px 0; line-height: 1.5; font-size: inherit; }
 #cc-panel .checkbox_label span { flex: 1; }
-#cc-panel input[type="range"] { width: 100%; margin: 2px 0 6px; }
-#cc-panel .menu_button { width: auto; min-width: 120px; white-space: nowrap; }
-#cc-panel .cc-stats { font-size: 12px; opacity: .85; margin: 6px 0; line-height: 1.5; }
-#cc-panel .cc-log { max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; }
+#cc-panel select, #cc-panel input[type="range"] { width: 100%; margin: 2px 0 6px; font-size: inherit; }
+#cc-panel .menu_button { width: auto; min-width: 120px; white-space: nowrap; font-size: inherit; }
+#cc-panel .cc-stats { font-size: 0.95em; opacity: .9; margin: 8px 0; line-height: 1.6; }
+#cc-panel .cc-log { max-height: 150px; overflow: auto; font-size: 0.92em; white-space: pre-wrap; line-height: 1.5; }

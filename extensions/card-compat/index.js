@@ -7,7 +7,7 @@ import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounce
 import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.1.5';
+const VERSION = '0.1.6';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -18,6 +18,7 @@ const DEFAULTS = {
     notifyStale: true,
     logActions: true,
     injectPrompt: true,
+    panelFont: 1,        // 面板字号倍率（1 / 1.15 / 1.3）
 };
 const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0 };
 const recent = [];
@@ -116,6 +117,12 @@ function verifyRendered(messageId) {
         if (leaking.length) { stats.unrendered++; log('anchor-unrendered', leaking.join(','), '卡脚本未接管（可能需要酒馆助手变量或该卡未启用对应脚本）'); }
     } catch (_) {}
 }
+function applyPanelFont() {
+    try {
+        const el = document.getElementById('cc-panel');
+        if (el) el.style.setProperty('--cc-font', String(settings().panelFont || 1) + 'em');
+    } catch (_) {}
+}
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
@@ -137,6 +144,7 @@ function buildSettingsUi() {
         '<label class="checkbox_label"><input type="checkbox" id="cc-repair"><span>未闭合自动补结束标签</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-stale"><span>数据疑似未更新时提示</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-inject-prompt"><span>生成前注入结尾结构块提醒（推荐开）</span></label>',
+        '<label>面板字号</label><select id="cc-font"><option value="1">跟随 ST（默认）</option><option value="1.15">大</option><option value="1.3">更大</option></select>',
         '<label>消息区缩放 <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
         '<label>字号下限 <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
         '<button id="cc-check" class="menu_button">自检当前楼层</button>',
@@ -161,11 +169,14 @@ function buildSettingsUi() {
     bind('cc-repair', 'repairClosure', true);
     bind('cc-stale', 'notifyStale', true);
     bind('cc-inject-prompt', 'injectPrompt', true);
+    const fontSel = document.getElementById('cc-font');
+    if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
     bind('cc-zoom', 'fontZoom', false);
     bind('cc-floor', 'fontFloor', false);
     const zv = document.getElementById('cc-zoom-val'); if (zv) zv.textContent = Math.round(settings().fontZoom * 100) + '%';
     const fv = document.getElementById('cc-floor-val'); if (fv) fv.textContent = settings().fontFloor ? settings().fontFloor + 'px' : '关闭';
     document.getElementById('cc-check')?.addEventListener('click', () => { guardMessage(chat.length - 1); verifyRendered(chat.length - 1); });
+    applyPanelFont();
     renderStats();
 }
 (async function init() {
