@@ -7,7 +7,7 @@ import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounce
 import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.4';
+const VERSION = '0.2.5';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -23,7 +23,7 @@ const DEFAULTS = {
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
     fixSmartQuotes: true, // 结构块内「英文引号开头 + 中文引号结尾」自动修（实测会让 YAML 解析失败）
     quoteScalars: true,   // 结构块内未加引号、但含「: 」或「 #」的值自动加英文引号（YAML 会截断/当嵌套键）
-    yamlStrict: true,      // 结构块严格 YAML 校验（用扩展自带的 vendor/js-yaml.min.js，失败会报警）
+    yamlStrict: true,      // 结构块严格 YAML 校验（用扩展自带的 assets/js-yaml.min.js，失败会报警）
 };
 const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, coverageTotal: 0, coverageHit: 0 };
 let lastCoverage = null;
@@ -61,7 +61,7 @@ function updatePromptInjection() {
     } catch (e) { console.error("[card-compat] prompt inject failed", e); }
 }
 /** 懒加载扩展自带的 js-yaml（页面里已有 window.jsyaml 就直接用，避免重复加载） */
-const VENDOR_YAML_URL = (() => { try { return new URL('./vendor/js-yaml.min.js', import.meta.url).href; } catch (_) { return 'vendor/js-yaml.min.js'; } })();
+const VENDOR_YAML_URL = (() => { try { return new URL('./assets/js-yaml.min.js', import.meta.url).href; } catch (_) { return 'assets/js-yaml.min.js'; } })();
 let yamlLibPromise = null;
 function loadYamlLib() {
     if (!yamlLibPromise) {

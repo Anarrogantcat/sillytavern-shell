@@ -1,9 +1,15 @@
 # 更新日志
 
+## [0.2.5] - 2026-09-20
+### 修复
+- 自带库目录由 `vendor/` 改名为 **`assets/`**：仓库根 `.gitignore` 里有 `vendor/` 规则，导致扩展自带的 `js-yaml.min.js` **从未被提交**
+  —— 本地索引算到 8 个文件、CI 检出后只有 6 个，清单校验直接判 STALE（发布被自愈步骤拦下，未产出安装包）
+  - 现在 `assets/js-yaml.min.js` 会被正常跟踪；加载路径同步改成 `./assets/js-yaml.min.js`
+
 ## [0.2.4] - 2026-09-20
 ### 新增
 - **结构块严格 YAML 校验**（真解析，不是启发式）：
-  - 扩展自带 `vendor/js-yaml.min.js`（js-yaml 4.3.0，MIT，附 `vendor/js-yaml.LICENSE.txt`，已去掉 sourceMappingURL 尾巴、不带 BOM）
+  - 扩展自带 `assets/js-yaml.min.js`（js-yaml 4.3.0，MIT，附 `assets/js-yaml.LICENSE.txt`，已去掉 sourceMappingURL 尾巴、不带 BOM）
   - 懒加载：页面里已有 `window.jsyaml` 就直接用，否则按 `import.meta.url` 注入一次脚本；**消息里没有结构块时根本不加载**
   - 生成后自动校验（可用面板开关 `yamlStrict` 关闭）；解析失败 → 面板 `YAML 严格` 计数 + 日志 `yaml-strict-fail`（带首条错误信息），**只报告不改文本**
   - 面板新增「严格校验当前楼层」按钮（手动强制校验最后一层，通过也会给一行 `yaml-strict-ok`）

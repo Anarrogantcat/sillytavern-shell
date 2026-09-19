@@ -1,5 +1,22 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.0.0 (2026-09-20) — 修「自带库被 .gitignore 吞掉」导致发布中断 + 加固 CI 自愈（扩展 card-compat 0.2.5）
+
+### 修复
+- **v1.36.6 的发布被 CI 拦下（47 秒失败）**，日志给出两个真问题：
+  1. **扩展自带库根本没进仓库**：仓库根 `.gitignore` 有 `vendor/` 规则，把 `extensions/card-compat/vendor/js-yaml.min.js` 一起忽略了
+     → 本地索引算到 **8 个文件**、CI 检出后只有 **6 个** → 清单校验判 STALE（自愈步骤按预期工作，拦住了打包）
+     - 修法：目录改名 `vendor/` → **`assets/`**（不再撞规则），加载路径与文档同步更新；扩展版本 0.2.4 → **0.2.5**
+  2. **CI 自愈的 `git push` 403**：`remote: Permission ... denied to github-actions[bot]` —— `actions/checkout` 注入的 `http.https://github.com/.extraheader` 盖掉了 URL 里的凭据，且 job 未声明写权限
+     - 修法：job 级加 `permissions: contents: write`；push 时显式 `-c "http.https://github.com/.extraheader="` 清掉注入头；**校验 push 退出码**（此前失败也照样打印"已推回"）
+
+### 变更
+- **版本号规则推进**：1.36.x 线走完（patch 上限 6、minor 上限 36）→ 本次进入 **2.0.0**，之后 2.0.1 … 2.0.6 → 2.1.0
+- 夹具总览：compat 59/0 · ext-remote 33/33 · ext-deploy 37/37 · toolbox 14/14 · plot-pilot 45/45 · index `--check` 通过
+
+### 说明
+- 上一版打的 tag `v1.36.6` 因发布失败**没有 Release**（自动更新只读 Release，故无影响）；本次 2.0.0 为正式可更新版本
+
 ## v1.36.6 (2026-09-20) — 结构块严格 YAML 校验 + 扩展回滚通道（card-compat 0.2.4）
 ### 新增
 - **扩展「严格 YAML 校验」**：card-compat 自带 `vendor/js-yaml.min.js`（js-yaml 4.3.0，MIT，去 BOM / 去 sourceMappingURL），生成后对角色卡声明的结构块做**真解析** ——

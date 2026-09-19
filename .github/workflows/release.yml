@@ -8,6 +8,9 @@ on:
 jobs:
   build-lite:
     runs-on: windows-latest
+    # 自愈步骤要把重建后的清单推回 main —— 默认 GITHUB_TOKEN 需要显式写权限
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +47,9 @@ jobs:
           # 只在 main 是当前提交祖先时推送（fast-forward），避免把 main 回退
           git merge-base --is-ancestor origin/main HEAD
           if ($LASTEXITCODE -ne 0) { Write-Error "main 已领先于本次 tag，放弃自动回提交（请本地跑 ext-index.mjs 后重发）"; exit 1 }
-          git push "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git" HEAD:main
+          # 必须清掉 actions/checkout 注入的 extraheader，否则它会盖掉 URL 里的凭据（表现为 403 且署名 github-actions[bot]）
+          git -c "http.https://github.com/.extraheader=" push "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git" HEAD:main
+          if ($LASTEXITCODE -ne 0) { Write-Error "回提交失败（检查仓库 secret GH_TOKEN 是否有 contents:write）"; exit 1 }
           Write-Host "已把重建后的清单推回 main"
 
       - name: 扩展夹具（部署 + 在线更新）
