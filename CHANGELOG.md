@@ -1,6 +1,7 @@
 # SillyTavern Desktop Shell 更新日志
 
 ## v1.35.1 (2026-09-20) — 剧情推进器面板输入框白底修复（扩展 0.1.1）
+> **本次发布范围**：v1.32.1 之后累计 **15 个提交**（v1.33.0 → v1.35.1）都在这一个安装包里，含 card-compat 0.1.x→0.2.1 全部修复、通用版继续按钮、以及新扩展「剧情推进器 Plot Pilot」。
 - 现象：用户截图反馈面板里「这么多白色」——7 个文本输入框在深色主题下是浏览器默认白底，与 ST 主题不搭
 - 原因：新面板用了 `<input type="text">` 但没套 ST 自己的主题类；ST 的输入框样式只作用于 `.text_pole`（`public/style.css`：`background-color: var(--black30a); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor)`），旧面板没文本框所以没暴露这个问题
 - 修复：7 个文本输入全部加 `class="text_pole"`；`style.css` 追加兜底规则（主题变量缺失时也用同一组变量，保证深色）
