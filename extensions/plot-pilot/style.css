@@ -34,6 +34,14 @@
 #pp-panel .checkbox_label { display: flex; align-items: center; gap: 8px; margin: 5px 0; line-height: 1.5; font-size: inherit; }
 #pp-panel .checkbox_label span { flex: 1; }
 #pp-panel input[type="text"], #pp-panel select { width: 100%; margin: 2px 0 6px; font-size: inherit; }
+/* 兜底：文本输入沿用 ST 主题变量（面板里的输入框一定不能再是浏览器默认白底） */
+#pp-panel input[type="text"] {
+    background-color: var(--black30a, rgba(0, 0, 0, .3));
+    color: var(--SmartThemeBodyColor, inherit);
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, .2));
+    border-radius: 5px;
+    padding: 3px 5px;
+}
 #pp-panel .menu_button { width: auto; min-width: 110px; white-space: nowrap; font-size: inherit; margin-right: 6px; }
 #pp-panel .pp-state { font-size: .95em; opacity: .9; margin: 8px 0; line-height: 1.6; }
 #pp-panel .pp-warn { color: #ffb74d; font-size: .95em; line-height: 1.5; margin: 6px 0; }

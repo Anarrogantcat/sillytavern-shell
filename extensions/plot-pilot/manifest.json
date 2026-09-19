@@ -6,6 +6,6 @@
     "js": "index.js",
     "css": "style.css",
     "author": "sillytavern-shell",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "发送栏上方的「续写 / 推进节点」按钮：自动探测角色卡是否带剧本·蓝图推进系统，按卡显示、文案可配、配置随 ST 设置持久化"
 }

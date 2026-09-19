@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.35.1 (2026-09-20) — 剧情推进器面板输入框白底修复（扩展 0.1.1）
+- 现象：用户截图反馈面板里「这么多白色」——7 个文本输入框在深色主题下是浏览器默认白底，与 ST 主题不搭
+- 原因：新面板用了 `<input type="text">` 但没套 ST 自己的主题类；ST 的输入框样式只作用于 `.text_pole`（`public/style.css`：`background-color: var(--black30a); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor)`），旧面板没文本框所以没暴露这个问题
+- 修复：7 个文本输入全部加 `class="text_pole"`；`style.css` 追加兜底规则（主题变量缺失时也用同一组变量，保证深色）
+- 扩展版本 0.1.0 → 0.1.1；夹具 46/46 仍全通过；已同步到 `Data/default-user/extensions/plot-pilot/`
 ## v1.35.0 (2026-09-20) — 「继续按钮」升级为 ST 原生扩展《剧情推进器 Plot Pilot》(0.1.0)
 - 背景：原「继续按钮」是酒馆助手脚本，配置存 localStorage（不进 ST 备份）、逻辑与 DOM 混在一起、无法按卡区分，用户要求"写成插件，方便后续扩展和优化更新，并改名"
 - 新增仓库管理的 ST 扩展 `extensions/plot-pilot/`（`manifest.json` / `logic.js` / `index.js` / `style.css` / `README.md` / `CHANGELOG.md`），命名 **剧情推进器 Plot Pilot**，按钮改为「▶ 续写 / ⏭ 推进节点」且文案可改
