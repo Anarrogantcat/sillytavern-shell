@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.33.2 (2026-09-20) — 修串卡标签：预设示例移除 + 扩展 0.1.2
+- 修复：预设结尾协议里把 `<status!>` 当示例列出，导致模型在别的角色卡聊天里照抄该标签（实测出现 `</status!` 缺 `>` 的破损标签）→ 去掉全部标签示例，改为"一律以当前角色卡规定的标签为准，禁止使用其他角色卡的标签"
+- `extensions/card-compat` 0.1.2：新增畸形结束标签修复（`</Tag` 缺 `>` → `</Tag>`，仅对当前卡已知标签生效）；新增「串卡标签」检测计数（只报告、不改内容）
+- 夹具断言扩到 16 项（新增畸形闭合修复 / 串卡检出 / 自家标签不误报），实测 16/16 通过
+- 说明：预设两个变体 `Izumi 0828.optimized.json` 与 `Izumi 0828.tailfree.json` 同步更新；ST 本体、角色卡、原预设均未改动
 ## v1.33.1 (2026-09-20) — 修复 card-compat 在流式模式下完全不执行
 - 根因：ST 的 `saveReply({ fromStreaming: true })` 用 `!fromStreaming` 跳过 `MESSAGE_RECEIVED`，而优化预设默认开启了流式 → 守护从未触发
 - 修复：`card-compat` v0.1.1 改挂 `GENERATION_ENDED`（流式结束）并在修正文本后调用 `updateMessageBlock(..., { rerenderMessage: true })` 重新渲染，保证卡片正则作用于修正后的文本

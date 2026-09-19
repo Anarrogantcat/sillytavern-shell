@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -42,6 +42,17 @@ check('字段解析', JSON.stringify(freshnessFields(t1)) === JSON.stringify({ d
 check('两轮完全相同→stale', isStale(t1, t2).stale === true, isStale(t1, t2));
 check('字段变化→不 stale', isStale(t1, t3).stale === false, isStale(t1, t3));
 check('缺字段→不误报', isStale('无字段', '无字段').stale === false);
+
+
+console.log('— 夹具 5：畸形结束标签修复 + 串卡检测');
+const nm = normalizeMalformedClosings('正文。\n<StatusBar>时间 12:00\n</StatusBar', ['StatusBar']);
+check('修复 </StatusBar（缺 >）', nm.text.trimEnd().endsWith('</StatusBar>') && nm.fixed.includes('StatusBar'), nm);
+const nm2 = normalizeMalformedClosings('正文。\n<StatusBar>x</StatusBar>', ['StatusBar']);
+check('已合法的不重复改', nm2.fixed.length === 0, nm2);
+const foreign1 = detectForeignTags('正文。\n</status!\n</tucao>', c1);
+check('检出串卡标签 status!', foreign1.includes('status!'), foreign1);
+const foreign2 = detectForeignTags('正文。\n<StatusPlaceHolderImpl/>', c1);
+check('自家标签不误报', !foreign2.includes('StatusPlaceHolderImpl'), foreign2);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

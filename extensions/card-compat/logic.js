@@ -100,6 +100,27 @@ export function guardText(text, profile, opts = {}) {
     return { text: out, actions };
 }
 
+/** 已知的"状态栏协议"标签族（用于检测串卡） */
+export const KNOWN_PROTOCOL_TAGS = ['status!', 'StatusBar', 'StatusPlaceHolderImpl', 'StatusBlock', 'Status_block', 'StatusPanel', 'SystemTime', 'TTL'];
+
+/** 修复畸形的结束标签：</Tag（缺 >）→ </Tag>，仅对给定标签族生效 */
+export function normalizeMalformedClosings(text, tags) {
+    let out = String(text ?? '');
+    const fixed = [];
+    for (const tag of tags || []) {
+        const re = new RegExp('</' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?!>)', 'g');
+        if (re.test(out)) { out = out.replace(re, '</' + tag + '>'); fixed.push(tag); }
+    }
+    return { text: out, fixed };
+}
+
+/** 检测消息里是否混入了「其他角色卡」的协议标签（只报告，不改内容） */
+export function detectForeignTags(text, profile) {
+    const mine = new Set([...(profile?.anchors || []), ...(profile?.dataTags || []), ...(profile?.hideTargets || [])]);
+    const t = String(text ?? '');
+    return KNOWN_PROTOCOL_TAGS.filter(tag => !mine.has(tag) && (t.includes('<' + tag) || t.includes('</' + tag)));
+}
+
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */
 export function freshnessFields(text) {
     const t = String(text || '');
