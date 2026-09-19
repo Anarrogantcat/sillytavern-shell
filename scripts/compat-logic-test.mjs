@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -60,6 +60,13 @@ const foreign1 = detectForeignTags('正文。\n</status!\n</tucao>', c1);
 check('检出串卡标签 status!', foreign1.includes('status!'), foreign1);
 const foreign2 = detectForeignTags('正文。\n<StatusPlaceHolderImpl/>', c1);
 check('自家标签不误报', !foreign2.includes('StatusPlaceHolderImpl'), foreign2);
+
+console.log('— 夹具 6：结尾提醒注入文本');
+const rem = buildTailReminder(c1);
+check('包含变量块标签', rem.includes('<UpdateVariable>'), rem.slice(0, 80));
+check('包含锚点标签', rem.includes('<StatusPlaceHolderImpl'), rem.slice(0, 120));
+check('不点名其他卡的标签', !rem.includes('status!') && !rem.includes('StatusBar'), rem.slice(0, 160));
+check('无锚点无数据块时返回空串', buildTailReminder(buildProfile({})) === '');
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

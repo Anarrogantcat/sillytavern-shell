@@ -128,6 +128,21 @@ export function detectForeignTags(text, profile) {
     return KNOWN_PROTOCOL_TAGS.filter(tag => !mine.has(tag) && (t.includes('<' + tag) || t.includes('</' + tag)));
 }
 
+/**
+ * 生成结尾结构块提醒文本（注入 depth 0，让模型在生成前最后看到）
+ * 只声明当前角色卡要求的标签，避免串卡
+ */
+export function buildTailReminder(profile) {
+    const data = profile?.dataTags || [];
+    const anchors = profile?.anchors || [];
+    if (!data.length && !anchors.length) return "";
+    const lines = ["<tail_reminder>", "回复的最后必须完整输出下列结构块（当前角色卡的要求，不得省略）："];
+    for (const t of data) lines.push("- <" + t + "> … </" + t + "> ：变量更新块，内容按角色卡的变量更新规则填写");
+    for (const t of anchors) lines.push("- <" + t + "> … </" + t + "> 或 <" + t + "/> ：状态栏块（按角色卡规定的格式）");
+    lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。", "</tail_reminder>");
+    return lines.join("\n");
+}
+
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */
 export function freshnessFields(text) {
     const t = String(text || '');
