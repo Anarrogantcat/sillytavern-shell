@@ -1,5 +1,10 @@
 # 更新日志
 
+## [0.1.3] - 2026-09-20
+### 新增
+- **心跳痕迹**：加载时写入 `loadedAt / loadedVersion / runCount` 并保存到 ST 设置；每次守护记录 `lastRunAt / lastRun{id,changed,actions,card}`
+  → 排查时可从 `settings.json` 直接确认「扩展是否加载、是否真的跑过、跑了什么」，不再依赖人工读面板
+
 ## [0.1.1] - 2026-09-20
 ### 修复
 - **流式模式下完全失效**：ST 的 `saveReply({fromStreaming:true})` 会跳过 `MESSAGE_RECEIVED`，导致守护从未执行；改挂 `GENERATION_ENDED` 兜住流式生成

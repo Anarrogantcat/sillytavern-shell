@@ -18,28 +18,35 @@ export function tagsOf(text) {
  * @param {object} ext 角色卡 data.extensions
  */
 export function buildProfile(ext) {
-    const scripts = (ext?.regex_scripts || []).filter(s => !s.disabled);
-    const anchors = new Set();
+    const anchors = new Set();      // 有「渲染脚本」（替换内容非空）盯着的标签 → 可以补
     const dataTags = new Set();
-    const hideTargets = new Set();
+    const strippers = new Set();    // 只有「剥除脚本」（替换内容为空）盯着的标签 → 不补
     for (const s of (ext?.regex_scripts || [])) {
-        const isHide = HIDE_RE.test(String(s.scriptName || ''));
+        if (s.disabled) continue;
+        const named = HIDE_RE.test(String(s.scriptName || ''));
+        // 有明确替换内容 → 渲染脚本；明确空串 → 剥除脚本；未提供 → 退回按名字判断
+        const isStripper = typeof s.replaceString === 'string' ? s.replaceString.trim() === '' : named;
         for (const tag of tagsOf(s.findRegex)) {
-            if (DATA_RE.test(tag)) dataTags.add(tag);
-            else if (isHide) hideTargets.add(tag);
+            if (DATA_RE.test(tag)) { dataTags.add(tag); continue; }
+            if (isStripper) strippers.add(tag);
             else anchors.add(tag);
         }
     }
+    // 同一个标签既有渲染脚本又有剥除脚本时，以渲染为准（否则永远不会补）
+    const hideTargets = [...strippers].filter(t => !anchors.has(t));
+    const anchorsOnly = [...anchors].filter(t => !strippers.has(t));
     const helpers = ext?.tavern_helper?.scripts || [];
     const helperText = helpers.map(s => String(s.content || '')).join('\n');
     return {
         anchors: [...anchors],
+        anchorsOnly,
         dataTags: [...dataTags],
-        hideTargets: [...hideTargets],
+        hideTargets,
+        strippers: [...strippers],
         helperCount: helpers.length,
         helperRenders: helpers.length > 0 && /状态栏|StatusPlaceHolder|StatusBar/i.test(helperText),
-        // 卡自己会隐藏的锚点不要补（补了反而多出面板）
-        injectableAnchors: [...anchors].filter(t => !hideTargets.has(t)),
+        // 只有剥除脚本盯着、没有任何渲染脚本的标签 → 不补（补了反而多出裸标签）
+        injectableAnchors: [...anchors],
     };
 }
 

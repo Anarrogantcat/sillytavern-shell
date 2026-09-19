@@ -7,7 +7,7 @@ import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounce
 import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.1.2';
+const VERSION = '0.1.4';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -70,6 +70,13 @@ function guardMessage(messageId, { rerender = true } = {}) {
         else if (a.type === 'data-missing') { stats.dataMissing++; log('data-missing', a.tag, '本轮面板数据不会更新'); }
         else if (a.type === 'anchor-missing') { log('anchor-missing', a.tag, '未补（关闭了补锚点或该标签在隐藏白名单）'); }
     }
+    try {
+        const s2 = settings();
+        s2.runCount = (s2.runCount || 0) + 1;
+        s2.lastRunAt = new Date().toISOString();
+        s2.lastRun = { id: messageId, changed, actions: res.actions.map(a => a.type + ':' + a.tag).slice(0, 8), card: (() => { try { const ctx = getContext(); return ctx?.characters?.[ctx?.characterId]?.name || ''; } catch (_) { return ''; } })() };
+        saveSettingsDebounced();
+    } catch (_) {}
     if (changed) {
         m.mes = res.text;
         stats.guarded++;
@@ -150,6 +157,13 @@ function buildSettingsUi() {
 }
 (async function init() {
     extension_settings[NAME] = Object.assign({}, DEFAULTS, extension_settings[NAME] || {});
+    // 心跳：让外部（套壳/排查）能确认扩展是否真的加载与运行
+    try {
+        settings().loadedAt = new Date().toISOString();
+        settings().loadedVersion = VERSION;
+        settings().runCount = settings().runCount || 0;
+        saveSettingsDebounced();
+    } catch (_) {}
     buildSettingsUi();
     applyFont();
     // ① 非流式：渲染前

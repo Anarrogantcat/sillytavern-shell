@@ -1,4 +1,8 @@
-#cc-panel .cc-stats { font-size: 12px; opacity: .85; margin: 6px 0; }
-#cc-panel .cc-log { max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; }
+#cc-panel .inline-drawer-content > * { margin: 3px 0; }
 #cc-panel label { display: block; margin-top: 6px; font-size: 12px; }
-#cc-panel input[type="range"] { width: 100%; }
+#cc-panel .checkbox_label { display: flex; align-items: center; gap: 6px; margin: 3px 0; line-height: 1.4; }
+#cc-panel .checkbox_label span { flex: 1; }
+#cc-panel input[type="range"] { width: 100%; margin: 2px 0 6px; }
+#cc-panel .menu_button { width: auto; min-width: 120px; white-space: nowrap; }
+#cc-panel .cc-stats { font-size: 12px; opacity: .85; margin: 6px 0; line-height: 1.5; }
+#cc-panel .cc-log { max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; }
