@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-electron",
-  "version": "1.35.1",
+  "version": "1.36.0",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "type": "module",
@@ -15,6 +15,7 @@
     "build:portable": "electron-builder --win zip --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
     "ext:install": "node scripts/ext-install.mjs",
     "ext:test": "node scripts/plot-pilot-test.mjs",
+    "ext:deploy:test": "node scripts/ext-deploy-test.mjs",
     "build": "npm run build:full"
   },
   "devDependencies": {
@@ -52,6 +53,7 @@
       "i18n-runtime.js",
       "chat.html",
       "lib/",
+      "extensions/",
       "package.json",
       "assets/icon.png",
       "CHANGELOG.md"

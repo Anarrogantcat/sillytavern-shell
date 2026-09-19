@@ -16,6 +16,7 @@ import { registerChatTools } from './lib/tools-chat.js';
 import { registerTunnelTools } from './lib/tools-tunnel.js';
 import { registerZtTools } from './lib/tools-zt.js';
 import { registerPluginTools } from './lib/tools-plugins.js';
+import { deployExtensions } from './lib/ext-deploy.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
 // electron-updater's default logger writes to console (stdout). When the
@@ -515,6 +516,41 @@ function t(zh) {
     return out;
 }
 
+// ── 内置 ST 扩展部署 ────────────────────────────────────────────────
+// 安装包现在自带 extensions/（card-compat / plot-pilot），启动时同步到 <dataRoot>/default-user/extensions/，
+// 这样「别的用户装了套壳」也能直接拿到这两个插件，不用手动跑 scripts/ext-install.mjs。
+// 策略见 lib/ext-deploy.js：只碰内置清单、只在缺失或内置版本更高时写、不删用户文件。
+let extDeployTries = 0, extDeployTimer = null;
+function deployBundledExtensions(reason) {
+    try {
+        const srcRoot = path.join(app.isPackaged ? app.getAppPath() : __dirname, 'extensions');
+        if (!fs.existsSync(srcRoot)) {
+            terminalWrite('\x1b[33m[ext] 未找到内置扩展目录：' + srcRoot + '\x1b[0m\n');
+            return null;
+        }
+        terminalWrite('\x1b[36m[ext] 部署内置扩展（' + (reason || 'startup') + '）…\x1b[0m\n');
+        const r = deployExtensions({
+            srcRoot, dataRoot,
+            log: (s) => terminalWrite(s + '\n'),
+        });
+        if (r.dataRootMissing && extDeployTries < 12) {
+            extDeployTries++;
+            clearTimeout(extDeployTimer);
+            extDeployTimer = setTimeout(() => deployBundledExtensions('retry#' + extDeployTries), 15000);
+        } else if (!r.dataRootMissing && extDeployTimer) {
+            clearTimeout(extDeployTimer);
+            extDeployTimer = null;
+        }
+        if (!r.dataRootMissing && r.deployed.length) {
+            terminalWrite('\x1b[32m[ext] 内置扩展就绪：' + r.deployed.map((x) => x.id + ' ' + x.version).join('、') + '\x1b[0m\n');
+        }
+        return r;
+    } catch (e) {
+        terminalWrite('\x1b[31m[ext] 内置扩展部署异常：' + e.message + '\x1b[0m\n');
+        return null;
+    }
+}
+
 let tray = null, isQuitting = false;
 function createTray() {
     const iconPath = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, 'assets/icon.png');
@@ -531,6 +567,8 @@ function createTray() {
         { label: t('打开角色卡目录'), click: () => shell.openPath(path.join(dataRoot, 'default-user', 'characters')) },
         { label: t('打开 ST 目录'), click: () => shell.openPath(sillyTavernRoot) },
         { label: t('打开 Ollama 目录'), click: () => shell.openPath(process.env.OLLAMA_MODELS ? path.dirname(process.env.OLLAMA_MODELS) : 'D:\\AI\\ollama-models') },
+        { type: 'separator' },
+        { label: t('部署/更新内置扩展'), click: () => deployBundledExtensions('tray') },
         { type: 'separator' },
         { label: t('退出'), click: () => { isQuitting = true; app.quit(); } },
     ]));
@@ -1030,6 +1068,8 @@ app.whenReady().then(async () => {
     });
     try { ensureStFontTweaks(); } catch (_) {}
     createTray(); createWindow(); setupIPC();
+    // 内置 ST 扩展：延后 1.5s（等 ST 首次运行建好数据目录；没建好会自动重试）
+    setTimeout(() => deployBundledExtensions('startup'), 1500);
     try { toolsApp?.backupCheck?.(); } catch (_) {}
     // Start the chat watcher (read-only token statistics, auto restarts on activate)
     benchStartWatcher();

@@ -16,6 +16,9 @@ SillyTavern Electron 桌面套壳 — 无边框窗口、系统托盘、终端面
 - 悬浮按钮 + 折叠隐藏
 - 用户数据保护（卸载时可选清除）
 - 目录三分离：Shell（套壳）/ SillyTavern（本体）/ Data（用户数据），更新互不干扰
+- 内置 ST 扩展自动部署：安装包自带 `extensions/`（卡兼容助手 card-compat、剧情推进器 plot-pilot），
+  启动时按版本同步到 `Data/default-user/extensions/`（目标缺失才装、内置版本更高才更新、从不删用户文件、不碰非内置扩展）
+  → 别人装了套壳也能直接拿到这两个插件，不必手动跑 `scripts/ext-install.mjs`；托盘右键「部署/更新内置扩展」可手动触发
 
 ## 版本
 
