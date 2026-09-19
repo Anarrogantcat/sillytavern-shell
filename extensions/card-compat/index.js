@@ -4,10 +4,10 @@
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -21,8 +21,10 @@ const DEFAULTS = {
     panelFont: 1,        // 面板字号倍率（1 / 1.15 / 1.3）
     dedupeAnchor: true,  // 续写追加出重复的自闭合锚点时自动合并
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
+    fixSmartQuotes: true, // 结构块内「英文引号开头 + 中文引号结尾」自动修（实测会让 YAML 解析失败）
+    quoteScalars: true,   // 结构块内未加引号、但含「: 」或「 #」的值自动加英文引号（YAML 会截断/当嵌套键）
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, coverageTotal: 0, coverageHit: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, coverageTotal: 0, coverageHit: 0 };
 let lastCoverage = null;
 const recent = [];
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
@@ -87,13 +89,23 @@ function guardMessage(messageId, { rerender = true } = {}) {
         const dd = dedupeSelfClosingAnchors(res.text, profile.anchors || []);
         if (dd.removed.length) { res.text = dd.text; stats.duplicatesCollapsed += dd.removed.length; log('anchor-duplicate-merged', dd.removed.join(',')); changed = true; }
     }
-    // 结构块内的引号错配（"….”）→ 修成 "…"：实测会让 js-yaml 解析失败、状态栏显示"未解析到角色数据"
-    const q = repairSmartQuotes(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])]);
-    if (q.fixed.length) {
-        res.text = q.text;
-        stats.quotesFixed += q.fixed.length;
-        log('quote-repaired', q.fixed.map((f) => f.tag + ':' + f.key).join(','), '中文引号结尾 → 英文引号（否则 YAML 解析失败）');
+    // 结构块 YAML 预检 + 修复：见 logic.js guardBlockYaml（引号错配 / 未加引号却含「: 」「 #」的值）
+    // 实测背景：模型写 内心: "……。” → js-yaml 解析失败 → 卡前端显示「未解析到角色数据」
+    const yg = guardBlockYaml(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])], {
+        fixSmartQuotes: s.fixSmartQuotes !== false,
+        quoteScalars: s.quoteScalars !== false,
+    });
+    if (yg.fixes.length) {
+        res.text = yg.text;
+        const quotes = yg.fixes.filter((f) => f.kind === 'quote');
+        const scalars = yg.fixes.filter((f) => f.kind === 'quote-scalar');
+        if (quotes.length) { stats.quotesFixed += quotes.length; log('quote-repaired', quotes.map((f) => f.tag + ':' + f.key).join(','), '中文引号结尾 → 英文引号（否则 YAML 解析失败）'); }
+        if (scalars.length) { stats.scalarsQuoted += scalars.length; log('scalar-quoted', scalars.map((f) => f.tag + ':' + f.key).join(','), '值含「: 」或「 #」已自动加引号'); }
         changed = true;
+    }
+    if (yg.issues.length) {
+        stats.yamlIssues += yg.issues.length;
+        log('block-yaml-issue', yg.issues.map((i) => i.tag + ':' + i.key).join(','), yg.issues[0].reason + '（已报告，未自动修改）');
     }
     // 畸形结束标签（如 </status!  缺 >）→ 补上，避免卡片正则匹配不到
     const norm = normalizeMalformedClosings(res.text, [...(profile.anchors || []), ...(profile.dataTags || [])]);
@@ -179,7 +191,7 @@ function normalizeRecent() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
@@ -198,6 +210,8 @@ function buildSettingsUi() {
         '<label class="checkbox_label"><input type="checkbox" id="cc-repair"><span>未闭合自动补结束标签</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-stale"><span>数据疑似未更新时提示</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-inject-prompt"><span>生成前注入结尾结构块提醒（推荐开）</span></label>',
+        '<label class="checkbox_label"><input type="checkbox" id="cc-fix-quotes"><span>修结构块里的引号错配（英文引号开头 + 中文引号结尾）</span></label>',
+        '<label class="checkbox_label"><input type="checkbox" id="cc-quote-scalars"><span>结构块里含「: 」「 #」却没加引号的值自动加引号</span></label>',
         '<label>面板字号</label><select id="cc-font"><option value="1">跟随 ST（默认）</option><option value="1.15">大</option><option value="1.3">更大</option></select>',
         '<label>消息区缩放 <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
         '<label>字号下限 <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
@@ -223,6 +237,8 @@ function buildSettingsUi() {
     bind('cc-repair', 'repairClosure', true);
     bind('cc-stale', 'notifyStale', true);
     bind('cc-inject-prompt', 'injectPrompt', true);
+    bind('cc-fix-quotes', 'fixSmartQuotes', true);
+    bind('cc-quote-scalars', 'quoteScalars', true);
     const fontSel = document.getElementById('cc-font');
     if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
     bind('cc-zoom', 'fontZoom', false);

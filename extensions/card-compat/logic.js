@@ -158,6 +158,56 @@ export function repairSmartQuotes(text, tags) {
     return { text: out, fixed };
 }
 
+/**
+ * 结构块 YAML「预检 + 修复」（不依赖 js-yaml，纯行级规则）——覆盖实测会打挂卡前端解析的两类写法：
+ *   a) 值以英文引号开头、却以**中文引号**结尾：\`内心: "……。”\` → 解析器报 bad indentation → 状态栏「未解析到角色数据」
+ *   b) 值**没加引号**但里面有 \`: \`（冒号+空格）或 \` #\`（空格+井号）→ YAML 会把它当嵌套键/注释，值被截断或整段解析失败
+ * 只处理角色卡自己声明的结构块内的行；块外正文、已经加引号的值、\`|\`/\`>\` 字面量块内的行一律不动。
+ * 无法安全判断的（例如引号开了没闭合）**只报告不修改**。
+ * @returns {{text:string, fixes:Array<{tag,kind,key}>, issues:Array<{tag,key,reason}>}}
+ */
+export function guardBlockYaml(text, tags, opts = {}) {
+    const fixQuotes = opts.fixSmartQuotes !== false;
+    const quoteScalars = opts.quoteScalars !== false;
+    let out = String(text ?? '');
+    const fixes = [], issues = [];
+    for (const tag of tags || []) {
+        const blockRe = new RegExp('(<' + tag + '(?:\\s[^>]*)?>)([\\s\\S]*?)(</' + tag + '>)', 'g');
+        out = out.replace(blockRe, (whole, open, body, close) => {
+            let literalIndent = -1;   // 块标量（| / >）内容缩进，进入后整段跳过
+            const next = String(body).split('\n').map((line) => {
+                const indent = (line.match(/^\s*/) || [''])[0].length;
+                if (literalIndent >= 0) {
+                    if (indent > literalIndent) return line;
+                    literalIndent = -1;
+                }
+                if (/:[ \t]*[|>][-+]?[ \t]*$/.test(line)) { literalIndent = indent; return line; }
+                const m = line.match(/^(\s*)([^:\n]{1,40}):([ \t]*)(.*)$/);
+                if (!m) return line;
+                const key = m[2].trim(), gap = m[3] || ' ';
+                const val = m[4].replace(/\s+$/, '');
+                if (!val) return line;
+                if (fixQuotes) {
+                    const dq = val.match(/^"([\s\S]*?)”$/);
+                    if (dq) { fixes.push({ tag, kind: 'quote', key }); return m[1] + m[2] + ':' + gap + '"' + dq[1] + '"'; }
+                    const sq = val.match(/^'([\s\S]*?)’$/);
+                    if (sq) { fixes.push({ tag, kind: 'quote', key }); return m[1] + m[2] + ':' + gap + "'" + sq[1] + "'"; }
+                }
+                const first = val[0];
+                const alreadyQuoted = first === '"' || first === "'" || first === '|' || first === '>' || first === '[' || first === '{' || first === '-';
+                if (quoteScalars && !alreadyQuoted && (val.includes(': ') || val.includes(' #') || val.endsWith(':'))) {
+                    fixes.push({ tag, kind: 'quote-scalar', key });
+                    return m[1] + m[2] + ':' + gap + '"' + val.split('"').join('\\"') + '"';
+                }
+                if (first === '"' && !/"[ \t]*$/.test(val)) issues.push({ tag, key, reason: '引号开了没闭合（不敢自动改）' });
+                return line;
+            }).join('\n');
+            return open + next + close;
+        });
+    }
+    return { text: out, fixes, issues };
+}
+
 /** 修复畸形的结束标签：</Tag（缺 >）→ </Tag>，仅对给定标签族生效 */
 export function normalizeMalformedClosings(text, tags) {
     let out = String(text ?? '');

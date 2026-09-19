@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -144,6 +144,37 @@ try {
     yamlProof = { before, after };
 } catch (_) { yamlProof = null; }
 check('js-yaml 端到端：修复前解析失败、修复后能取出用户列表', !yamlProof || (yamlProof.before === 'fail' && yamlProof.after === 'ok'), yamlProof);
+
+console.log('— 夹具 12：结构块 YAML 预检/修复（裸值含「: 」「 #」会被 YAML 当嵌套键/注释）');
+const g1 = guardBlockYaml('<B>\n  内心: 他说: 我要走了\n</B>', ['B']);
+check('含「: 」的裸值被加引号', g1.text.includes('内心: "他说: 我要走了"') && g1.fixes.length === 1 && g1.fixes[0].kind === 'quote-scalar', g1.text);
+const g2 = guardBlockYaml('<B>\n  备注: 见附件 # 重要\n</B>', ['B']);
+check('含「 #」的裸值被加引号', g2.text.includes('备注: "见附件 # 重要"'), g2.text);
+const quotedLine = '<B>\n  内心: "他说: 我要走了"\n</B>';
+const g3 = guardBlockYaml(quotedLine, ['B']);
+check('已经加引号的不重复处理', g3.fixes.length === 0 && g3.text === quotedLine, g3.text);
+const g4 = guardBlockYaml('<B>\n  引号: "开了没闭合\n</B>', ['B']);
+check('引号开了没闭合 → 只报告不改', g4.fixes.length === 0 && g4.issues.length === 1, g4);
+const outside = '正文: 他说: 我要走了';
+check('块外一个字不动', guardBlockYaml(outside, ['B']).text === outside);
+check('| 字面量块内跳过', guardBlockYaml('<B>\n  正文: |\n    他说: 我要走了\n</B>', ['B']).fixes.length === 0);
+const g7 = guardBlockYaml('<B>\n  内心: "结束了。”\n  备注: 裸值: 半\n</B>', ['B']);
+check('两类修复可同时发生', g7.fixes.map((f) => f.kind).sort().join(',') === 'quote,quote-scalar', g7.fixes);
+const g8 = guardBlockYaml('<B>\n  内心: 他说: 我要走了\n</B>', ['B'], { quoteScalars: false });
+check('关掉「自动加引号」开关后不动', g8.fixes.length === 0 && g8.text.includes('他说: 我要走了'), g8.text);
+check('关掉「引号修复」开关后不动', guardBlockYaml('<B>\n  内心: "结束了。”\n</B>', ['B'], { fixSmartQuotes: false }).fixes.length === 0);
+let yamlProof2 = null;
+try {
+    const jsyaml = (await import('js-yaml')).default;
+    const raw = '状态栏:\n  用户列表:\n    - 用户:\n        名字: "染"\n        内心: 他说: 我要走了\n';
+    let before = 'ok';
+    try { jsyaml.load(raw); } catch (_) { before = 'fail'; }
+    const fixed = guardBlockYaml('<B>\n' + raw + '</B>', ['B']).text.replace(/^<B>\n/, '').replace(/<\/B>$/, '');
+    let after = 'ok';
+    try { const p = jsyaml.load(fixed); after = (p && p['状态栏'] && Array.isArray(p['状态栏']['用户列表']) && p['状态栏']['用户列表'].length) ? 'ok' : 'no-list'; } catch (_) { after = 'fail'; }
+    yamlProof2 = { before, after };
+} catch (_) { yamlProof2 = null; }
+check('js-yaml 端到端：裸「: 」值修复前解析失败、修复后能取出用户列表', !yamlProof2 || (yamlProof2.before === 'fail' && yamlProof2.after === 'ok'), yamlProof2);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
