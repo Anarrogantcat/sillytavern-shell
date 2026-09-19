@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compareVersions, planDeploy, deployExtensions, listBundled, hashTree, RECORD_NAME, extensionsRoot } from '../lib/ext-deploy.js';
+import { compareVersions, planDeploy, deployExtensions, listBundled, hashTree, buildSummary, RECORD_NAME, extensionsRoot } from '../lib/ext-deploy.js';
+import { guardDowngrade, syncExtension } from '../scripts/ext-install.mjs';
 
 let pass = 0; const fails = [];
 const ok = (n, c, extra) => { if (c) pass++; else fails.push(n + (extra !== undefined ? '  → ' + JSON.stringify(extra) : '')); };
@@ -89,6 +90,33 @@ const plan = planDeploy({ srcRoot, dataRoot: freshData });
 eq('plan 只给判断不落盘', [plan.map((x) => x.action), fs.existsSync(path.join(freshData, 'default-user'))], [['install', 'install'], false]);
 const p2 = planDeploy({ srcRoot, dataRoot, force: true });
 eq('force 时同版本也覆盖', p2.some((x) => x.id === 'plot-pilot' && x.action === 'update'), true);
+
+// ── 加固①：quiet 模式（启动不再逐条刷"已是最新"） ──
+const qRoot = path.join(tmp, 'Quiet');
+fs.mkdirSync(path.join(qRoot, 'default-user'), { recursive: true });
+let qLogs = [];
+let qr = deployExtensions({ srcRoot, dataRoot: qRoot, quiet: true, log: (s) => qLogs.push(s) });
+eq('quiet 模式没有"跳过"日志', qLogs.filter((s) => s.includes('跳过')).length, 0);
+ok('quiet 摘要含"已安装"', buildSummary(qr).includes('已安装'), buildSummary(qr));
+qLogs = [];
+qr = deployExtensions({ srcRoot, dataRoot: qRoot, quiet: true, log: (s) => qLogs.push(s) });
+eq('quiet + 无动作 → 一行都不打', qLogs.length, 0);
+eq('摘要=均为最新', buildSummary(qr), '均为最新');
+
+// ── 加固②：安装器降级保护（默认不覆盖更高版本） ──
+const repoRoot = path.join(tmp, 'repo');
+writeExt(path.join(repoRoot, 'extensions'), 'card-compat', '0.1.0');
+const instData = path.join(tmp, 'Data3');
+writeExt(path.join(instData, 'default-user', 'extensions'), 'card-compat', '0.2.0');
+eq('降级保护：目标更新 → 拦', guardDowngrade('card-compat', { repoRoot, dataRoot: instData }).block, true);
+eq('降级保护：force 放行', guardDowngrade('card-compat', { repoRoot, dataRoot: instData, force: true }).block, false);
+eq('降级保护：目标更旧 → 不拦', guardDowngrade('card-compat', { repoRoot, dataRoot: path.join(tmp, 'Data4') }).block, false);
+const s1 = syncExtension('card-compat', { repoRoot, dataRoot: instData, log: () => {} });
+eq('同步被拦下：不写文件', [s1.blocked, s1.changed], [true, 0]);
+eq('目标内容未被改', fs.readFileSync(path.join(instData, 'default-user', 'extensions', 'card-compat', 'index.js'), 'utf8').includes('v0.2.0'), true);
+const s2 = syncExtension('card-compat', { repoRoot, dataRoot: instData, force: true, log: () => {} });
+ok('force 后确实覆盖', !s2.blocked && s2.changed > 0, { blocked: s2.blocked, changed: s2.changed });
+eq('覆盖后版本回落到仓库版本', fs.readFileSync(path.join(instData, 'default-user', 'extensions', 'card-compat', 'index.js'), 'utf8').includes('v0.1.0'), true);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('');

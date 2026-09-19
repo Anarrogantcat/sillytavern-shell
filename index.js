@@ -528,9 +528,9 @@ function deployBundledExtensions(reason) {
             terminalWrite('\x1b[33m[ext] 未找到内置扩展目录：' + srcRoot + '\x1b[0m\n');
             return null;
         }
-        terminalWrite('\x1b[36m[ext] 部署内置扩展（' + (reason || 'startup') + '）…\x1b[0m\n');
         const r = deployExtensions({
             srcRoot, dataRoot,
+            quiet: true,                       // 全跳过时不逐条刷屏，只在真有安装/更新/失败时输出
             log: (s) => terminalWrite(s + '\n'),
         });
         if (r.dataRootMissing && extDeployTries < 12) {
@@ -541,8 +541,8 @@ function deployBundledExtensions(reason) {
             clearTimeout(extDeployTimer);
             extDeployTimer = null;
         }
-        if (!r.dataRootMissing && r.deployed.length) {
-            terminalWrite('\x1b[32m[ext] 内置扩展就绪：' + r.deployed.map((x) => x.id + ' ' + x.version).join('、') + '\x1b[0m\n');
+        if (!r.dataRootMissing && (r.deployed.length || r.failed.length)) {
+            terminalWrite((r.failed.length ? '\x1b[33m' : '\x1b[32m') + '[ext] 内置扩展（' + (reason || 'startup') + '）：' + r.summary + '\x1b[0m\n');
         }
         return r;
     } catch (e) {

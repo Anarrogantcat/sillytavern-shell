@@ -46,6 +46,13 @@ npm run build:portable  # 便携版
 
 构建产物输出到 `dist-electron-v3` / `dist-electron-v3-lite`（已被 .gitignore 覆盖）。发布到 GitHub Releases 后，已装用户可走套壳内自动更新。
 
+### 版本号规则
+
+- 单一来源：`package.json` 的 `version`（界面版本号、安装包文件名、Release 名全从它派生）
+- patch 位**最多到 6**：`1.36.0` → `1.36.1` … `1.36.6`；
+  已经到 `X.Y.6` 还要再改就**大版本 +1、其余归零**（`1.36.6` → `2.0.0`），之后 `2.0.1` … `2.0.6` → `3.0.0`，以此类推
+- 发版：提交 → `git tag vX.Y.Z` → push tag → GitHub Actions（`.github/workflows/release.yml`）自动打 lite 包并发 Release
+
 ## 许可证
 
 AGPL-3.0

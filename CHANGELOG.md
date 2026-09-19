@@ -1,5 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.36.1 (2026-09-20) — 内置扩展部署加固（静默日志 + 降级保护）+ 确立版本号规则
+### 加固
+- **P1 启动日志静默**：`deployExtensions()` 新增 `quiet` 选项，套壳启动时用 `quiet: true` —— 全部跳过时**一行都不打**，只在真的安装/更新/失败时输出一行摘要；新增 `buildSummary()` 统一生成摘要（`card-compat 0.2.1 已安装；plot-pilot 0.1.1 已更新` / `均为最新` / `失败：…`）
+- **P2 安装器降级保护**：`scripts/ext-install.mjs` 新增 `guardDowngrade()` —— 目标里装的版本**比仓库这份更新**时默认跳过（避免把人手装的更新版按文件覆盖成旧版），日志给出原因；确需覆盖加 `--force`；`syncExtension()` 同步返回 `{blocked, reason}`，CLI 末尾汇总"降级保护跳过 N 个"
+### 变更
+- **版本号规则（用户 2026-09-20 下达，已写入全局 `AGENTS.md` §5.2.1 与本 README）**：patch 位最多到 **6**；到 `X.Y.6` 还要再改就**大版本 +1、其余归零**（`1.36.6` → `2.0.0`），之后 `2.0.1`…`2.0.6` → `3.0.0`，以此类推
+- 夹具 `scripts/ext-deploy-test.mjs` **23 → 34 项**：新增 quiet 模式（无"跳过"日志 / 无动作零日志 / 摘要文案）、降级保护（拦截、force 放行、目标更旧不拦、被拦时不写文件、force 后确实覆盖）等 11 项；实测 **34/34 通过**
+- 未改打包清单与部署策略（v1.36.0 的 asar 实测结论不变：第二次部署 `deployed:0, skipped:[skip-same, skip-same]`）
 ## v1.36.0 (2026-09-20) — 安装包内置 ST 扩展并自动部署（别的用户也能拿到插件）
 - 问题（用户提问「我让你写的 st 本体插件，其他用户安装套壳是不是没有？」）：确实是**没有**——`electron-builder-lite.json` 与 `package.json` 的 `files` 列表里都没有 `extensions/`，而且没有任何代码把扩展写进用户数据目录
 - 新增 `lib/ext-deploy.js`：内置扩展部署模块（纯 `node:fs`，无 electron 依赖，可单测）

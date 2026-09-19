@@ -5,10 +5,12 @@
 //   node scripts/ext-install.mjs --dry-run           # 只列出将要写入的差异
 //   node scripts/ext-install.mjs --check             # 只比对，不写入（有差异时退出码 1）
 //   node scripts/ext-install.mjs --list              # 列出仓库里有哪些扩展
+//   node scripts/ext-install.mjs --force             # 允许把「目标里更新的人手装版本」覆盖成仓库版本（默认禁止降级）
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { compareVersions, readManifest } from '../lib/ext-deploy.js';
 
 export const DEFAULT_DATA_ROOT = 'D:/AI/SillyTavern/Data';
 export const REPO_EXT_DIR = 'extensions';
@@ -34,8 +36,26 @@ function walk(dir, base = dir, out = []) {
 }
 
 /**
+ * 降级保护：「目标里装的版本比仓库这份更新」时默认不动它（避免把人手装的更新版覆盖成旧版）。
+ * 需要强行按文件覆盖时传 force=true（CLI 的 --force）。
+ */
+export function guardDowngrade(name, opts = {}) {
+    const repoRoot = opts.repoRoot || process.cwd();
+    const dataRoot = opts.dataRoot || DEFAULT_DATA_ROOT;
+    const srcManifest = readManifest(path.join(repoRoot, REPO_EXT_DIR, name));
+    const dstManifest = readManifest(path.join(dataRoot, 'default-user/extensions', name));
+    if (srcManifest && dstManifest && compareVersions(srcManifest.version, dstManifest.version) < 0 && !opts.force) {
+        return {
+            block: true, srcVersion: String(srcManifest.version), targetVersion: String(dstManifest.version),
+            reason: '目标版本更新（' + dstManifest.version + ' > ' + srcManifest.version + '），默认不降级；确需覆盖请加 --force',
+        };
+    }
+    return { block: false, srcVersion: srcManifest ? String(srcManifest.version) : null, targetVersion: dstManifest ? String(dstManifest.version) : null };
+}
+
+/**
  * 同步单个扩展。
- * @returns {{name:string,src:string,dst:string,rows:Array,stale:string[],manifest:object|null,changed:number}}
+ * @returns {{name:string,src:string,dst:string,rows:Array,stale:string[],manifest:object|null,changed:number,blocked?:boolean,reason?:string}}
  */
 export function syncExtension(name, opts = {}) {
     const repoRoot = opts.repoRoot || process.cwd();
@@ -46,6 +66,13 @@ export function syncExtension(name, opts = {}) {
     const src = path.join(repoRoot, REPO_EXT_DIR, name);
     const dst = path.join(dataRoot, 'default-user/extensions', name);
     if (!fs.existsSync(src)) throw new Error('源目录不存在: ' + src);
+
+    const guard = guardDowngrade(name, { repoRoot, dataRoot, force: !!opts.force });
+    if (guard.block) {
+        log((dryRun ? '[dry-run] ' : (check ? '[check] ' : '')) + '同步 ' + name + '  已跳过（降级保护）');
+        log('  ' + 'blocked'.padEnd(9) + ' ' + guard.reason);
+        return { name, src, dst, rows: [], stale: [], manifest: null, changed: 0, blocked: true, reason: guard.reason };
+    }
 
     const files = walk(src).sort();
     const rows = [];
@@ -81,17 +108,20 @@ function main() {
     const args = process.argv.slice(2);
     const dryRun = args.includes('--dry-run');
     const check = args.includes('--check');
+    const force = args.includes('--force');
     const repoRoot = process.cwd();
     const all = listExtensions(repoRoot);
     if (args.includes('--list')) { console.log('仓库扩展: ' + (all.join(', ') || '(无)')); return; }
     const wanted = args.filter((a) => !a.startsWith('--'));
     const names = wanted.length ? wanted : all;
     if (!names.length) { console.error('没有找到可同步的扩展（extensions/<name>/manifest.json）'); process.exit(2); }
-    let changed = 0;
+    let changed = 0, blocked = 0;
     for (const n of names) {
-        const r = syncExtension(n, { repoRoot, dryRun, check });
+        const r = syncExtension(n, { repoRoot, dryRun, check, force });
         changed += r.changed;
+        if (r.blocked) blocked++;
     }
+    if (blocked) console.log('降级保护跳过 ' + blocked + ' 个扩展（要强行覆盖请加 --force）');
     console.log((dryRun || check) ? ('差异文件数: ' + changed + (check && changed ? '（--check 存在差异，退出码 1）' : '')) : ('完成，共同步 ' + names.length + ' 个扩展，更新 ' + changed + ' 个文件'));
     if (check && changed) process.exit(1);
 }
