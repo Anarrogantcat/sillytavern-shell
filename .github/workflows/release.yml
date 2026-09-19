@@ -22,7 +22,32 @@ jobs:
         continue-on-error: true
         run: npm run ui:check
 
-      - name: 扩展清单新鲜度 + 部署夹具
+      - name: 扩展清单自愈（过期则重建并回提交 main）
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          # GitHub Actions 的 pwsh 默认把原生命令的非零退出/ stderr 当错误 → 这里必须先放宽，
+          # 否则 --check 一失败就直接结束步骤，"自愈"根本没机会跑
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
+          node scripts/ext-index.mjs --check
+          if ($LASTEXITCODE -eq 0) { Write-Host "清单已是最新"; exit 0 }
+          Write-Host "清单过期 → 自动重建"
+          node scripts/ext-index.mjs
+          if ($LASTEXITCODE -ne 0) { Write-Error "重建失败"; exit 1 }
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add extensions/index.json
+          git commit -m "chore(ci): 自动重建 extensions/index.json（打包前自愈）"
+          git fetch --depth=1 origin main
+          # 只在 main 是当前提交祖先时推送（fast-forward），避免把 main 回退
+          git merge-base --is-ancestor origin/main HEAD
+          if ($LASTEXITCODE -ne 0) { Write-Error "main 已领先于本次 tag，放弃自动回提交（请本地跑 ext-index.mjs 后重发）"; exit 1 }
+          git push "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git" HEAD:main
+          Write-Host "已把重建后的清单推回 main"
+
+      - name: 扩展夹具（部署 + 在线更新）
         run: |
           node scripts/ext-index.mjs --check
           node scripts/ext-deploy-test.mjs

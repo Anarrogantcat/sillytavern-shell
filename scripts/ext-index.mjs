@@ -15,13 +15,19 @@ export const REPO = 'Anarrogantcat/sillytavern-shell';
 
 function sha1(buf) { return crypto.createHash('sha1').update(buf).digest('hex'); }
 
+/** 二进制资源（将来扩展带图片/字体/音频时用；按字节哈希，不做行尾归一） */
+const BIN_EXT = /.(png|jpe?g|gif|webp|ico|bmp|woff2?|ttf|otf|eot|mp3|ogg|wav|mp4|webm|zip|gz|pdf|bin)$/i;
+export function isBinaryPath(rel) { return BIN_EXT.test(String(rel || '')); }
+
 /** 生成清单对象（不含 generatedAt 之外的随机性，保证可复现） */
 export function buildIndex(repoRoot = process.cwd()) {
     const root = path.join(repoRoot, 'extensions');
     const extensions = listBundled(root).map((item) => {
         const files = walkFiles(item.srcDir).sort().map((rel) => {
-            // 与在线侧一致：先把 CRLF 归一成 LF 再算哈希，避免 Windows 工作区与 CDN(LF) 对不上
-            const norm = Buffer.from(fs.readFileSync(path.join(item.srcDir, rel), 'utf8').split('\r\n').join('\n'), 'utf8');
+            const raw = fs.readFileSync(path.join(item.srcDir, rel));
+            if (isBinaryPath(rel)) return { path: rel, size: raw.length, sha1: sha1(raw), bin: true };
+            // 文本：与在线侧一致，先把 CRLF 归一成 LF 再算哈希（Windows 工作区 vs CDN 的 LF）
+            const norm = Buffer.from(raw.toString('utf8').split('\r\n').join('\n'), 'utf8');
             return { path: rel, size: norm.length, sha1: sha1(norm) };
         });
         return { id: item.id, display_name: item.displayName, version: item.version, files };
@@ -43,7 +49,8 @@ function main() {
         if (!fs.existsSync(file)) { console.error('缺少 extensions/index.json（跑 node scripts/ext-index.mjs 生成）'); process.exit(1); }
         const cur = JSON.parse(fs.readFileSync(file, 'utf8'));
         if (coreOf(cur) !== coreOf(next)) {
-            console.error('extensions/index.json 与当前扩展内容不一致 —— 改了扩展就要重新生成清单');
+            console.log('extensions/index.json 与当前扩展内容不一致 —— 改了扩展就要重新生成清单（node scripts/ext-index.mjs）');
+            console.error('index.json STALE');
             process.exit(1);
         }
         console.log('extensions/index.json 校验通过（' + next.extensions.length + ' 个扩展）');

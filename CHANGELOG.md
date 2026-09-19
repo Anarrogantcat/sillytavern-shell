@@ -1,5 +1,20 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.36.3 (2026-09-20) — 把上一版列出的三个风险全部解决
+### 修复 / 加固
+- **风险①：忘了跑 `ext-index.mjs` 会卡发版** → 三重兜底：
+  - 本地：`prebuild` / `prebuild:full` / `prebuild:lite` 钩子自动重建清单（任何构建前都会刷新）
+  - CI：新增「扩展清单自愈」步骤 —— 过期就用仓库内容重建、`git merge-base --is-ancestor` 校验为 fast-forward 后回提交 main；若 main 已领先则明确报错并提示重发，绝不回退 main
+  - 修掉 GitHub Actions pwsh 的坑：原生命令非零退出 / 写 stderr 会被当成错误直接终止步骤，导致自愈逻辑根本没机会执行 → 步骤内先放宽 `$ErrorActionPreference` / `$PSNativeCommandUseErrorActionPreference`
+- **风险②：CDN 缓存导致拿不到新扩展** → 先实测再用数据决策：
+  - 实测响应头：raw\.githubusercontent\.com `max-age=300`（5 分钟）、testingcf\.jsdelivr\.net `s-maxage=43200`（12 小时）、GitHub contents API 匿名已 **403 rate limit**（故弃用）
+  - 取源顺序改为 **raw 优先、jsDelivr 兜底**；清单与文件都带 `?t=<时间戳>` 穿透缓存；同一次检查清单与文件共用同一时间戳（保证拿到同一版本）
+  - 新增**单扩展多源重试**：某源内容与清单 sha1 不符（缓存陈旧）→ 自动换下一个源；全源都失败才记失败，且**不写盘**（不会把旧内容覆盖成新版本号）
+- **风险③：只支持文本文件** → 补齐二进制通道：
+  - `ext-index.mjs` 按扩展名识别二进制（png/jpg/webp/ico/字体/音视频/zip 等），清单里标 `bin: true`、按字节哈希（不做 CRLF 归一）
+  - 主进程新增 `httpGetBinary()`（`net.fetch` + `arrayBuffer`，30 秒超时）；`applyRemoteUpdates` 走二进制分支；缺 `fetchBinary` 时明确报错而不是写坏文件
+- 夹具 `ext-remote-test.mjs` **19 → 25 项**：新增「陈旧源自动换源后仍成功且内容正确」「二进制按字节落地」「缺 fetchBinary 明确报错且不写盘」等
+- 夹具总览：toolbox 14/14、ext-deploy 37/37、ext-remote 25/25、plot-pilot 45/45、card-compat 37/0
 ## v1.36.2 (2026-09-20) — 工具箱合并（15→8 组）+ 扩展在线更新通道（扩展与套壳版本解耦）
 ### 新增
 - **工具箱「🧩 ST 扩展与插件」分组**：`部署/更新内置扩展`（从安装包内的 `extensions/` 同步到 ST 数据目录）、`检查扩展在线更新`（走 CDN）、`启动时自动检查扩展在线更新` 开关 + 结果明细区（三层接线：`shell.html` → `shell.js` → `preload.js` → `index.js`）

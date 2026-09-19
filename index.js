@@ -563,15 +563,30 @@ async function httpGetText(url) {
     } finally { clearTimeout(timer); }
 }
 
+/** HTTP 取二进制（图片/字体等；扩展自带二进制资源时走这条） */
+async function httpGetBinary(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+        const res = (net && typeof net.fetch === 'function') ? await net.fetch(url, { signal: ctrl.signal }) : await fetch(url, { signal: ctrl.signal });
+        if (!res || !res.ok) throw new Error('HTTP ' + (res ? res.status : '?'));
+        return Buffer.from(await res.arrayBuffer());
+    } finally { clearTimeout(timer); }
+}
+
 /**
  * 扩展「在线更新」：拉 extensions/index.json → 比版本 → 下载 + 校验 sha1 → 落地。
  * 这是「扩展版本与套壳版本解耦」的关键：扩展改了不用重新发整个安装包，老套壳也能更新。
  */
 async function checkExtensionUpdates() {
     const log = (s) => terminalWrite(s + '\n');
-    const got = await fetchIndex({ fetchText: httpGetText, log });
+    const stamp = Date.now();                       // 清单与文件共用同一时间戳：穿透 CDN 缓存，保证同一次检查拿到同一版本
+    const got = await fetchIndex({ fetchText: httpGetText, log, stamp });
     if (!got.ok) return { ok: false, summary: '无法获取扩展清单（网络/代理）', tried: got.tried };
-    const res = await applyRemoteUpdates({ index: got.index, base: got.base, dataRoot, fetchText: httpGetText, log });
+    const res = await applyRemoteUpdates({
+        index: got.index, base: got.base, dataRoot, log, stamp,
+        fetchText: httpGetText, fetchBinary: httpGetBinary,
+    });
     const summary = summarizeRemote(res);
     if (res.updated.length) terminalWrite('\x1b[32m[ext] 在线更新完成：' + summary + '（刷新 ST 生效）\x1b[0m\n');
     return { ok: true, base: got.base, summary, updated: res.updated, skipped: res.skipped, failed: res.failed };

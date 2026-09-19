@@ -61,9 +61,20 @@ npm run build:portable  # 便携版
 
 ### 扩展（extensions/）怎么更新
 
-1. 改完扩展（含 `manifest.json` 里的 `version`）后 **必须**跑 `node scripts/ext-index.mjs` 重新生成 `extensions/index.json`（CI 会跑 `--check`，清单过期直接红）
+1. 改完扩展**记得同步 `manifest.json` 里的 `version`**；清单不用手动跑：`npm run build:lite` 等构建命令会通过 `prebuild*` 钩子自动重建，CI 里也有一步「清单自愈」（过期就重建并回提交 main）
 2. 提交推送即生效：已装用户的套壳下次启动会比对清单，只有清单版本更高才下载覆盖；本地手改过的同版本扩展不会被覆盖
 3. 想立刻更新：工具箱 → 🧩 ST 扩展与插件 → 「检查扩展在线更新」→ 刷新 ST 页面
+
+取源顺序与缓存（2026-09-20 实测响应头）：
+
+| 源 | 缓存 | 说明 |
+|---|---|---|
+| `raw.githubusercontent.com`（首选） | `max-age=300`（5 分钟） | 最新；国内有时不通，失败自动换源 |
+| `testingcf.jsdelivr.net`（备选） | `s-maxage=43200`（12 小时） | 可达性好但可能滞后 |
+| GitHub contents API | — | 匿名 60 次/小时，实测已 403，**未采用** |
+
+每次请求都带 `?t=<时间戳>` 穿透缓存；且**单个扩展会在多个源之间重试**：某个源给的内容与清单 sha1 不符（缓存陈旧）就自动换下一个源，绝不把旧/坏内容写进用户目录。
+扩展若带二进制资源（png/字体/音频等），清单会标 `bin: true`，按字节取件与校验（不做 CRLF 归一）。
 
 ## 许可证
 
