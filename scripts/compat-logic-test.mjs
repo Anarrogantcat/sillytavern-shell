@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -175,6 +175,24 @@ try {
     yamlProof2 = { before, after };
 } catch (_) { yamlProof2 = null; }
 check('js-yaml 端到端：裸「: 」值修复前解析失败、修复后能取出用户列表', !yamlProof2 || (yamlProof2.before === 'fail' && yamlProof2.after === 'ok'), yamlProof2);
+
+console.log('— 夹具 13：结构块严格 YAML 校验（注入 js-yaml，模拟扩展自带的 vendor）');
+let jsyamlLib = null;
+try { jsyamlLib = (await import('js-yaml')).default; } catch (_) { jsyamlLib = null; }
+const goodText = '<B>\n状态栏:\n  用户列表:\n    - 用户:\n        名字: "染"\n</B>';
+const badText = '<B>\n  内心: 他说: 我要走了\n</B>';
+check('没有 yamlLib 时明确返回 checked=false', strictYamlCheck(goodText, ['B'], null).checked === false);
+if (jsyamlLib) {
+    const okRes = strictYamlCheck(goodText, ['B'], jsyamlLib);
+    check('正常块：checked=true 且 1 个块 0 问题', okRes.checked === true && okRes.blocks === 1 && okRes.issues.length === 0, okRes);
+    const badRes = strictYamlCheck(badText, ['B'], jsyamlLib);
+    check('裸「: 」值：严格校验报出 1 条问题', badRes.issues.length === 1 && /mapping|nested|column/i.test(badRes.issues[0].error || ''), badRes);
+    const repaired = guardBlockYaml(badText, ['B']).text;
+    check('先启发式修复 → 严格校验通过', strictYamlCheck(repaired, ['B'], jsyamlLib).issues.length === 0, repaired);
+    check('无结构块时 blocks=0', strictYamlCheck('正文没有块', ['B'], jsyamlLib).blocks === 0);
+} else {
+    check('本机没有 js-yaml，跳过严格校验断言', true);
+}
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

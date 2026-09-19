@@ -6,12 +6,12 @@
     {
       "id": "card-compat",
       "display_name": "卡兼容助手 (Card Compat)",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 3982,
-          "sha1": "3925f88fc2158f370feec0de80526479bc1e1a52"
+          "size": 4940,
+          "sha1": "6ae23d8efe6c1789ea1b79fc3e27d15769f3e0b9"
         },
         {
           "path": "README.md",
@@ -20,23 +20,33 @@
         },
         {
           "path": "index.js",
-          "size": 18290,
-          "sha1": "a02220a1f93b09bdd863288f46400014e05354ed"
+          "size": 22114,
+          "sha1": "2240969aa4fe80c7b5eaaa037835840cb7821358"
         },
         {
           "path": "logic.js",
-          "size": 20123,
-          "sha1": "6d27190aad193057a671635714a34523aaff2f02"
+          "size": 21383,
+          "sha1": "10937fc1e5e7022be888a86eebcf3cb0136d6f19"
         },
         {
           "path": "manifest.json",
           "size": 357,
-          "sha1": "bf5ece0365fa4981b27024410fd84805af6e1839"
+          "sha1": "19282f5be320113b64f0b65aa4577274acc1fe46"
         },
         {
           "path": "style.css",
           "size": 866,
           "sha1": "c94545a8ef5cc7b30ba7937dd221338e4d51d939"
+        },
+        {
+          "path": "vendor/js-yaml.LICENSE.txt",
+          "size": 1084,
+          "sha1": "cf1619aed46c3c608c54e1e4bdec5e7e38e436a7"
+        },
+        {
+          "path": "vendor/js-yaml.min.js",
+          "size": 43487,
+          "sha1": "153d6a9034249a64fd2b39cd2446f9d078623a97"
         }
       ]
     },
@@ -78,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-19T20:14:39.072Z"
+  "generatedAt": "2026-09-19T20:20:33.427Z"
 }

@@ -208,6 +208,34 @@ export function guardBlockYaml(text, tags, opts = {}) {
     return { text: out, fixes, issues };
 }
 
+/**
+ * 结构块「严格 YAML 校验」（用注入的 js-yaml；扩展自带一份 vendor/js-yaml.min.js）
+ * 与 guardBlockYaml 的启发式不同：这里是真的解析，能发现启发式覆盖不到的写法错误。
+ * @param {object} yamlLib 形如 { load(str) } —— 没传或不可用则 checked=false（调用方据此提示"跳过"）
+ * @returns {{checked:boolean, blocks:number, issues:Array<{tag,error}>}}
+ */
+export function strictYamlCheck(text, tags, yamlLib) {
+    const issues = [];
+    let blocks = 0;
+    if (!yamlLib || typeof yamlLib.load !== 'function') return { checked: false, blocks: 0, issues };
+    const src = String(text ?? '');
+    for (const tag of tags || []) {
+        const blockRe = new RegExp('<' + tag + '(?:\\s[^>]*)?>([\\s\\S]*?)</' + tag + '>', 'g');
+        let m;
+        while ((m = blockRe.exec(src))) {
+            const body = m[1];
+            if (!body || !body.trim()) continue;
+            blocks++;
+            try { yamlLib.load(body); }
+            catch (e) {
+                const msg = String((e && e.message) || e).split('\n').slice(0, 2).join(' / ').slice(0, 200);
+                issues.push({ tag, error: msg });
+            }
+        }
+    }
+    return { checked: true, blocks, issues };
+}
+
 /** 修复畸形的结束标签：</Tag（缺 >）→ </Tag>，仅对给定标签族生效 */
 export function normalizeMalformedClosings(text, tags) {
     let out = String(text ?? '');

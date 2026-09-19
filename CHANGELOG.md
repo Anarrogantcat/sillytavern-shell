@@ -1,5 +1,17 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.36.6 (2026-09-20) — 结构块严格 YAML 校验 + 扩展回滚通道（card-compat 0.2.4）
+### 新增
+- **扩展「严格 YAML 校验」**：card-compat 自带 `vendor/js-yaml.min.js`（js-yaml 4.3.0，MIT，去 BOM / 去 sourceMappingURL），生成后对角色卡声明的结构块做**真解析** ——
+  失败就在面板（新增 `YAML 严格` 计数）与日志（`yaml-strict-fail` + 首条错误）报警，**只报告不改文本**；懒加载（页面已有 jsyaml 就复用，消息里没结构块就不加载）；面板新增「严格校验当前楼层」按钮
+- **扩展回滚 / 指定版本通道**：工具箱 🧩 组新增输入框 + 「按指定版本应用」按钮 —— 填 tag 或 commit（如 `v1.36.4`）就从该引用取清单并**强制覆盖**（允许降级）；
+  普通「检查扩展在线更新」仍然**只升不降**。实现：`lib/ext-remote.js` 新增 `basesForRef()` / `rollbackTo()`（raw 与 jsDelivr 均支持 `@tag`/`@commit`，引用做白名单校验，非法输入退回 main）
+### 变更
+- 主进程 `checkExtensionUpdates()` 接受 `{ref, force}`；IPC `tools:extCheck` 透传；终端会打印「已回滚/指定版本：…（刷新 ST 生效）」
+- 夹具：`ext-remote-test.mjs` **25 → 33 项**（ref 构造、非法引用、普通通道不降级、回滚强制降级、取不到清单明确失败）；`compat-logic-test.mjs` **54 → 59 项**（严格校验五类）
+- 扩展版本 0.2.3 → **0.2.4**；`extensions/index.json` 同步重建（含 vendor 文件）
+### 说明
+- **这是 1.36.x 线的最后一版**：按版本号规则（patch ≤ 6、minor ≤ 36），下一个版本号将是 **2.0.0**
 ## v1.36.5 (2026-09-20) — 结构块 YAML 预检 + 第二类自动修复（扩展 card-compat 0.2.3）
 ### 新增
 - **YAML 预检**：新增 `guardBlockYaml()`（行级规则，不依赖 js-yaml），在守护消息时对角色卡声明的结构块做两类修复、一类报警：

@@ -17,7 +17,7 @@ import { registerTunnelTools } from './lib/tools-tunnel.js';
 import { registerZtTools } from './lib/tools-zt.js';
 import { registerPluginTools } from './lib/tools-plugins.js';
 import { deployExtensions } from './lib/ext-deploy.js';
-import { fetchIndex, applyRemoteUpdates, summarizeRemote } from './lib/ext-remote.js';
+import { fetchIndex, applyRemoteUpdates, summarizeRemote, rollbackTo } from './lib/ext-remote.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
 // electron-updater's default logger writes to console (stdout). When the
@@ -578,13 +578,22 @@ async function httpGetBinary(url) {
  * 扩展「在线更新」：拉 extensions/index.json → 比版本 → 下载 + 校验 sha1 → 落地。
  * 这是「扩展版本与套壳版本解耦」的关键：扩展改了不用重新发整个安装包，老套壳也能更新。
  */
-async function checkExtensionUpdates() {
+async function checkExtensionUpdates(opts = {}) {
     const log = (s) => terminalWrite(s + '\n');
     const stamp = Date.now();                       // 清单与文件共用同一时间戳：穿透 CDN 缓存，保证同一次检查拿到同一版本
+    const ref = opts.ref ? String(opts.ref).trim() : '';
+    const force = !!opts.force;
+    // 指定了 tag/commit → 走"回滚/指定版本"通道（强制按该引用落地，允许降级）
+    if (ref) {
+        terminalWrite('\x1b[36m[ext] 按指定版本应用：' + ref + '（强制覆盖 ' + (force ? '开' : '开（回滚通道自带）') + '）\x1b[0m\n');
+        const rb = await rollbackTo({ ref, dataRoot, fetchText: httpGetText, fetchBinary: httpGetBinary, log, stamp });
+        if (rb.updated && rb.updated.length) terminalWrite('\x1b[33m[ext] 已回滚/指定版本：' + rb.summary + '（刷新 ST 生效）\x1b[0m\n');
+        return { ok: rb.ok, ref: rb.ref, base: rb.base, summary: rb.summary, updated: rb.updated || [], skipped: rb.skipped || [], failed: rb.failed || [], tried: rb.tried || [] };
+    }
     const got = await fetchIndex({ fetchText: httpGetText, log, stamp });
     if (!got.ok) return { ok: false, summary: '无法获取扩展清单（网络/代理）', tried: got.tried };
     const res = await applyRemoteUpdates({
-        index: got.index, base: got.base, dataRoot, log, stamp,
+        index: got.index, base: got.base, dataRoot, log, stamp, force,
         fetchText: httpGetText, fetchBinary: httpGetBinary,
     });
     const summary = summarizeRemote(res);
@@ -713,7 +722,7 @@ ipcMain.handle('tools:extDeploy', () => {
         deployed: r.deployed, skipped: r.skipped, failed: r.failed, dataRootMissing: r.dataRootMissing,
     };
 });
-ipcMain.handle('tools:extCheck', () => checkExtensionUpdates());
+ipcMain.handle('tools:extCheck', (_e, opts) => checkExtensionUpdates(opts || {}));
 ipcMain.handle('tools:extAutoGet', () => settings.extAutoUpdate !== false);
 ipcMain.handle('tools:extAutoSet', (_e, on) => {
     settings.extAutoUpdate = !!on;

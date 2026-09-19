@@ -1425,8 +1425,29 @@ async function extCheckRemote() {
         setDetail(document.getElementById('t-ext-res'), lines.join('\n'));
     } catch (e) { setNote(note, '失败：' + e.message); }
 }
+async function extApplyRef() {
+    const note = document.getElementById('t-ext-note');
+    const ref = String(document.getElementById('t-ext-ref')?.value || '').trim();
+    if (!ref) { setNote(note, '请先填 tag 或 commit（留空则用普通「检查扩展在线更新」）'); return; }
+    setNote(note, '按 ' + ref + ' 应用…');
+    try {
+        const r = await TL()?.extCheck?.({ ref, force: true });
+        if (!r) { setNote(note, '不可用（请看终端）'); return; }
+        setNote(note, (r.ok === false ? '失败：' : '') + (r.summary || ''));
+        const lines = [];
+        lines.push('指定版本：' + (r.ref || ref));
+        if (r.base) lines.push('清单来源：' + r.base);
+        if (r.updated?.length) lines.push('已应用：\n' + extLines(r.updated, (u) => '  ' + u.id + ' ' + (u.from ? u.from + ' → ' : '') + u.to + '（刷新 ST 生效）'));
+        if (r.skipped?.length) lines.push('跳过：\n' + extLines(r.skipped, (d) => '  ' + d.id + ' ' + (d.reason || d.action)));
+        if (r.failed?.length) lines.push('失败：\n' + extLines(r.failed, (f) => '  ' + f.id + ' ' + f.reason));
+        if (r.tried?.length) lines.push('尝试过的地址：\n' + extLines(r.tried, (t) => '  ' + t.base + ' → ' + t.error));
+        if (!r.updated?.length && !r.failed?.length) lines.push('没有可应用的内容（该版本清单里的扩展与本地相同？）');
+        setDetail(document.getElementById('t-ext-res'), lines.join('\n'));
+    } catch (e) { setNote(note, '失败：' + e.message); }
+}
 document.getElementById('t-ext-deploy')?.addEventListener('click', extDeployBuiltin);
 document.getElementById('t-ext-check')?.addEventListener('click', extCheckRemote);
+document.getElementById('t-ext-apply')?.addEventListener('click', extApplyRef);
 document.getElementById('t-ext-auto')?.addEventListener('change', async (e) => {
     try { await TL()?.extAutoSet?.(!!e.target.checked); setNote(document.getElementById('t-ext-note'), e.target.checked ? '启动时自动检查：开' : '启动时自动检查：关'); } catch (_) {}
 });

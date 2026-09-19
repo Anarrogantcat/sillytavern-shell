@@ -1,5 +1,16 @@
 # 更新日志
 
+## [0.2.4] - 2026-09-20
+### 新增
+- **结构块严格 YAML 校验**（真解析，不是启发式）：
+  - 扩展自带 `vendor/js-yaml.min.js`（js-yaml 4.3.0，MIT，附 `vendor/js-yaml.LICENSE.txt`，已去掉 sourceMappingURL 尾巴、不带 BOM）
+  - 懒加载：页面里已有 `window.jsyaml` 就直接用，否则按 `import.meta.url` 注入一次脚本；**消息里没有结构块时根本不加载**
+  - 生成后自动校验（可用面板开关 `yamlStrict` 关闭）；解析失败 → 面板 `YAML 严格` 计数 + 日志 `yaml-strict-fail`（带首条错误信息），**只报告不改文本**
+  - 面板新增「严格校验当前楼层」按钮（手动强制校验最后一层，通过也会给一行 `yaml-strict-ok`）
+  - 库不可用时明确记 `yaml-strict-skipped`，不会静默
+### 变更
+- 夹具 `compat-logic-test.mjs` **54 → 59 项**：新增严格校验的正常/故障/修复后通过/无结构块/无库五类断言
+
 ## [0.2.3] - 2026-09-20
 ### 新增
 - **结构块 YAML 预检 + 自动修复**（`guardBlockYaml()`，不依赖 js-yaml 的行级规则），覆盖实测能打挂卡前端解析的第二类写法：

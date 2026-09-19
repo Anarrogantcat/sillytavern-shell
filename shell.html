@@ -86,6 +86,8 @@
 <div class="tool-sec">🧩 ST 扩展与插件</div>
 <div class="tool-actions"><button id="t-ext-deploy" class="btn-primary btn-sm">部署/更新内置扩展</button><button id="t-ext-check" class="btn-secondary btn-sm">检查扩展在线更新</button><span id="t-ext-note" class="tool-note"></span></div>
 <div class="tool-row"><label class="auth-remember"><input type="checkbox" id="t-ext-auto"> 启动时自动检查扩展在线更新</label></div>
+<div class="tool-row"><input type="text" id="t-ext-ref" class="tool-input" placeholder="回滚/指定版本：填 tag 或 commit（如 v1.36.4，留空=最新 main）"><button id="t-ext-apply" class="btn-secondary btn-sm">按指定版本应用</button></div>
+<div class="tool-note">指定版本会强制覆盖（允许降级）：把扩展退回某个历史版本；会先取该版本自带的清单做校验。</div>
 <div id="t-ext-res" class="tool-detail"></div>
 
 <div class="tool-sec">🧪 兼容与检测</div>

@@ -5,9 +5,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildIndex } from './ext-index.mjs';
 import crypto from 'node:crypto';
-import { parseIndex, planRemoteUpdates, fetchIndex, applyRemoteUpdates, summarizeRemote, normalizeText, DEFAULT_BASES } from '../lib/ext-remote.js';
+import { parseIndex, planRemoteUpdates, fetchIndex, applyRemoteUpdates, summarizeRemote, normalizeText, DEFAULT_BASES, basesForRef, rollbackTo } from '../lib/ext-remote.js';
 
 const sha1hex = (buf) => crypto.createHash('sha1').update(buf).digest('hex');
+/** 造一个已安装的扩展目录（模拟用户机器上的现状） */
+function writeExt(root, id, version) {
+    const dir = path.join(root, id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ display_name: id, version, js: 'index.js' }), 'utf8');
+    fs.writeFileSync(path.join(dir, 'index.js'), '// ' + id + ' v' + version + '\n', 'utf8');
+}
 import { extensionsRoot, readManifest } from '../lib/ext-deploy.js';
 
 let pass = 0; const fails = [];
@@ -123,7 +130,30 @@ fs.mkdirSync(path.join(binData2, 'default-user'), { recursive: true });
 const resNoBin = await applyRemoteUpdates({ index: binIndex, base: 'https://cdn.example2', bases: ['https://cdn.example2'], dataRoot: binData2, fetchText: binFetchText, log: () => {} });
 eq('缺 fetchBinary → 明确报错且不写盘', [resNoBin.failed.length, fs.existsSync(path.join(extensionsRoot(binData2), 'bin-ext'))], [1, false]);
 
-// ⑨ 摘要与 CRLF 归一
+// ⑨ 指定版本 / 回滚通道
+eq('basesForRef 默认走 main', basesForRef('').every((b) => b.includes('main')), true);
+eq('basesForRef 用 tag', basesForRef('v1.36.4').every((b) => b.includes('v1.36.4')), true);
+eq('basesForRef 非法引用退回 main', basesForRef('bad ref!; rm -rf').every((b) => b.includes('main')), true);
+const rbBase = 'https://old.example/extensions';
+const oldManifest = '{"display_name":"x","version":"0.1.0"}';
+const oldIdx = { schema: 1, extensions: [{ id: 'card-compat', version: '0.1.0', files: [
+    { path: 'manifest.json', size: oldManifest.length, sha1: sha1hex(Buffer.from(oldManifest, 'utf8')) },
+] }] };
+const rbStore = new Map([[rbBase + '/index.json', JSON.stringify(oldIdx)], [rbBase + '/card-compat/manifest.json', oldManifest]]);
+const rbFetch = async (u) => { const k = strip(u); if (!rbStore.has(k)) throw new Error('404 ' + k); return rbStore.get(k); };
+const rbData = path.join(tmp, 'Data8');
+writeExt(path.join(rbData, 'default-user', 'extensions'), 'card-compat', '0.9.0');
+const rb1 = await applyRemoteUpdates({ index: oldIdx, base: rbBase, bases: [rbBase], dataRoot: rbData, fetchText: rbFetch, log: () => {} });
+eq('普通通道不会降级', [rb1.updated.length, readManifest(path.join(extensionsRoot(rbData), 'card-compat')).version], [0, '0.9.0']);
+const rb2 = await rollbackTo({ ref: 'v1.0.0', dataRoot: rbData, fetchText: rbFetch, log: () => {}, bases: [rbBase] });
+eq('回滚通道强制降级且落地', [rb2.ok, readManifest(path.join(extensionsRoot(rbData), 'card-compat')).version], [true, '0.1.0']);
+ok('回滚摘要可读', typeof rb2.summary === 'string' && rb2.summary.length > 0, rb2.summary);
+const rb3 = await rollbackTo({ ref: 'bad ref!', dataRoot: rbData, fetchText: rbFetch, log: () => {} });
+eq('非法 ref 直接拒绝', [rb3.ok, String(rb3.summary).includes('不合法')], [false, true]);
+const rb4 = await rollbackTo({ ref: 'v9.9.9', dataRoot: rbData, fetchText: async () => { throw new Error('404'); }, log: () => {}, bases: [rbBase] });
+eq('取不到清单时明确失败', rb4.ok, false);
+
+// ⑩ 摘要与 CRLF 归一
 eq('摘要含"均为最新"', summarizeRemote({ updated: [], skipped: [], failed: [] }), '均为最新');
 ok('摘要含更新条目', summarizeRemote({ updated: [{ id: 'x', from: '1.0.0', to: '1.0.1' }], failed: [] }).includes('1.0.0→1.0.1'), summarizeRemote({ updated: [{ id: 'x', from: '1.0.0', to: '1.0.1' }], failed: [] }));
 eq('CRLF 归一', normalizeText('a\r\nb'), 'a\nb');

@@ -4,10 +4,10 @@
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -23,8 +23,9 @@ const DEFAULTS = {
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
     fixSmartQuotes: true, // 结构块内「英文引号开头 + 中文引号结尾」自动修（实测会让 YAML 解析失败）
     quoteScalars: true,   // 结构块内未加引号、但含「: 」或「 #」的值自动加英文引号（YAML 会截断/当嵌套键）
+    yamlStrict: true,      // 结构块严格 YAML 校验（用扩展自带的 vendor/js-yaml.min.js，失败会报警）
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, coverageTotal: 0, coverageHit: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, coverageTotal: 0, coverageHit: 0 };
 let lastCoverage = null;
 const recent = [];
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
@@ -59,6 +60,56 @@ function updatePromptInjection() {
         if (settings().logActions) console.debug('[card-compat] 注入提醒长度=' + text.length + ' 变量格式=' + ((prof.varSpec || '').length) + ' 字符');
     } catch (e) { console.error("[card-compat] prompt inject failed", e); }
 }
+/** 懒加载扩展自带的 js-yaml（页面里已有 window.jsyaml 就直接用，避免重复加载） */
+const VENDOR_YAML_URL = (() => { try { return new URL('./vendor/js-yaml.min.js', import.meta.url).href; } catch (_) { return 'vendor/js-yaml.min.js'; } })();
+let yamlLibPromise = null;
+function loadYamlLib() {
+    if (!yamlLibPromise) {
+        yamlLibPromise = (async () => {
+            try { if (typeof window !== 'undefined' && window.jsyaml && typeof window.jsyaml.load === 'function') return window.jsyaml; } catch (_) {}
+            try {
+                await new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = VENDOR_YAML_URL; s.async = true;
+                    s.onload = () => resolve(); s.onerror = () => reject(new Error('script load failed'));
+                    document.head.appendChild(s);
+                });
+                return (typeof window !== 'undefined' && window.jsyaml && typeof window.jsyaml.load === 'function') ? window.jsyaml : null;
+            } catch (e) { console.warn('[card-compat] js-yaml 加载失败：' + ((e && e.message) || e)); return null; }
+        })();
+    }
+    return yamlLibPromise;
+}
+const strictChecked = new Map();   // messageId -> 已校验过的文本，避免同一楼层反复解析
+/** 结构块严格 YAML 校验（真解析）：失败就在面板/日志里报警，不改文本 */
+async function strictCheckMessage(messageId, opts = {}) {
+    try {
+        const s = settings();
+        const m = chat && chat[messageId];
+        if (!s || !s.enabled || !m || typeof m.mes !== 'string') return null;
+        if (!s.yamlStrict && !opts.force) return null;
+        const profile = profileOf();
+        const tags = [...(profile.dataTags || []), ...(profile.anchors || [])];
+        if (!tags.length) return null;
+        if (!tags.some((t) => m.mes.includes('<' + t))) return null;   // 没结构块就不去加载库
+        if (strictChecked.get(messageId) === m.mes && !opts.force) return null;
+        const lib = await loadYamlLib();
+        if (!lib) { stats.yamlStrictSkipped++; log('yaml-strict-skipped', '', 'js-yaml 不可用（vendor 加载失败），已跳过严格校验'); renderStats(); return null; }
+        const r = strictYamlCheck(m.mes, tags, lib);
+        strictChecked.set(messageId, m.mes);
+        if (!r.checked) return null;
+        if (r.issues.length) {
+            stats.yamlStrictFail += r.issues.length;
+            log('yaml-strict-fail', r.issues.map((i) => i.tag).join(','), '解析失败：' + r.issues[0].error + '（面板数据可能显示不全）');
+        } else {
+            stats.yamlStrictOk += r.blocks;
+            if (opts.force) log('yaml-strict-ok', r.blocks + ' 个结构块', '解析通过');
+        }
+        renderStats();
+        return r;
+    } catch (e) { console.warn('[card-compat] strictCheckMessage: ' + ((e && e.message) || e)); return null; }
+}
+
 function log(type, tag, extra) {
     recent.unshift({ t: new Date().toLocaleTimeString(), type, tag, extra: extra || '' });
     if (recent.length > 40) recent.pop();
@@ -147,6 +198,8 @@ function guardMessage(messageId, { rerender = true } = {}) {
             log('patch-coverage', cov.covered.length + '/' + cov.total, cov.missing.length ? ('缺: ' + cov.missing.join('、')) : '全部覆盖 ✅');
         }
     } catch (_) {}
+    try { if (s.yamlStrict) strictCheckMessage(messageId); } catch (_) {}
+
     if (s.notifyStale) {
         const st = isStale(chat[messageId - 1]?.mes, m.mes);
         if (st.stale) { stats.staleWarned++; log('data-stale', 'freshness', JSON.stringify(st.fields || {}).slice(0, 140)); }
@@ -191,7 +244,7 @@ function normalizeRecent() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
@@ -212,6 +265,8 @@ function buildSettingsUi() {
         '<label class="checkbox_label"><input type="checkbox" id="cc-inject-prompt"><span>生成前注入结尾结构块提醒（推荐开）</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-fix-quotes"><span>修结构块里的引号错配（英文引号开头 + 中文引号结尾）</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-quote-scalars"><span>结构块里含「: 」「 #」却没加引号的值自动加引号</span></label>',
+        '<label class="checkbox_label"><input type="checkbox" id="cc-yaml-strict"><span>结构块严格 YAML 校验（用扩展自带的 js-yaml，失败报警）</span></label>',
+        '<button id="cc-yaml-check" class="menu_button">严格校验当前楼层</button>',
         '<label>面板字号</label><select id="cc-font"><option value="1">跟随 ST（默认）</option><option value="1.15">大</option><option value="1.3">更大</option></select>',
         '<label>消息区缩放 <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
         '<label>字号下限 <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
@@ -239,6 +294,8 @@ function buildSettingsUi() {
     bind('cc-inject-prompt', 'injectPrompt', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
     bind('cc-quote-scalars', 'quoteScalars', true);
+    bind('cc-yaml-strict', 'yamlStrict', true);
+    document.getElementById('cc-yaml-check')?.addEventListener('click', async () => { await strictCheckMessage(chat.length - 1, { force: true }); });
     const fontSel = document.getElementById('cc-font');
     if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
     bind('cc-zoom', 'fontZoom', false);
