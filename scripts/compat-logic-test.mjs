@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -107,6 +107,43 @@ const cov = patchCoverage(realBlock, req);
 check('只更时间 -> 缺 日期/地点（复现用户现象）', cov.covered.includes('系统.时间') && cov.missing.includes('系统.日期') && cov.missing.includes('系统.地点'), cov.missing.slice(0, 5));
 const rem3 = buildTailReminder(c1, { required: req });
 check('提醒里列出必更字段', rem3.includes('本轮必须更新的字段') && rem3.includes('系统.日期'), rem3.slice(-260));
+
+console.log('— 夹具 11：结构块引号错配修复（实测：模型把结束引号写成中文 ” → js-yaml 解析失败 → 状态栏显示「未解析到角色数据」）');
+const brokenBlock = [
+    '<Status_block>',
+    '状态栏:',
+    '  用户列表:',
+    '    - 用户:',
+    '        名字: "😎 染"',
+    '        内心: "他在看前面的路。我们的配合正在变得更契合。”',
+    '行动选项:',
+    '  名字: "😎 染"',
+    '</Status_block>',
+].join('\n');
+const q1 = repairSmartQuotes(brokenBlock, ['Status_block']);
+check('故障行改成英文引号', q1.text.includes('变得更契合。"') && !q1.text.includes('契合。”'), q1.text.split('\n')[5]);
+check('记录修复项（标签 + 字段）', q1.fixed.length === 1 && q1.fixed[0].tag === 'Status_block' && q1.fixed[0].key === '内心', q1.fixed);
+const proseWithSameLine = '正文里也有 内心: "这是一句普通叙述。” 但不该被动';
+check('块外正文一个字不动', repairSmartQuotes(proseWithSameLine, ['Status_block']).text === proseWithSameLine);
+const alreadyFine = '<T>\n  a: "x"\n</T>';
+check('本来就配对的不动', repairSmartQuotes(alreadyFine, ['T']).text === alreadyFine);
+const q2 = repairSmartQuotes("<T>\n  a: 'x’\n</T>", ['T']);
+check('单引号错配同样修', q2.text === "<T>\n  a: 'x'\n</T>" && q2.fixed.length === 1, q2.text);
+check('未声明标签族时原样返回', repairSmartQuotes(brokenBlock, []).fixed.length === 0);
+let yamlProof = null;
+try {
+    const jsyaml = (await import('js-yaml')).default;
+    const inner = (s) => (s.match(/<Status_block>([\s\S]*?)<\/Status_block>/) || ['', ''])[1];
+    let before = 'ok';
+    try { jsyaml.load(inner(brokenBlock)); } catch (_) { before = 'fail'; }
+    let after = 'ok';
+    try {
+        const p = jsyaml.load(inner(q1.text));
+        after = (p && p['状态栏'] && Array.isArray(p['状态栏']['用户列表']) && p['状态栏']['用户列表'].length) ? 'ok' : 'no-list';
+    } catch (_) { after = 'fail'; }
+    yamlProof = { before, after };
+} catch (_) { yamlProof = null; }
+check('js-yaml 端到端：修复前解析失败、修复后能取出用户列表', !yamlProof || (yamlProof.before === 'fail' && yamlProof.after === 'ok'), yamlProof);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

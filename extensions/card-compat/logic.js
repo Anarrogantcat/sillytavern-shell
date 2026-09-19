@@ -131,6 +131,33 @@ export function guardText(text, profile, opts = {}) {
 /** 已知的"状态栏协议"标签族（用于检测串卡） */
 export const KNOWN_PROTOCOL_TAGS = ['status!', 'StatusBar', 'StatusPlaceHolderImpl', 'StatusBlock', 'Status_block', 'StatusPanel', 'SystemTime', 'TTL'];
 
+/**
+ * 修复结构块里的「引号错配」——实测高频故障：
+ *   模型写出 \`内心: "……契合。”\`（开头英文双引号、结尾中文右引号 U+201D）
+ *   → js-yaml 报错 → 卡的前端解析不到数据（面板显示"未解析到角色数据"）
+ * 只在给定标签族的块内逐行处理，且只修「值以 ASCII 引号开头、却以对应中文引号结尾」这一种确信情形；
+ * 文本块之外的正文、以及本来就配对的行，一律不碰。
+ * @returns {{text:string, fixed:Array<{tag:string, key:string}>}}
+ */
+export function repairSmartQuotes(text, tags) {
+    let out = String(text ?? '');
+    const fixed = [];
+    for (const tag of tags || []) {
+        const blockRe = new RegExp('(<' + tag + '(?:\\s[^>]*)?>)([\\s\\S]*?)(</' + tag + '>)', 'g');
+        out = out.replace(blockRe, (whole, open, body, close) => {
+            const next = String(body).split('\n').map((line) => {
+                const dq = line.match(/^(\s*[^:\n]{1,40}:\s*)"([\s\S]*?)”\s*$/);
+                if (dq) { fixed.push({ tag, key: dq[1].trim().replace(/:$/, '') }); return line.replace(/”\s*$/, '"'); }
+                const sq = line.match(/^(\s*[^:\n]{1,40}:\s*)'([\s\S]*?)’\s*$/);
+                if (sq) { fixed.push({ tag, key: sq[1].trim().replace(/:$/, '') }); return line.replace(/’\s*$/, "'"); }
+                return line;
+            }).join('\n');
+            return open + next + close;
+        });
+    }
+    return { text: out, fixed };
+}
+
 /** 修复畸形的结束标签：</Tag（缺 >）→ </Tag>，仅对给定标签族生效 */
 export function normalizeMalformedClosings(text, tags) {
     let out = String(text ?? '');
@@ -169,7 +196,9 @@ export function buildTailReminder(profile, opts = {}) {
         for (const f of opts.required) lines.push("- " + f.path + (f.check ? "（" + f.check.slice(0, 60) + "）" : ""));
     }
     if (data.length && opts.varSpec) { lines.push("", "变量更新块的格式示例（照此填写，路径/字段名以角色卡为准）：", opts.varSpec.trim()); }
-    lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。", "</tail_reminder>");
+    lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。");
+    if (data.length || anchors.length) lines.push("结构块内的字符串引号必须配对：用英文半角双引号 \"…\" 包起来，不要出现开头是 \" 结尾却是中文引号 ” 的情况（那会让状态栏解析失败）。");
+    lines.push("</tail_reminder>");
     return lines.join("\n");
 }
 

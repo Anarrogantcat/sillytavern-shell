@@ -4,10 +4,10 @@
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -22,7 +22,7 @@ const DEFAULTS = {
     dedupeAnchor: true,  // 续写追加出重复的自闭合锚点时自动合并
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, coverageTotal: 0, coverageHit: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, coverageTotal: 0, coverageHit: 0 };
 let lastCoverage = null;
 const recent = [];
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
@@ -86,6 +86,14 @@ function guardMessage(messageId, { rerender = true } = {}) {
     if (s.dedupeAnchor) {
         const dd = dedupeSelfClosingAnchors(res.text, profile.anchors || []);
         if (dd.removed.length) { res.text = dd.text; stats.duplicatesCollapsed += dd.removed.length; log('anchor-duplicate-merged', dd.removed.join(',')); changed = true; }
+    }
+    // 结构块内的引号错配（"….”）→ 修成 "…"：实测会让 js-yaml 解析失败、状态栏显示"未解析到角色数据"
+    const q = repairSmartQuotes(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])]);
+    if (q.fixed.length) {
+        res.text = q.text;
+        stats.quotesFixed += q.fixed.length;
+        log('quote-repaired', q.fixed.map((f) => f.tag + ':' + f.key).join(','), '中文引号结尾 → 英文引号（否则 YAML 解析失败）');
+        changed = true;
     }
     // 畸形结束标签（如 </status!  缺 >）→ 补上，避免卡片正则匹配不到
     const norm = normalizeMalformedClosings(res.text, [...(profile.anchors || []), ...(profile.dataTags || [])]);
@@ -171,7 +179,7 @@ function normalizeRecent() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
