@@ -1,0 +1,11 @@
+{
+    "display_name": "卡兼容助手 (Card Compat)",
+    "loading_order": 30,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "sillytavern-shell",
+    "version": "0.1.0",
+    "description": "保证角色卡状态栏正常显示与数据更新：锚点守护 + 数据块守护 + 消息区字号调节"
+}

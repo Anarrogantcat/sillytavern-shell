@@ -9,3 +9,6 @@ Start.bat
 start.sh
 .smoke/*/
 vendor/
+
+# 卡兼容能力档案（含本机角色卡名，不入库）
+compat-profile.json

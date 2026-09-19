@@ -1,0 +1,4 @@
+#cc-panel .cc-stats { font-size: 12px; opacity: .85; margin: 6px 0; }
+#cc-panel .cc-log { max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; }
+#cc-panel label { display: block; margin-top: 6px; font-size: 12px; }
+#cc-panel input[type="range"] { width: 100%; }

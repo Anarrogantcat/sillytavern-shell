@@ -1,5 +1,17 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.33.0 (2026-09-20) — 角色卡状态栏兼容：能力档案 + ST 扩展（第一阶段）
+- 新增 `scripts/compat-scan.mjs`：角色卡/预设「能力档案」静态扫描器（卡内正则、酒馆助手脚本、世界书、全局与按预设作用域），实测扫描 93 张卡
+  - 档案结果：带正则 80 张 / 带助手脚本 62 张 / 锚点来自正则 45、来自助手 28、无锚点 20；数据块来自正则 42、助手 8、无 43；风险卡 9 张（只有隐藏脚本、无锚点，禁止补锚点）
+- 新增 `extensions/card-compat/`：ST 扩展源码（随仓库版本管理，不入 ST 本体）
+  - 锚点守护：从卡的正则脚本推导锚点标签族（`<StatusPlaceHolderImpl/>`、`<StatusBar>`、`<status!>` 等），缺失按设置补、未闭合自动补结束标签
+  - 数据块守护：`<UpdateVariable>` 等数据块**绝不改内容**，只在未闭合时补闭合；缺失只报警、不伪造
+  - 数据新鲜度：对比连续两轮的第N天/日期/时刻/地点/天气，全程一致时提示"数据疑似未更新"
+  - 消息区字号：`zoom` 缩放 + 字号下限 `max(Npx,1em)`（卡内写死 px 也能放大）
+  - 运行时机：`MESSAGE_RECEIVED`（早于渲染与卡正则），只补标签、不动正文与数据
+- 新增 `scripts/compat-install.mjs`：把扩展同步到 ST 数据目录（支持 `--dry-run`、哈希比对、manifest 校验）
+- 新增 `scripts/compat-logic-test.mjs`：逻辑层夹具断言 12 项（锚点注入/闭合修复/隐藏白名单/数据块保护/新鲜度），实测 12/12 通过
+- 说明：本阶段只做基础能力；工具箱合并（P1）与「兼容与检测」页签在后续提交中完成
 ## v1.32.1 (2026-09-20) — 修复 webview 增强全部失效（右键菜单等）
 - 修复 v1.28.0 引入的回归：`<webview>` 的 preload 由 Electron 按 **CommonJS** 加载，写成 ESM `import` 会整份不加载
   （实测报错：`Unable to load preload script` / `SyntaxError: Cannot use import statement outside a module`）
