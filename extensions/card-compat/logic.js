@@ -143,6 +143,22 @@ export function buildTailReminder(profile) {
     return lines.join("\n");
 }
 
+/** 合并重复的自闭合锚点（续写经常追加出第二个）：只保留最后一个，其余删除 */
+export function dedupeSelfClosingAnchors(text, tags) {
+    let out = String(text ?? "");
+    const removed = [];
+    for (const tag of tags || []) {
+        const re = new RegExp("<" + tag + "\\s*/\\s*>", "g");
+        const hits = out.match(re) || [];
+        if (hits.length < 2) continue;
+        // 保留最后一个，删除其余
+        let seen = 0;
+        out = out.replace(re, () => { seen++; return seen < hits.length ? "" : "<" + tag + "/>"; });
+        removed.push(tag + "×" + (hits.length - 1));
+    }
+    return { text: out, removed };
+}
+
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */
 export function freshnessFields(text) {
     const t = String(text || '');

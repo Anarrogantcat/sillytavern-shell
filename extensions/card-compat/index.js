@@ -4,10 +4,10 @@
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.1.6';
+const VERSION = '0.1.7';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -19,10 +19,11 @@ const DEFAULTS = {
     logActions: true,
     injectPrompt: true,
     panelFont: 1,        // 面板字号倍率（1 / 1.15 / 1.3）
+    dedupeAnchor: true,  // 续写追加出重复的自闭合锚点时自动合并
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0 };
 const recent = [];
-const handled = new Set();   // 已守护处理过的 messageId（防重复/防循环）
+const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
 
 const settings = () => extension_settings[NAME];
 function profileOf() {
@@ -69,6 +70,11 @@ function guardMessage(messageId, { rerender = true } = {}) {
     const profile = profileOf();
     const res = guardText(m.mes, profile, s);
     let changed = false;
+    // 续写（Continue）会在同一条消息尾部追加，可能追加出第二个占位符 → 合并掉
+    if (s.dedupeAnchor) {
+        const dd = dedupeSelfClosingAnchors(res.text, profile.anchors || []);
+        if (dd.removed.length) { res.text = dd.text; stats.duplicatesCollapsed += dd.removed.length; log('anchor-duplicate-merged', dd.removed.join(',')); changed = true; }
+    }
     // 畸形结束标签（如 </status!  缺 >）→ 补上，避免卡片正则匹配不到
     const norm = normalizeMalformedClosings(res.text, [...(profile.anchors || []), ...(profile.dataTags || [])]);
     if (norm.fixed.length) { res.text = norm.text; log('malformed-close-fixed', norm.fixed.join(',')); changed = true; }
@@ -92,7 +98,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
     if (changed) {
         m.mes = res.text;
         stats.guarded++;
-        handled.add(messageId);
+        lastSeen.set(messageId, m.mes);
         try { saveChatDebounced(); } catch (_) {}
         if (rerender) {
             stats.rerendered++;
@@ -126,7 +132,7 @@ function applyPanelFont() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags;
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed;
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
 }
@@ -193,10 +199,10 @@ function buildSettingsUi() {
     // ① 非流式：渲染前
     eventSource.on(event_types.MESSAGE_RECEIVED, (id) => { try { guardMessage(id, { rerender: false }); } catch (e) { console.error(e); } });
     // ② 流式：生成结束（hideStopButton 触发），此时 messageId = chat.length-1
-    eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (!handled.has(id)) guardMessage(id); } catch (e) { console.error(e); } });
+    eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } });
     // ③ 渲染后兜底校验
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { verifyRendered(id); } catch (_) {} });
-    eventSource.on(event_types.CHAT_CHANGED, () => { try { applyFont(); handled.clear(); updatePromptInjection(); } catch (_) {} });
+    eventSource.on(event_types.CHAT_CHANGED, () => { try { applyFont(); lastSeen.clear(); updatePromptInjection(); } catch (_) {} });
     eventSource.on(event_types.MESSAGE_SENT, () => { try { updatePromptInjection(); } catch (_) {} });
     try { updatePromptInjection(); } catch (_) {}
     console.log('[card-compat] 已加载 v' + VERSION + '（守护 + 结尾提醒注入）');

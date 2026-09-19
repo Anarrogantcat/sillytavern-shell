@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -67,6 +67,13 @@ check('包含变量块标签', rem.includes('<UpdateVariable>'), rem.slice(0, 80
 check('包含锚点标签', rem.includes('<StatusPlaceHolderImpl'), rem.slice(0, 120));
 check('不点名其他卡的标签', !rem.includes('status!') && !rem.includes('StatusBar'), rem.slice(0, 160));
 check('无锚点无数据块时返回空串', buildTailReminder(buildProfile({})) === '');
+
+console.log('— 夹具 7：续写追加出的重复锚点合并');
+const dup = '正文一。\n<StatusPlaceHolderImpl/>\n正文二（续写）。\n<StatusPlaceHolderImpl/>';
+const dd = dedupeSelfClosingAnchors(dup, ['StatusPlaceHolderImpl']);
+check('重复占位符被合并为 1 个', (dd.text.match(/<StatusPlaceHolderImpl\/>/g) || []).length === 1 && dd.removed.length === 1, dd);
+const solo = dedupeSelfClosingAnchors('正文。\n<StatusPlaceHolderImpl/>', ['StatusPlaceHolderImpl']);
+check('只有一个时不改动', solo.text === '正文。\n<StatusPlaceHolderImpl/>' && solo.removed.length === 0, solo);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
