@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -94,6 +94,19 @@ const mixed = '正文。\n<StatusPlaceHolderImpl>\n支出_陈慧兰: 0\n</Status
 const norm = guardText(mixed, cSelf, { injectAnchor: true, anchorStyle: 'self' });
 check('成对块被规范成自闭合（去重）', (norm.text.match(/<StatusPlaceHolderImpl\/>/g) || []).length === 1 && !norm.text.includes('</StatusPlaceHolderImpl>'), norm.text.slice(-120));
 check('记录了 anchor-form-normalized', norm.actions.some(a => a.type === 'anchor-form-normalized'), norm.actions);
+
+console.log('— 夹具 10：必更字段抽取与 patch 覆盖度');
+const rulesText = ['---', '变量更新规则:', '  系统:', '    日期:', '      format: YYYY年MM月DD日', '      check:', '        - 每次场景跳转或时间推进后更新', '        - 与剧情天数同步推进', '    时间:', '      format: HH:MM', '      check:', '        - 每次场景跳转或时间推进后更新', '    地点:', '      check:', '        - 角色移动到新场景后更新', '  林婉婷:', '    位置:', '      check:', '        - 角色移动到新场景后更新', '    外貌.${发型|妆容|表情}:', '      check:', '        - 状态变化时更新'].join('\n');
+const req = extractRequiredFields([{ content: rulesText }], 10);
+const paths = req.map(r => r.path);
+check('抽出 系统.日期/时间/地点', paths.includes('系统.日期') && paths.includes('系统.时间') && paths.includes('系统.地点'), paths);
+check('模板组被展开为 3 条', paths.filter(p => p.indexOf('林婉婷.外貌.') === 0).length === 3, paths);
+check('check 条件被带上', ((req.find(r => r.path === '系统.日期') || {}).check || '').includes('每次场景跳转'), req.find(r => r.path === '系统.日期'));
+const realBlock = '<UpdateVariable>\n<Analysis>x</Analysis>\n<JSONPatch>\n[ { "op": "replace", "path": "/系统/时间", "value": "15:30" } ]\n</JSONPatch>\n</UpdateVariable>';
+const cov = patchCoverage(realBlock, req);
+check('只更时间 -> 缺 日期/地点（复现用户现象）', cov.covered.includes('系统.时间') && cov.missing.includes('系统.日期') && cov.missing.includes('系统.地点'), cov.missing.slice(0, 5));
+const rem3 = buildTailReminder(c1, { required: req });
+check('提醒里列出必更字段', rem3.includes('本轮必须更新的字段') && rem3.includes('系统.日期'), rem3.slice(-260));
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

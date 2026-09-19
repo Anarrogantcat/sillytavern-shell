@@ -4,10 +4,10 @@
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -22,7 +22,8 @@ const DEFAULTS = {
     dedupeAnchor: true,  // 续写追加出重复的自闭合锚点时自动合并
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, coverageTotal: 0, coverageHit: 0 };
+let lastCoverage = null;
 const recent = [];
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
 
@@ -39,7 +40,8 @@ function profileOf() {
             const book = ch?.data?.character_book || ch?.character_book;
             const entries = book?.entries || [];
             prof.varSpec = extractVarSpec(entries);
-        } catch (_) { prof.varSpec = ''; }
+            prof.required = extractRequiredFields(entries);
+        } catch (_) { prof.varSpec = ''; prof.required = []; }
         return prof;
     } catch (_) { return buildProfile({}); }
 }
@@ -50,7 +52,7 @@ function updatePromptInjection() {
         const s = settings();
         if (!s?.enabled || !s.injectPrompt) { setExtensionPrompt(PROMPT_KEY, "", extension_prompt_types.NONE, 0); return; }
         const prof = profileOf();
-        const text = buildTailReminder(prof, { varSpec: prof.varSpec || '' });
+        const text = buildTailReminder(prof, { varSpec: prof.varSpec || '', required: prof.required || [] });
         setExtensionPrompt(PROMPT_KEY, text, text ? extension_prompt_types.IN_CHAT : extension_prompt_types.NONE, 0, false, extension_prompt_roles.SYSTEM);
         if (settings().logActions) console.debug('[card-compat] 注入提醒长度=' + text.length + ' 变量格式=' + ((prof.varSpec || '').length) + ' 字符');
     } catch (e) { console.error("[card-compat] prompt inject failed", e); }
@@ -115,6 +117,16 @@ function guardMessage(messageId, { rerender = true } = {}) {
             try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (e) { log('rerender-failed', '', String(e?.message || e)); }
         }
     }
+    // 变量 patch 覆盖度：模型写的 <UpdateVariable> 是否覆盖了卡的必更字段
+    try {
+        const req = profile.required || [];
+        if (req.length && m.mes.includes('<UpdateVariable>')) {
+            const cov = patchCoverage(m.mes, req);
+            lastCoverage = cov;
+            stats.coverageTotal = cov.total; stats.coverageHit = cov.covered.length;
+            log('patch-coverage', cov.covered.length + '/' + cov.total, cov.missing.length ? ('缺: ' + cov.missing.join('、')) : '全部覆盖 ✅');
+        }
+    } catch (_) {}
     if (s.notifyStale) {
         const st = isStale(chat[messageId - 1]?.mes, m.mes);
         if (st.stale) { stats.staleWarned++; log('data-stale', 'freshness', JSON.stringify(st.fields || {}).slice(0, 140)); }
@@ -159,7 +171,8 @@ function normalizeRecent() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed;
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed +
+        (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
 }

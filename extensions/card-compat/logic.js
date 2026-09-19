@@ -164,6 +164,10 @@ export function buildTailReminder(profile, opts = {}) {
         const shape = form === 'self' ? ('只写自闭合占位符 <' + t + '/>，标签内不要填写任何内容') : ('<' + t + '> … </' + t + '>（按角色卡规定的字段填写）');
         lines.push('- ' + shape + ' ：状态栏块');
     }
+    if (data.length && opts.required && opts.required.length) {
+        lines.push("", "本轮必须更新的字段（按角色卡的 check 条件，缺一项都算失败）：");
+        for (const f of opts.required) lines.push("- " + f.path + (f.check ? "（" + f.check.slice(0, 60) + "）" : ""));
+    }
     if (data.length && opts.varSpec) { lines.push("", "变量更新块的格式示例（照此填写，路径/字段名以角色卡为准）：", opts.varSpec.trim()); }
     lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。", "</tail_reminder>");
     return lines.join("\n");
@@ -202,6 +206,76 @@ export function extractVarSpec(entries, maxLen = 600) {
     if (!block) return "";
     block = block.replace(/\r/g, "").split("\n").map(l => l.replace(/\s+$/, "")).filter(l => l.trim() !== "").slice(0, 24).join("\n");
     return [...block].length > maxLen ? [...block].slice(0, maxLen).join("") + " …" : block;
+}
+
+/**
+ * 从角色卡世界书条目里抽出「本轮必须更新的字段清单」
+ * 解析 [mvu_update]变量更新规则 这类条的缩进结构：组(缩进2) / 字段(缩进4) + check 条件
+ * @returns {Array<{path:string, check:string}>}
+ */
+export function extractRequiredFields(entries, limit = 10) {
+    const text = (entries || []).map(e => String(e?.content || "")).join("\n");
+    if (!text) return [];
+    const lines = text.split("\n");
+    const out = [];
+    let group = "", field = null, inCheck = false;
+    const push = () => {
+        if (field && field.check) out.push({ path: group + "." + field.name, check: field.check.trim() });
+        field = null; inCheck = false;
+    };
+    for (const rawLine of lines) {
+        const line = String(rawLine).replace(/\t/g, "    ").replace(/\s+$/, "");
+        const body = line.trim();
+        if (!body || body.indexOf("---") === 0 || body.indexOf("#") === 0) continue;
+        const indent = line.length - line.replace(/^\s+/, "").length;
+        if (indent <= 2) {
+            if (indent === 2) { push(); group = body.replace(/:.*$/, "").trim(); }
+            continue;
+        }
+        if (indent === 4) {
+            push();
+            field = { name: body.replace(/:.*$/, "").trim(), check: "" };
+            continue;
+        }
+        if (!field) continue;
+        if (/^check\s*:/i.test(body)) { inCheck = true; continue; }
+        if (inCheck) {
+            const item = body.replace(/^[-*]\s*/, "").trim();
+            if (item) field.check += (field.check ? " / " : "") + item;
+        }
+    }
+    push();
+    // 展开全部 ${A|B} 模板组（可能同时出现在组名与字段名里），最多 8 轮
+    let pool = out.slice();
+    for (let round = 0; round < 8; round++) {
+        let changed = false;
+        const next = [];
+        for (const f of pool) {
+            const mm = f.path.match(/\$\{([^}]+)\}/);
+            if (mm) {
+                changed = true;
+                for (const alt of mm[1].split(/[|｜]/)) next.push({ path: f.path.replace(mm[0], alt.trim()), check: f.check });
+            } else next.push(f);
+        }
+        pool = next;
+        if (!changed) break;
+    }
+    return pool.slice(0, limit);
+}
+/**
+ * 统计模型写出的 <UpdateVariable> 块覆盖了哪些必更字段
+ * @returns {{total:number, covered:string[], missing:string[]}}
+ */
+export function patchCoverage(text, required) {
+    const t = String(text || "");
+    const block = (t.match(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/) || [t])[0];
+    const norm = p => String(p || "").replace(/\./g, "/").replace(/^\/*/, "/");
+    const covered = [], missing = [];
+    for (const f of (required || [])) {
+        const want = norm(f.path);
+        if (block.indexOf(want) >= 0) covered.push(f.path); else missing.push(f.path);
+    }
+    return { total: (required || []).length, covered, missing };
 }
 
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */
