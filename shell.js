@@ -42,6 +42,18 @@ function initToolboxGroups() {
     let order = [];
     try { order = JSON.parse(localStorage.getItem(orderKey) || '[]'); } catch (_) {}
     const wraps = [...body.querySelectorAll('.tool-group')];
+    // v1.36.2：分组做过合并（15 → 8），清掉 localStorage 里已不存在的旧组键，再重新读取顺序/折叠/收藏
+    try {
+        const known = new Set(wraps.map((w) => w.dataset.key));
+        for (const key of ['toolboxGroupOrder', 'toolboxGroupCollapsed', 'toolboxFavoriteGroups']) {
+            let arr = [];
+            try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (_) { continue; }
+            if (!Array.isArray(arr)) continue;
+            const next = arr.filter((k) => known.has(k));
+            if (next.length !== arr.length) localStorage.setItem(key, JSON.stringify(next));
+        }
+        order = JSON.parse(localStorage.getItem(orderKey) || '[]');
+    } catch (_) {}
     for (const key of [...order].reverse()) {
         const w = wraps.find(x => x.dataset.key === key);
         if (w) body.insertBefore(w, body.firstChild);
@@ -1376,6 +1388,55 @@ async function fixStatusBar() {
 }
 document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatusBar);
 document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
+
+// ── ST 扩展：内置部署 / 在线更新（v1.36.2）────────────────────────────
+function extLines(list, fmt) { return (list || []).map(fmt).join('\n'); }
+async function extDeployBuiltin() {
+    const note = document.getElementById('t-ext-note');
+    setNote(note, '部署中…');
+    try {
+        const r = await TL()?.extDeploy?.();
+        if (!r) { setNote(note, '不可用（请看终端）'); return; }
+        setNote(note, r.summary || '');
+        const lines = [];
+        lines.push('内置扩展目录：' + (r.extRoot || '-'));
+        if (r.deployed?.length) lines.push('本次写入：\n' + extLines(r.deployed, (d) => '  ' + d.id + ' ' + d.version + '（' + (d.action === 'install' ? '新装' : '更新') + '）'));
+        if (r.skipped?.length) lines.push('跳过：\n' + extLines(r.skipped, (d) => '  ' + d.id + ' ' + (d.reason || d.action)));
+        if (r.failed?.length) lines.push('失败：\n' + extLines(r.failed, (d) => '  ' + d.id + ' ' + d.error));
+        if (r.dataRootMissing) lines.push('ST 数据目录还没初始化（先跑一次 ST），套壳会自动重试');
+        if (!r.deployed?.length && !r.failed?.length) lines.push('无需动作：已是最新（扩展更新策略见 README）');
+        setDetail(document.getElementById('t-ext-res'), lines.join('\n'));
+    } catch (e) { setNote(note, '失败：' + e.message); }
+}
+async function extCheckRemote() {
+    const note = document.getElementById('t-ext-note');
+    setNote(note, '检查在线更新…');
+    try {
+        const r = await TL()?.extCheck?.();
+        if (!r) { setNote(note, '不可用（请看终端）'); return; }
+        setNote(note, r.summary || '');
+        const lines = [];
+        if (r.base) lines.push('清单来源：' + r.base);
+        if (r.updated?.length) lines.push('已更新：\n' + extLines(r.updated, (u) => '  ' + u.id + ' ' + (u.from ? u.from + ' → ' : '') + u.to + '（刷新 ST 生效）'));
+        if (r.failed?.length) lines.push('失败：\n' + extLines(r.failed, (f) => '  ' + f.id + ' ' + f.reason));
+        if (r.tried?.length) lines.push('尝试过的地址：\n' + extLines(r.tried, (t) => '  ' + t.base + ' → ' + t.error));
+        if (!r.updated?.length && !r.failed?.length && r.ok) lines.push('本地已是最新（清单里的版本不比本地新）');
+        if (!lines.length) lines.push('没有可用信息');
+        setDetail(document.getElementById('t-ext-res'), lines.join('\n'));
+    } catch (e) { setNote(note, '失败：' + e.message); }
+}
+document.getElementById('t-ext-deploy')?.addEventListener('click', extDeployBuiltin);
+document.getElementById('t-ext-check')?.addEventListener('click', extCheckRemote);
+document.getElementById('t-ext-auto')?.addEventListener('change', async (e) => {
+    try { await TL()?.extAutoSet?.(!!e.target.checked); setNote(document.getElementById('t-ext-note'), e.target.checked ? '启动时自动检查：开' : '启动时自动检查：关'); } catch (_) {}
+});
+(async () => {
+    try {
+        const on = await TL()?.extAutoGet?.();
+        const cb = document.getElementById('t-ext-auto');
+        if (cb) cb.checked = on !== false;
+    } catch (_) {}
+})();
 async function renderGenericStatusBar() {
     setDiag('渲染中…');
     try {

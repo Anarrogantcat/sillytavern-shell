@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification, screen, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification, screen, clipboard, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,6 +17,7 @@ import { registerTunnelTools } from './lib/tools-tunnel.js';
 import { registerZtTools } from './lib/tools-zt.js';
 import { registerPluginTools } from './lib/tools-plugins.js';
 import { deployExtensions } from './lib/ext-deploy.js';
+import { fetchIndex, applyRemoteUpdates, summarizeRemote } from './lib/ext-remote.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
 // electron-updater's default logger writes to console (stdout). When the
@@ -551,6 +552,31 @@ function deployBundledExtensions(reason) {
     }
 }
 
+/** HTTP 取文本：优先用 Electron 的 net（会跟随系统代理），退回全局 fetch；20 秒超时 */
+async function httpGetText(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    try {
+        const res = (net && typeof net.fetch === 'function') ? await net.fetch(url, { signal: ctrl.signal }) : await fetch(url, { signal: ctrl.signal });
+        if (!res || !res.ok) throw new Error('HTTP ' + (res ? res.status : '?'));
+        return await res.text();
+    } finally { clearTimeout(timer); }
+}
+
+/**
+ * 扩展「在线更新」：拉 extensions/index.json → 比版本 → 下载 + 校验 sha1 → 落地。
+ * 这是「扩展版本与套壳版本解耦」的关键：扩展改了不用重新发整个安装包，老套壳也能更新。
+ */
+async function checkExtensionUpdates() {
+    const log = (s) => terminalWrite(s + '\n');
+    const got = await fetchIndex({ fetchText: httpGetText, log });
+    if (!got.ok) return { ok: false, summary: '无法获取扩展清单（网络/代理）', tried: got.tried };
+    const res = await applyRemoteUpdates({ index: got.index, base: got.base, dataRoot, fetchText: httpGetText, log });
+    const summary = summarizeRemote(res);
+    if (res.updated.length) terminalWrite('\x1b[32m[ext] 在线更新完成：' + summary + '（刷新 ST 生效）\x1b[0m\n');
+    return { ok: true, base: got.base, summary, updated: res.updated, skipped: res.skipped, failed: res.failed };
+}
+
 let tray = null, isQuitting = false;
 function createTray() {
     const iconPath = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, 'assets/icon.png');
@@ -663,7 +689,24 @@ function setupIPC() {
     });
 
     // ST 完整性检测：改用主进程直接执行，避免 node -e 字符串拼接受特殊字符影响
-    ipcMain.handle('tools:integrityCheck', async () => {
+    // ── ST 扩展：内置部署 / 在线更新（v1.36.2，工具箱入口）──────────────
+ipcMain.handle('tools:extDeploy', () => {
+    const r = deployBundledExtensions('toolbox');
+    if (!r) return { ok: false, summary: '找不到内置扩展目录（安装包异常）' };
+    return {
+        ok: true, summary: r.summary, extRoot: r.extRoot,
+        deployed: r.deployed, skipped: r.skipped, failed: r.failed, dataRootMissing: r.dataRootMissing,
+    };
+});
+ipcMain.handle('tools:extCheck', () => checkExtensionUpdates());
+ipcMain.handle('tools:extAutoGet', () => settings.extAutoUpdate !== false);
+ipcMain.handle('tools:extAutoSet', (_e, on) => {
+    settings.extAutoUpdate = !!on;
+    try { saveSettings(settings); } catch (_) {}
+    return settings.extAutoUpdate;
+});
+
+ipcMain.handle('tools:integrityCheck', async () => {
         try {
             let git = false;
             try { git = execSync('git rev-parse --is-inside-work-tree', { cwd: sillyTavernRoot, stdio: 'pipe' }).toString().trim() === 'true'; } catch (_) { git = false; }
@@ -1070,6 +1113,14 @@ app.whenReady().then(async () => {
     createTray(); createWindow(); setupIPC();
     // 内置 ST 扩展：延后 1.5s（等 ST 首次运行建好数据目录；没建好会自动重试）
     setTimeout(() => deployBundledExtensions('startup'), 1500);
+    // 扩展在线更新：默认开（settings.extAutoUpdate !== false）；延后 6 秒后台检查，失败只写终端不打扰
+    setTimeout(async () => {
+        if (settings.extAutoUpdate === false) return;
+        try {
+            const r = await checkExtensionUpdates();
+            terminalWrite('[ext] 在线检查：' + (r.summary || '-') + '\n');
+        } catch (e) { terminalWrite('[ext] 在线检查失败：' + e.message + '\n'); }
+    }, 6000);
     try { toolsApp?.backupCheck?.(); } catch (_) {}
     // Start the chat watcher (read-only token statistics, auto restarts on activate)
     benchStartWatcher();

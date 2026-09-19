@@ -22,6 +22,12 @@ jobs:
         continue-on-error: true
         run: npm run ui:check
 
+      - name: 扩展清单新鲜度 + 部署夹具
+        run: |
+          node scripts/ext-index.mjs --check
+          node scripts/ext-deploy-test.mjs
+          node scripts/ext-remote-test.mjs
+
       - name: Build Lite and publish
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

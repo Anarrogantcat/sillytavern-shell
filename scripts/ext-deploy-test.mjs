@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { compareVersions, planDeploy, deployExtensions, listBundled, hashTree, buildSummary, RECORD_NAME, extensionsRoot } from '../lib/ext-deploy.js';
 import { guardDowngrade, syncExtension } from '../scripts/ext-install.mjs';
 
@@ -117,6 +118,17 @@ eq('目标内容未被改', fs.readFileSync(path.join(instData, 'default-user', 
 const s2 = syncExtension('card-compat', { repoRoot, dataRoot: instData, force: true, log: () => {} });
 ok('force 后确实覆盖', !s2.blocked && s2.changed > 0, { blocked: s2.blocked, changed: s2.changed });
 eq('覆盖后版本回落到仓库版本', fs.readFileSync(path.join(instData, 'default-user', 'extensions', 'card-compat', 'index.js'), 'utf8').includes('v0.1.0'), true);
+
+// ── 仓库一致性：extensions/index.json 必须与当前扩展内容一致（解耦通道的前提） ──
+const { buildIndex, coreOf, INDEX_FILE } = await import('./ext-index.mjs');
+const indexPath = path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), 'extensions', INDEX_FILE);
+ok('extensions/index.json 存在', fs.existsSync(indexPath), indexPath);
+if (fs.existsSync(indexPath)) {
+    const cur = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+    const next = buildIndex(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    eq('index.json 与扩展内容一致（改了扩展记得 node scripts/ext-index.mjs）', coreOf(cur) === coreOf(next), true);
+    eq('index.json 列出全部内置扩展', cur.extensions.map((e) => e.id).sort(), next.extensions.map((e) => e.id).sort());
+}
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('');

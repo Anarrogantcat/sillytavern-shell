@@ -42,18 +42,10 @@
 <div class="panel-header"><span>🧰 工具箱</span><button class="panel-close" id="btn-tools-close">&times;</button></div>
 <div class="bench-body">
 
-<div class="tool-sec">📁 数据备份</div>
+<div class="tool-sec">🗂 数据与导出</div>
 <div class="tool-actions"><button id="t-backup-now" class="btn-primary btn-sm">立即备份</button><span id="t-backup-now-res" class="tool-note"></span></div>
 <div class="tool-row"><select id="t-backup-select" class="tool-input"><option value="">选择备份…</option></select><button id="t-backup-restore" class="btn-secondary btn-sm">恢复备份</button></div>
-
-<div class="tool-sec">🔍 聊天全文搜索</div>
-<div class="tool-row"><input type="text" id="t-search-kw" class="tool-input" placeholder="输入关键词，回车搜索（跨全部角色卡）"></div>
-<div id="t-search-res" class="tool-detail"></div>
-
-<div class="tool-sec">📊 聊天统计</div>
-<div class="tool-actions"><button id="t-stats" class="btn-secondary btn-sm">统计</button><span id="t-stats-res" class="tool-note"></span></div>
-
-<div class="tool-sec">📤 导出</div>
+<div class="tool-sub">导出</div>
 <div class="tool-actions">
 <button id="t-export-cards" class="btn-secondary btn-sm">导出角色卡</button>
 <button id="t-summarize" class="btn-secondary btn-sm">剧情总结</button>
@@ -62,39 +54,52 @@
 <span id="t-export-res" class="tool-note"></span>
 </div>
 
-<div class="tool-sec">👁 角色卡速览 / 世界书</div>
+<div class="tool-sec">🔎 检索与统计</div>
+<div class="tool-row"><input type="text" id="t-search-kw" class="tool-input" placeholder="输入关键词，回车搜索（跨全部角色卡）"></div>
+<div id="t-search-res" class="tool-detail"></div>
+<div class="tool-sub">聊天统计</div>
+<div class="tool-actions"><button id="t-stats" class="btn-secondary btn-sm">统计</button><span id="t-stats-res" class="tool-note"></span></div>
+
+<div class="tool-sec">👁 角色卡与世界书</div>
 <div class="tool-row"><select id="t-card-list" class="tool-input"><option value="">选择角色卡…</option></select><button id="t-card-view" class="btn-secondary btn-xs">查看</button></div>
 <div id="t-card-res" class="tool-detail"></div>
 <div class="tool-actions"><button id="t-worlds" class="btn-secondary btn-sm">世界书列表</button><span id="t-worlds-note" class="tool-note"></span></div>
 
-<div class="tool-sec">🤖 模型服务 / 环境</div>
+<div class="tool-sec">🤖 模型与本地服务</div>
 <div class="tool-actions"><button id="t-model-service" class="btn-secondary btn-sm">服务状态</button><button id="t-env" class="btn-secondary btn-sm">环境体检</button><button id="t-health" class="btn-secondary btn-sm">一键体检</button><button id="t-ollama-start" class="btn-secondary btn-sm">启动 Ollama</button><button id="t-ollama" class="btn-secondary btn-sm">Ollama 模型</button><button id="t-gpu" class="btn-secondary btn-sm">显存/温度</button><button id="t-clash" class="btn-secondary btn-sm">Clash 状态</button><span id="t-ollama-status" class="tool-note"></span></div>
 <div id="t-env-res" class="tool-detail"></div>
-
-<div class="tool-sec">🦙 llama.cpp 服务器</div>
+<div class="tool-sub">llama.cpp 服务器</div>
 <div class="tool-row"><label>服务器路径</label><input type="text" id="llama-bin" class="tool-input" placeholder="C:\...\llama-server.exe 路径"></div>
 <div class="tool-row"><label>模型路径</label><input type="text" id="llama-model" class="tool-input" placeholder="C:\...\model.gguf 路径"></div>
 <div class="tool-row"><label>端口</label><input type="number" id="llama-port" class="tool-input" value="8080" style="width:80px"><label>上下文</label><input type="number" id="llama-ctx" class="tool-input" value="4096" style="width:90px"><label>线程</label><input type="number" id="llama-threads" class="tool-input" value="0" style="width:80px"><label>GPU层</label><input type="number" id="llama-gpu" class="tool-input" value="99" style="width:80px"></div>
 <div class="tool-actions"><button id="llama-start" class="btn-primary btn-sm">启动</button><button id="llama-stop" class="btn-secondary btn-sm">停止</button><button id="llama-status" class="btn-secondary btn-sm">刷新</button><span id="llama-status-note" class="tool-note"></span></div>
 <div id="llama-info" class="tool-detail"></div>
-
-<div class="tool-sec">📚 本地知识库 (RAG)</div>
+<div class="tool-sub">本地知识库 (RAG)</div>
 <div class="tool-row"><input type="text" id="t-rag-q" class="tool-input" placeholder="输入关键词检索（文档放 userData/rag-docs/）"></div>
 <div class="tool-actions"><button id="t-rag" class="btn-secondary btn-sm">检索</button></div>
 <div id="t-rag-res" class="tool-detail"></div>
-
-<div class="tool-sec">✏️ 草稿生成器（直连模型）</div>
+<div class="tool-sub">草稿生成器（直连模型）</div>
 <div class="tool-row"><input type="text" id="t-draft-prompt" class="tool-input" placeholder="输入生成要求，如：写一段雨夜相遇的场景描写"></div>
 <div class="tool-actions"><button id="t-draft" class="btn-primary btn-sm">生成</button><button id="t-draft-copy" class="btn-secondary btn-sm">复制</button></div>
 <div id="t-draft-res" class="tool-detail"></div>
 
-<div class="tool-sec">💬 独立对话助手</div>
+<div class="tool-sec">🧩 ST 扩展与插件</div>
+<div class="tool-actions"><button id="t-ext-deploy" class="btn-primary btn-sm">部署/更新内置扩展</button><button id="t-ext-check" class="btn-secondary btn-sm">检查扩展在线更新</button><span id="t-ext-note" class="tool-note"></span></div>
+<div class="tool-row"><label class="auth-remember"><input type="checkbox" id="t-ext-auto"> 启动时自动检查扩展在线更新</label></div>
+<div id="t-ext-res" class="tool-detail"></div>
+
+<div class="tool-sec">🧪 兼容与检测</div>
+<div class="tool-actions"><button id="t-diag-statusbar" class="btn-secondary btn-sm">诊断</button><button id="t-fix-statusbar" class="btn-secondary btn-sm">清理占位符</button><button id="t-render-statusbar" class="btn-secondary btn-sm">渲染通用状态栏</button><button id="t-remember-statusbar" class="btn-secondary btn-sm">记住新类型</button></div>
+<div id="t-diag-res" class="tool-detail"></div>
+
+<div class="tool-sec">💬 对话与界面</div>
 <div class="tool-actions"><button id="t-chat" class="btn-primary btn-sm">打开独立对话窗口</button></div>
-
-<div class="tool-sec">🖥 界面</div>
+<div class="tool-sub">界面</div>
 <div class="tool-actions"><button id="t-immerse" class="btn-secondary btn-sm">沉浸模式 (F11)</button></div>
+<div class="tool-sub">迷你状态窗</div>
+<div class="tool-row"><label>迷你状态窗</label><select id="t-mini" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 
-<div class="tool-sec">🌐 公网隧道</div>
+<div class="tool-sec">🌐 网络与远程访问</div>
 <div class="tool-row"><select id="t-tunnel" class="tool-input"><option value="0">关</option><option value="1">开</option></select><span class="tool-note">需先设访问密码</span></div>
 <div id="t-tunnel-status" class="update-status"></div>
 <div class="tool-actions"><button id="t-tunnel-copy" class="btn-secondary btn-xs" style="display:none">复制公网地址</button></div>
@@ -104,22 +109,13 @@
 <div class="tool-row"><label>访问密码</label><input type="password" id="t-lan-pass" class="tool-input" placeholder="留空=不认证"></div>
 <div class="tool-actions"><button id="t-lan-qr" class="btn-secondary btn-sm">局域网二维码</button></div>
 <div id="t-qr-area" class="tool-detail" style="display:none;text-align:center"><img id="t-qr-img" alt="二维码" style="max-width:220px;border-radius:6px"></div>
-
-<div class="tool-sec">🛰 ZeroTier 助手</div>
+<div class="tool-sub">ZeroTier 助手</div>
 <div id="zt-status" class="tool-note">检测中…</div>
 <div class="tool-row"><input type="text" id="zt-netid" class="tool-input" placeholder="输入 16 位网络 ID"></div>
 <div class="tool-row"><select id="zt-netlist" class="tool-input"><option value="">检测已加入网络…</option></select></div>
 <div class="tool-actions"><button id="zt-join" class="btn-secondary btn-sm">加入网络</button><button id="zt-leave" class="btn-secondary btn-sm">离开网络</button><button id="zt-copy" class="btn-secondary btn-sm">复制访问地址</button></div>
 <div class="tool-row"><label class="auth-remember"><input type="checkbox" id="zt-allow"> 自动放行 ZeroTier/LAN 访问（关闭 ST 白名单，重启服务器生效）</label></div>
 <div id="zt-info" class="tool-detail"></div>
-
-<div class="tool-sec">🖥 迷你状态窗</div>
-<div class="tool-row"><label>迷你状态窗</label><select id="t-mini" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
-
-<div class="tool-sec">🔍 状态栏诊断</div>
-<div class="tool-actions"><button id="t-diag-statusbar" class="btn-secondary btn-sm">诊断</button><button id="t-fix-statusbar" class="btn-secondary btn-sm">清理占位符</button><button id="t-render-statusbar" class="btn-secondary btn-sm">渲染通用状态栏</button><button id="t-remember-statusbar" class="btn-secondary btn-sm">记住新类型</button></div>
-<div id="t-diag-res" class="tool-detail"></div>
-
 </div>
 </div>
 <div id="mini-status" class="mini-status hidden"><span id="mini-dot" class="mini-dot"></span><span id="mini-text">-</span><button id="mini-close" title="隐藏迷你状态窗">&times;</button></div>

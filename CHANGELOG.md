@@ -1,5 +1,21 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.36.2 (2026-09-20) — 工具箱合并（15→8 组）+ 扩展在线更新通道（扩展与套壳版本解耦）
+### 新增
+- **工具箱「🧩 ST 扩展与插件」分组**：`部署/更新内置扩展`（从安装包内的 `extensions/` 同步到 ST 数据目录）、`检查扩展在线更新`（走 CDN）、`启动时自动检查扩展在线更新` 开关 + 结果明细区（三层接线：`shell.html` → `shell.js` → `preload.js` → `index.js`）
+- **扩展在线更新通道（版本解耦的关键）**：新增 `lib/ext-remote.js`（拉 `extensions/index.json` → 比版本 → 逐个下载文件并校验 sha1 → 全部通过才写盘）+ `scripts/ext-index.mjs` 生成/校验清单
+  - 清单来源双通道：jsDelivr（`testingcf.jsdelivr.net/gh/...@main`）→ 失败退回 `raw.githubusercontent.com`；主进程用 Electron `net.fetch`（跟随系统代理），20 秒超时
+  - 行尾归一（CRLF→LF）后再算哈希，避免 Windows 工作区与 CDN 的 LF 内容对不上
+- 启动后 6 秒后台自动检查一次在线更新（`settings.extAutoUpdate`，默认开；失败只写终端不打扰用户），有更新时终端绿字提示「刷新 ST 生效」
+- 新增夹具 `scripts/ext-remote-test.mjs`（**19 项**：假 fetch 覆盖双 base 回退、全失败、幂等跳过、内容篡改哈希不符拒绝写盘、缺文件不半套写盘、摘要文案、CRLF 归一）
+- 新增夹具 `scripts/toolbox-test.mjs`（**14 项**：分组数/名称、控件 id 无丢失无重复、三层接线齐全、旧分组键清理）
+### 变更
+- **工具箱 15 个分组合并为 8 个**：🗂 数据与导出 / 🔎 检索与统计 / 👁 角色卡与世界书 / 🤖 模型与本地服务 / 🧩 ST 扩展与插件 / 🧪 兼容与检测 / 💬 对话与界面 / 🌐 网络与远程访问；原有 **34 个控件 id 全部保留**，组内用新增的 `.tool-sub` 二级小标题区分（合并前后顺序见 `shell.html`）
+- 合并后自动清理 `localStorage` 里已不存在的旧分组键（`toolboxGroupOrder` / `toolboxGroupCollapsed` / `toolboxFavoriteGroups`），避免历史垃圾把顺序/折叠状态带偏
+- CI（`.github/workflows/release.yml`）发版前增加「扩展清单新鲜度 + 部署夹具 + 在线更新夹具」校验：清单过期或夹具红就直接失败，不产包
+- 夹具总览：toolbox 14/14、ext-deploy 37/37、ext-remote 19/19、plot-pilot 45/45、card-compat 37/0
+### 说明
+- 扩展更新现在**不需要**跟着套壳发版：改扩展 → `node scripts/ext-index.mjs` → 提交推送 → 老套壳启动即自动比对更新
 ## v1.36.1 (2026-09-20) — 内置扩展部署加固（静默日志 + 降级保护）+ 确立版本号规则
 ### 加固
 - **P1 启动日志静默**：`deployExtensions()` 新增 `quiet` 选项，套壳启动时用 `quiet: true` —— 全部跳过时**一行都不打**，只在真的安装/更新/失败时输出一行摘要；新增 `buildSummary()` 统一生成摘要（`card-compat 0.2.1 已安装；plot-pilot 0.1.1 已更新` / `均为最新` / `失败：…`）

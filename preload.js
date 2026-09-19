@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         uiSet: (k, v) => ipcRenderer.invoke('tools:uiSet', k, v),
         crashCheck: () => ipcRenderer.invoke('tools:crashCheck'),
         crashMark: () => ipcRenderer.invoke('tools:crashMark'),
+        // ST 扩展：内置部署 / 在线更新（v1.36.2）
+        extDeploy: () => ipcRenderer.invoke('tools:extDeploy'),
+        extCheck: (opts) => ipcRenderer.invoke('tools:extCheck', opts),
+        extAutoGet: () => ipcRenderer.invoke('tools:extAutoGet'),
+        extAutoSet: on => ipcRenderer.invoke('tools:extAutoSet', on),
         onMini: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('mini:state', h); return () => ipcRenderer.removeListener('mini:state', h); },
         onNight: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('ui:night', h); return () => ipcRenderer.removeListener('ui:night', h); },
         // B 档

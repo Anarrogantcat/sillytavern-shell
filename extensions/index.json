@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "repo": "Anarrogantcat/sillytavern-shell",
+  "base": "extensions",
+  "extensions": [
+    {
+      "id": "card-compat",
+      "display_name": "卡兼容助手 (Card Compat)",
+      "version": "0.2.1",
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "size": 1696,
+          "sha1": "17599e5d3227d9d4220b286f98ec5ae5ebcc7a44"
+        },
+        {
+          "path": "README.md",
+          "size": 1166,
+          "sha1": "5d45ce46a5fdec46ce4831600c8e461c774b2a2e"
+        },
+        {
+          "path": "index.js",
+          "size": 16029,
+          "sha1": "a9c010cb003de345b55c47ebe9a5e85285deaae5"
+        },
+        {
+          "path": "logic.js",
+          "size": 15130,
+          "sha1": "542fee109a271b3e1abbaf7e6b85e3664d249ecc"
+        },
+        {
+          "path": "manifest.json",
+          "size": 356,
+          "sha1": "bf5a7ff2652610b08a856fe21133f73746b817ba"
+        },
+        {
+          "path": "style.css",
+          "size": 866,
+          "sha1": "c94545a8ef5cc7b30ba7937dd221338e4d51d939"
+        }
+      ]
+    },
+    {
+      "id": "plot-pilot",
+      "display_name": "剧情推进器 (Plot Pilot)",
+      "version": "0.1.1",
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "size": 1831,
+          "sha1": "e5700b71005d37a05f2ae6f59966a0b141a165e8"
+        },
+        {
+          "path": "README.md",
+          "size": 5293,
+          "sha1": "cb44445e9d3d05258daa60b2c4335b0e723d2708"
+        },
+        {
+          "path": "index.js",
+          "size": 24394,
+          "sha1": "48ccfbaeef476f072c72f51f53c3b940564aaa8d"
+        },
+        {
+          "path": "logic.js",
+          "size": 11384,
+          "sha1": "2e421be6becd0874aaf9c4e58efdb665027a56b6"
+        },
+        {
+          "path": "manifest.json",
+          "size": 419,
+          "sha1": "61e76b8efb36ac93c50e8f506201224022905260"
+        },
+        {
+          "path": "style.css",
+          "size": 2543,
+          "sha1": "cf395d4e1d882c8c410de308e98946e8cd650bfd"
+        }
+      ]
+    }
+  ],
+  "generatedAt": "2026-09-19T19:56:07.529Z"
+}

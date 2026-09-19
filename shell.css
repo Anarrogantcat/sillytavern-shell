@@ -303,3 +303,14 @@ body[data-theme="light"] .btn-primary.has-changes{box-shadow:0 0 0 2px rgba(106,
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important}
 }
+
+/* 工具箱分组内的二级小标题（v1.36.2 合并 15 组 → 8 组时新增） */
+.tool-sub {
+    font-size: 11px;
+    opacity: .6;
+    margin: 8px 0 2px;
+    letter-spacing: .3px;
+    border-left: 2px solid rgba(255, 255, 255, .18);
+    padding-left: 6px;
+}
+
