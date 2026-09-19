@@ -7,7 +7,7 @@ import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounce
 import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.1.9';
+const VERSION = '0.2.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -20,6 +20,7 @@ const DEFAULTS = {
     injectPrompt: true,
     panelFont: 1,        // 面板字号倍率（1 / 1.15 / 1.3）
     dedupeAnchor: true,  // 续写追加出重复的自闭合锚点时自动合并
+    scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
 };
 const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0 };
 const recent = [];
@@ -138,6 +139,23 @@ function applyPanelFont() {
         if (el) el.style.setProperty('--cc-font', String(settings().panelFont || 1) + 'em');
     } catch (_) {}
 }
+/** 启动/切聊天时扫描最近 N 楼：把「成对块 + 自闭合占位符」这类历史消息也规范化 */
+function normalizeRecent() {
+    try {
+        const n = Number(settings()?.scanRecent) || 0;
+        if (!n || !settings()?.enabled) return;
+        const total = chat?.length || 0;
+        const from = Math.max(0, total - n);
+        let idx = from;
+        const step = () => {
+            if (idx >= total) { log('auto-scan-done', '最近 ' + n + ' 楼'); return; }
+            try { guardMessage(idx); } catch (_) {}
+            idx++;
+            setTimeout(step, 120);
+        };
+        step();
+    } catch (e) { console.error('[card-compat] normalizeRecent', e); }
+}
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
@@ -211,8 +229,9 @@ function buildSettingsUi() {
     eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } });
     // ③ 渲染后兜底校验
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { verifyRendered(id); } catch (_) {} });
-    eventSource.on(event_types.CHAT_CHANGED, () => { try { applyFont(); lastSeen.clear(); updatePromptInjection(); } catch (_) {} });
+    eventSource.on(event_types.CHAT_CHANGED, () => { try { applyFont(); lastSeen.clear(); updatePromptInjection(); setTimeout(normalizeRecent, 600); } catch (_) {} });
     eventSource.on(event_types.MESSAGE_SENT, () => { try { updatePromptInjection(); } catch (_) {} });
     try { updatePromptInjection(); } catch (_) {}
-    console.log('[card-compat] 已加载 v' + VERSION + '（守护 + 结尾提醒注入）');
+    setTimeout(normalizeRecent, 900);
+    console.log('[card-compat] 已加载 v' + VERSION + '（守护 + 结尾提醒注入 + 历史规范化）');
 })();
