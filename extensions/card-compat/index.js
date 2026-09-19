@@ -4,10 +4,10 @@
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.1.7';
+const VERSION = '0.1.8';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -32,7 +32,14 @@ function profileOf() {
         const chid = ctx?.characterId ?? ctx?.this_chid;
         const ch = ctx?.characters?.[chid];
         const ext = ch?.data?.extensions || ch?.extensions || {};
-        return buildProfile(ext);
+        const prof = buildProfile(ext);
+        // 变量块格式：优先取角色卡的变量更新规则条目（模型照抄成功率最高）
+        try {
+            const book = ch?.data?.character_book || ch?.character_book;
+            const entries = book?.entries || [];
+            prof.varSpec = extractVarSpec(entries);
+        } catch (_) { prof.varSpec = ''; }
+        return prof;
     } catch (_) { return buildProfile({}); }
 }
 const PROMPT_KEY = 'card-compat-tail';
@@ -41,8 +48,10 @@ function updatePromptInjection() {
     try {
         const s = settings();
         if (!s?.enabled || !s.injectPrompt) { setExtensionPrompt(PROMPT_KEY, "", extension_prompt_types.NONE, 0); return; }
-        const text = buildTailReminder(profileOf());
+        const prof = profileOf();
+        const text = buildTailReminder(prof, { varSpec: prof.varSpec || '' });
         setExtensionPrompt(PROMPT_KEY, text, text ? extension_prompt_types.IN_CHAT : extension_prompt_types.NONE, 0, false, extension_prompt_roles.SYSTEM);
+        if (settings().logActions) console.debug('[card-compat] 注入提醒长度=' + text.length + ' 变量格式=' + ((prof.varSpec || '').length) + ' 字符');
     } catch (e) { console.error("[card-compat] prompt inject failed", e); }
 }
 function log(type, tag, extra) {

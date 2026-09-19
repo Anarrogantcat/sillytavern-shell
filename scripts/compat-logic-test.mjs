@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -74,6 +74,14 @@ const dd = dedupeSelfClosingAnchors(dup, ['StatusPlaceHolderImpl']);
 check('重复占位符被合并为 1 个', (dd.text.match(/<StatusPlaceHolderImpl\/>/g) || []).length === 1 && dd.removed.length === 1, dd);
 const solo = dedupeSelfClosingAnchors('正文。\n<StatusPlaceHolderImpl/>', ['StatusPlaceHolderImpl']);
 check('只有一个时不改动', solo.text === '正文。\n<StatusPlaceHolderImpl/>' && solo.removed.length === 0, solo);
+
+console.log('— 夹具 8：变量块格式抽取与注入');
+const book = [{ content: '变量输出格式强调:\n  rule: must be inserted to the end of reply\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(IN ENGLISH, no more than 80 words)</Analysis>\n    _.set(\'角色.好感\', 10);\n    </UpdateVariable>\n  其他:\n    x' }];
+const spec = extractVarSpec(book);
+check('抽出 format 段且含 <UpdateVariable>', spec.includes('<UpdateVariable>') && spec.includes("_.set"), spec.slice(0, 100));
+const rem2 = buildTailReminder(c1, { varSpec: spec });
+check('提醒里带上格式示例', rem2.includes('<UpdateVariable>') && rem2.includes('_.set'), rem2.length);
+check('无格式时退回通用提醒', !buildTailReminder(c1, {}).includes('_.set'));
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

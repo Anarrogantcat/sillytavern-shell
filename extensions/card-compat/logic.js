@@ -132,13 +132,14 @@ export function detectForeignTags(text, profile) {
  * 生成结尾结构块提醒文本（注入 depth 0，让模型在生成前最后看到）
  * 只声明当前角色卡要求的标签，避免串卡
  */
-export function buildTailReminder(profile) {
+export function buildTailReminder(profile, opts = {}) {
     const data = profile?.dataTags || [];
     const anchors = profile?.anchors || [];
     if (!data.length && !anchors.length) return "";
     const lines = ["<tail_reminder>", "回复的最后必须完整输出下列结构块（当前角色卡的要求，不得省略）："];
     for (const t of data) lines.push("- <" + t + "> … </" + t + "> ：变量更新块，内容按角色卡的变量更新规则填写");
     for (const t of anchors) lines.push("- <" + t + "> … </" + t + "> 或 <" + t + "/> ：状态栏块（按角色卡规定的格式）");
+    if (data.length && opts.varSpec) { lines.push("", "变量更新块的格式示例（照此填写，路径/字段名以角色卡为准）：", opts.varSpec.trim()); }
     lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。", "</tail_reminder>");
     return lines.join("\n");
 }
@@ -157,6 +158,25 @@ export function dedupeSelfClosingAnchors(text, tags) {
         removed.push(tag + "×" + (hits.length - 1));
     }
     return { text: out, removed };
+}
+
+/**
+ * 从角色卡世界书条目里抽出「变量更新块」的格式片段（模型最容易照抄的那段）
+ * 优先取 format: 段；否则取第一个 <UpdateVariable>…</UpdateVariable>
+ */
+export function extractVarSpec(entries, maxLen = 600) {
+    const text = (entries || []).map(e => String(e?.content || "")).join("\n");
+    if (!text) return "";
+    let block = "";
+    const fm = text.match(/format\s*:\s*\|?-?\s*\n([\s\S]{0,1200}?)(?=\n\s{0,4}[a-zA-Z_]+\s*:|\n\s*---)/);
+    if (fm && /<UpdateVariable>/.test(fm[1])) block = fm[1];
+    if (!block) {
+        const m = text.match(/<UpdateVariable>[\s\S]{0,1200}?<\/UpdateVariable>/);
+        if (m) block = m[0];
+    }
+    if (!block) return "";
+    block = block.replace(/\r/g, "").split("\n").map(l => l.replace(/\s+$/, "")).filter(l => l.trim() !== "").slice(0, 24).join("\n");
+    return [...block].length > maxLen ? [...block].slice(0, maxLen).join("") + " …" : block;
 }
 
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */
