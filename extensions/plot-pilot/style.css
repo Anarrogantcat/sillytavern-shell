@@ -1,0 +1,43 @@
+/* 剧情推进器 Plot Pilot —— 按钮条 + 设置面板（字号跟随 --pp-font） */
+#plot-pilot-bar {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 0 0 6px 0;
+    order: -1;
+    flex-wrap: wrap;
+}
+#plot-pilot-bar.pp-hidden { display: none; }
+#plot-pilot-bar .pp-btn {
+    padding: 5px 22px;
+    border-radius: 15px;
+    border: 1px solid rgba(212, 175, 55, .5);
+    background: rgba(0, 0, 0, .2);
+    color: #d4af37;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1.4;
+    cursor: pointer;
+    user-select: none;
+    transition: background .2s, opacity .2s, transform .1s;
+}
+#plot-pilot-bar .pp-btn:hover { background: rgba(212, 175, 55, .16); }
+#plot-pilot-bar .pp-btn:active { transform: scale(.97); }
+#plot-pilot-bar .pp-btn.pp-advance { border-color: rgba(124, 179, 66, .5); color: #7cb342; }
+#plot-pilot-bar .pp-btn.pp-advance:hover { background: rgba(124, 179, 66, .16); }
+#plot-pilot-bar .pp-btn.pp-disabled { opacity: .45; cursor: not-allowed; }
+
+#pp-panel { font-size: var(--pp-font, 1em); line-height: 1.5; }
+#pp-panel .inline-drawer-content > * { margin: 4px 0; }
+#pp-panel label { display: block; margin-top: 6px; font-size: inherit; }
+#pp-panel .checkbox_label { display: flex; align-items: center; gap: 8px; margin: 5px 0; line-height: 1.5; font-size: inherit; }
+#pp-panel .checkbox_label span { flex: 1; }
+#pp-panel input[type="text"], #pp-panel select { width: 100%; margin: 2px 0 6px; font-size: inherit; }
+#pp-panel .menu_button { width: auto; min-width: 110px; white-space: nowrap; font-size: inherit; margin-right: 6px; }
+#pp-panel .pp-state { font-size: .95em; opacity: .9; margin: 8px 0; line-height: 1.6; }
+#pp-panel .pp-warn { color: #ffb74d; font-size: .95em; line-height: 1.5; margin: 6px 0; }
+#pp-panel .pp-sub { font-size: .92em; opacity: .8; margin: 2px 0 6px; }
+#pp-panel .pp-log { max-height: 150px; overflow: auto; font-size: .92em; white-space: pre-wrap; line-height: 1.5; }
+#pp-panel fieldset { border: 1px solid rgba(255, 255, 255, .12); border-radius: 6px; margin: 8px 0; padding: 6px 8px; }
+#pp-panel legend { font-size: .95em; opacity: .9; padding: 0 4px; }

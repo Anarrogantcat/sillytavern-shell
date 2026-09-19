@@ -1,4 +1,9 @@
 /**
+ * ⚠ 已被取代（2026-09-20）：请改用 ST 扩展《剧情推进器 Plot Pilot》
+ *   extensions/plot-pilot/（安装：node scripts/ext-install.mjs plot-pilot）
+ *   本脚本保留仅作回滚用；如果两边同时启用会出现两套按钮，
+ *   新版扩展检测到本脚本在场时会自动进入待命并提示。
+ *
  * 脚本名称：ContinueButtonUI（通用版 v2）— 适配所有角色卡
  * 职责：在发送栏上方注入「▶ 继续 / ▶ 推进剧本步骤」
  * 适配逻辑：自动探测当前卡是否带「剧本 / blueprint / step」系统

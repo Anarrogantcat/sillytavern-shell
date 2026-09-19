@@ -1,5 +1,20 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.35.0 (2026-09-20) — 「继续按钮」升级为 ST 原生扩展《剧情推进器 Plot Pilot》(0.1.0)
+- 背景：原「继续按钮」是酒馆助手脚本，配置存 localStorage（不进 ST 备份）、逻辑与 DOM 混在一起、无法按卡区分，用户要求"写成插件，方便后续扩展和优化更新，并改名"
+- 新增仓库管理的 ST 扩展 `extensions/plot-pilot/`（`manifest.json` / `logic.js` / `index.js` / `style.css` / `README.md` / `CHANGELOG.md`），命名 **剧情推进器 Plot Pilot**，按钮改为「▶ 续写 / ⏭ 推进节点」且文案可改
+- 分层：`logic.js` 是纯函数（探测 / 文案 / 每卡覆盖 / 配置清洗 / 通道选择 / 旧脚本冲突判定），不依赖 ST・DOM・酒馆助手，可在 Node 里直接跑夹具；`index.js` 只做 ST 对接
+- 配置持久化：从 `localStorage["yd_continue_cfg_v2"]` 迁到 `extension_settings["plot-pilot"]`（随 ST 设置保存/备份），旧脚本里改过的文案会**一次性自动搬过来**
+- 发送通道三选一：`api`（把文本写进输入框后直接调用 ST 的 `Generate("normal")`，内部会创建用户消息）、`dom`（模拟点击，等发送按钮可用）、`auto`（优先 api，异常自动退回 dom，实测已切到 api）
+- 每卡覆盖：两个按钮可逐卡设为 跟随全局 / 显示 / 隐藏，文案也能逐卡覆盖，并有「清除本卡设置」
+- 冲突保护：检测到 `window.YDContinue` 或旧 `#yd-quick-continue-wrapper` 时**自动待命**（不注入自己的按钮 + 面板红字提示），避免两套按钮打架；可勾选「忽略旧脚本冲突」放行
+- 探测升级为强/弱/无三档：强信号（`blueprint_controller` 等）→ 用真实变量名填 `{var}`；弱信号（「剧情节点」「剧本」「蓝图」等泛词）→ 默认仍显示、措辞回落「剧情蓝图」（沿用旧脚本行为，可关）；无信号 → 只显示「续写」
+  - 实测本机 **92 张卡**：强信号 2 张（`翡翠湾度假岛→剧本控制器`、`装甲核心→剧情控制器`）、弱信号 49 张（含用户正在测的「列车求生」）、无信号 41 张；按默认配置 **51 张显示推进按钮 / 41 张只显示续写**
+- 新增通用安装器 `scripts/ext-install.mjs`（`extensions/` 下所有扩展一键同步到 ST 数据目录，支持 `--dry-run` / `--check` / `--list` / 指定扩展名），`scripts/compat-install.mjs` 改为它的薄封装（旧命令保持可用）
+- 新增夹具 `scripts/plot-pilot-test.mjs`：**46 项断言全通过**，并顺带扫描本机角色卡输出真实探测分布（不联网、只读）
+- 公开 API：`window.PlotPilot.{cfg,detection,detect,recheck,continue,advance,sendText,setConfig,cardName}`，后续要加「自动连发/定时推进/别的按钮」都从这里接
+- 文档：`extensions/plot-pilot/README.md`（安装、面板逐项说明、冲突处理、API、边界）；`tavern-scripts/continue-button-all-cards.js` 标注为已被本扩展取代
+- 安装位置：`D:/AI/SillyTavern/Data/default-user/extensions/plot-pilot/`（未改 ST 本体与角色卡；旧的酒馆助手脚本需要用户自己去停用，未擅自改动）
 ## v1.34.1 (2026-09-20) — 扩展能自动给出「必更字段清单」并核对覆盖度（0.2.1）
 - 回答用户提问「插件能不能做到」：**能，已实现**
 - 新增 `extractRequiredFields()`：从角色卡世界书的 `[mvu_update]变量更新规则` 自动解析必更字段与其 `check` 条件（支持 `${A|B}` 模板组递归展开，如 `外貌.${发型|妆容|表情}` → 3 条）

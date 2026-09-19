@@ -1,6 +1,10 @@
 # 酒馆助手脚本（JS-Slash-Runner）— 通用版
 
-## continue-button-all-cards.js
+> ⚠ **本目录的「继续按钮」已被 ST 扩展取代（2026-09-20）**：请优先使用 `extensions/plot-pilot/`（剧情推进器 Plot Pilot），
+> 它把配置搬进了 ST 设置、支持每卡覆盖、api/dom 双发送通道与旧脚本冲突保护。
+> 安装：`node scripts/ext-install.mjs plot-pilot`。本目录脚本仅作回滚备份，两边不要同时启用。
+
+## continue-button-all-cards.js（旧版，建议停用）
 
 原来那份「继续按钮」是**某张角色卡自带**的（里面的 `blueprint_controller` 就是那张卡的变量），拖到全局后：
 - 「▶ 继续」能用（文案通用）；

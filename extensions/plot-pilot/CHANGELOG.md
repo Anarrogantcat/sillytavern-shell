@@ -1,0 +1,16 @@
+# 更新日志
+
+本扩展的所有重要变更都记录在此文件。
+
+## [0.1.0] - 2026-09-20
+### 新增
+- 首个版本：把酒馆助手脚本「继续按钮」改写为 SillyTavern 原生扩展，重命名为 **剧情推进器 Plot Pilot**
+- 按钮条：发送栏上方注入「▶ 续写 / ⏭ 推进节点」，文案与发送内容均可配置
+- 探测：`detectBlueprint()` 分强/弱/无三档，强信号（`blueprint_controller` 等）自动填入 `{var}` 变量名，弱信号默认隐藏推进按钮，避免在无剧本系统的卡上发出无意义指令
+- 发送通道三选一：`api`（调用 ST `Generate()`）/ `dom`（模拟点击，等发送按钮可用）/ `auto`（优先 api，异常自动退回 dom）
+- 配置持久化：从 `localStorage` 迁到 `extension_settings["plot-pilot"]`，并把旧脚本的 localStorage 配置一次性搬过来
+- 每卡覆盖：显示/隐藏与文案可按角色卡单独设置
+- 冲突保护：检测到旧酒馆助手「继续按钮」脚本时进入待命状态并提示，避免两套按钮
+- 面板：状态汇总、探测结果、最近动作日志、防连点窗口、发送通道、本卡设置、清除本卡设置
+- 公开 API：`window.PlotPilot.{cfg,detection,detect,recheck,continue,advance,sendText,setConfig}`
+- 逻辑层 `logic.js` 与界面层 `index.js` 分离，配套夹具测试 `scripts/plot-pilot-test.mjs`
