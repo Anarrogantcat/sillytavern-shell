@@ -1,7 +1,10 @@
-// webview-preload.js — runs inside the SillyTavern page.
+// webview-preload.cjs — runs inside the SillyTavern page.
+// ⚠️ 必须是 CommonJS（.cjs + require）：<webview> 的 preload 由 Electron 按 CJS 加载，
+//    写成 ESM import 会直接报 "Cannot use import statement outside a module" 并整份不加载
+//    （v1.28.0~v1.32.0 的 ESM 版本就是这样，导致右键菜单/缩放上报/快捷键/原生弹窗桥全部失效）。
 // Reports Ctrl+wheel / pinch gestures to the host shell, which applies
 // viewport-level zoom via webview.setZoomFactor() (browser-like zoom).
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 let last = 0;
 

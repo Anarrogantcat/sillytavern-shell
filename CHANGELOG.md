@@ -1,5 +1,12 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v1.32.1 (2026-09-20) — 修复 webview 增强全部失效（右键菜单等）
+- 修复 v1.28.0 引入的回归：`<webview>` 的 preload 由 Electron 按 **CommonJS** 加载，写成 ESM `import` 会整份不加载
+  （实测报错：`Unable to load preload script` / `SyntaxError: Cannot use import statement outside a module`）
+- 受影响的全部功能：**ST 页面内右键菜单**、Ctrl+滚轮缩放上报、Ctrl+Shift+T/R/L 快捷键、alert/confirm/prompt 原生弹窗桥
+- 做法：`webview-preload.js` → `webview-preload.cjs`（改回 `require('electron')`），`shell.html` 的 preload 属性、
+  `package.json` 与 `electron-builder-lite.json` 两套打包文件列表同步更新，旧文件删除
+- 实测验证：用真实 preload 在 webview 内派发 contextmenu，宿主收到 `ctxmenu` 消息；旧 ESM 版本同场景报错不加载
 ## v1.32.0 (2026-09-19) — 英文模式动态文案补全
 - 新增 i18n-runtime.js：中英替换引擎（精确字典 → 片段规则多轮替换），取代 shell.js 里的内联实现
 - 运行时改写的文案（状态提示/toast/确认框/更新检查等）现在会自动重译，不必重开面板（MutationObserver）
