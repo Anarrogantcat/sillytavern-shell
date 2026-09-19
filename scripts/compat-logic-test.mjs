@@ -83,6 +83,18 @@ const rem2 = buildTailReminder(c1, { varSpec: spec });
 check('提醒里带上格式示例', rem2.includes('<UpdateVariable>') && rem2.includes('_.set'), rem2.length);
 check('无格式时退回通用提醒', !buildTailReminder(c1, {}).includes('_.set'));
 
+console.log('— 夹具 9：形态探测与规范化');
+const cSelf = buildProfile({ regex_scripts: [{ scriptName: '状态栏', findRegex: '<StatusPlaceHolderImpl/>', placement: [2], replaceString: '<div>bar</div>' }] });
+check("自闭合卡 -> anchorForms.self", cSelf.anchorForms.StatusPlaceHolderImpl === 'self', cSelf.anchorForms);
+const cPair = buildProfile({ regex_scripts: [{ scriptName: '状态栏', findRegex: '<StatusBar>([\\s\\S]*?)<\\/StatusBar>', placement: [2], replaceString: '<div>bar</div>' }] });
+check("成对卡 -> anchorForms.pair", cPair.anchorForms.StatusBar === 'pair', cPair.anchorForms);
+const rSelf = buildTailReminder(cSelf);
+check("自闭合卡的提醒只写 <Tag/>", rSelf.includes('只写自闭合占位符') && !rSelf.includes('或 <StatusPlaceHolderImpl/>'), rSelf.slice(-200));
+const mixed = '正文。\n<StatusPlaceHolderImpl>\n支出_陈慧兰: 0\n</StatusPlaceHolderImpl>\n\n<StatusPlaceHolderImpl/>';
+const norm = guardText(mixed, cSelf, { injectAnchor: true, anchorStyle: 'self' });
+check('成对块被规范成自闭合（去重）', (norm.text.match(/<StatusPlaceHolderImpl\/>/g) || []).length === 1 && !norm.text.includes('</StatusPlaceHolderImpl>'), norm.text.slice(-120));
+check('记录了 anchor-form-normalized', norm.actions.some(a => a.type === 'anchor-form-normalized'), norm.actions);
+
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

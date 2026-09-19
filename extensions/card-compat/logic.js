@@ -21,12 +21,18 @@ export function buildProfile(ext) {
     const anchors = new Set();      // 有「渲染脚本」（替换内容非空）盯着的标签 → 可以补
     const dataTags = new Set();
     const strippers = new Set();    // 只有「剥除脚本」（替换内容为空）盯着的标签 → 不补
+    const forms = {};               // tag -> 'self'（自闭合 <Tag/>）| 'pair'（成对 <Tag>…</Tag>）
     for (const s of (ext?.regex_scripts || [])) {
         if (s.disabled) continue;
         const named = HIDE_RE.test(String(s.scriptName || ''));
         // 有明确替换内容 → 渲染脚本；明确空串 → 剥除脚本；未提供 → 退回按名字判断
         const isStripper = typeof s.replaceString === 'string' ? s.replaceString.trim() === '' : named;
-        for (const tag of tagsOf(s.findRegex)) {
+        const rx = String(s.findRegex || '').split('\\/').join('/');
+        for (const tag of tagsOf(rx)) {
+            const selfRe = new RegExp('<' + tag + '\\s*/>');
+            const pairRe = new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?</' + tag + '>');
+            if (selfRe.test(rx)) forms[tag] = 'self';
+            else if (pairRe.test(rx) && !forms[tag]) forms[tag] = 'pair';
             if (DATA_RE.test(tag)) { dataTags.add(tag); continue; }
             if (isStripper) strippers.add(tag);
             else anchors.add(tag);
@@ -43,6 +49,7 @@ export function buildProfile(ext) {
         dataTags: [...dataTags],
         hideTargets,
         strippers: [...strippers],
+        anchorForms: forms,
         helperCount: helpers.length,
         helperRenders: helpers.length > 0 && /状态栏|StatusPlaceHolder|StatusBar/i.test(helperText),
         // 只有剥除脚本盯着、没有任何渲染脚本的标签 → 不补（补了反而多出裸标签）
@@ -88,23 +95,37 @@ export function guardText(text, profile, opts = {}) {
     const hide = new Set(profile.hideTargets || []);
     for (const tag of profile.anchors || []) {
         if (hide.has(tag)) continue;
-        const selfClosing = new RegExp('<' + tag + '\\s*/>');
-        const opened = out.includes('<' + tag);
-        const closed = out.includes('</' + tag + '>');
-        if (selfClosing.test(out)) continue;
-        if (opened && !closed && opts.repairClosure !== false) {
-            out = out.trimEnd() + '\n</' + tag + '>';
-            actions.push({ type: 'anchor-close-repaired', tag });
+        const selfRe = new RegExp("<" + tag + "\\s*/\\s*>");
+        const form = (profile.anchorForms || {})[tag] || (selfRe.test(out) ? "self" : "pair");
+
+        // ① 形态规范化：卡要自闭合 → 把模型写出的成对块折叠成 <Tag/>（卡不使用块内内容）
+        if (form === "self") {
+            const pairRe = new RegExp("<" + tag + "(?:\\s[^>]*)?>[\\s\\S]*?</" + tag + ">", "g");
+            const before = out;
+            out = out.replace(pairRe, "<" + tag + "/>");
+            if (out !== before) actions.push({ type: "anchor-form-normalized", tag });
+        }
+        // ② 去重：同一占位符只保留一个
+        const dd = dedupeSelfClosingAnchors(out, [tag]);
+        if (dd.removed.length) { out = dd.text; actions.push({ type: "anchor-duplicate-merged", tag }); }
+
+        const hasSelf = new RegExp("<" + tag + "\\s*/\\s*>").test(out);
+        const opened = out.includes("<" + tag);
+        const closed = out.includes("</" + tag + ">");
+        if (hasSelf) continue;                                   // 已有自闭合占位符 → 无需处理
+        if (opened && !closed && opts.repairClosure !== false) {  // 开了没闭合 → 补闭合
+            out = out.trimEnd() + "\n</" + tag + ">";
+            actions.push({ type: "anchor-close-repaired", tag });
             continue;
         }
-        if (!opened && opts.injectAnchor) {
-            out = out.trimEnd() + (opts.anchorStyle === 'self' ? '\n<' + tag + '/>' : '\n<' + tag + '></' + tag + '>');
-            actions.push({ type: 'anchor-injected', tag });
+        if (!opened && opts.injectAnchor) {                       // 完全没有 → 按设置补
+            const shape = form === "self" || opts.anchorStyle === "self" ? "<" + tag + "/>" : "<" + tag + "></" + tag + ">";
+            out = out.trimEnd() + "\n" + shape;
+            actions.push({ type: "anchor-injected", tag });
         } else if (!opened) {
-            actions.push({ type: 'anchor-missing', tag });
+            actions.push({ type: "anchor-missing", tag });
         }
-    }
-    return { text: out, actions };
+    }    return { text: out, actions };
 }
 
 /** 已知的"状态栏协议"标签族（用于检测串卡） */
@@ -138,7 +159,11 @@ export function buildTailReminder(profile, opts = {}) {
     if (!data.length && !anchors.length) return "";
     const lines = ["<tail_reminder>", "回复的最后必须完整输出下列结构块（当前角色卡的要求，不得省略）："];
     for (const t of data) lines.push("- <" + t + "> … </" + t + "> ：变量更新块，内容按角色卡的变量更新规则填写");
-    for (const t of anchors) lines.push("- <" + t + "> … </" + t + "> 或 <" + t + "/> ：状态栏块（按角色卡规定的格式）");
+    for (const t of anchors) {
+        const form = (profile.anchorForms || {})[t];
+        const shape = form === 'self' ? ('只写自闭合占位符 <' + t + '/>，标签内不要填写任何内容') : ('<' + t + '> … </' + t + '>（按角色卡规定的字段填写）');
+        lines.push('- ' + shape + ' ：状态栏块');
+    }
     if (data.length && opts.varSpec) { lines.push("", "变量更新块的格式示例（照此填写，路径/字段名以角色卡为准）：", opts.varSpec.trim()); }
     lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。", "</tail_reminder>");
     return lines.join("\n");
