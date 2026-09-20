@@ -5,6 +5,59 @@ const TAG_RE = /<\/?([A-Za-z][A-Za-z0-9_!-]*)\s*\/?>/g;
 const HIDE_RE = /隐藏|删除|去除|hide|remove|strip/i;
 const DATA_RE = /UpdateVariable|变量/i;
 
+/** 宽松标签抽取：允许中文标签名（卡的格式标签常见形如 <正文>、<女主A_名字>），用于「本卡声明了哪些标签」 */
+export function broadTagsOf(text) {
+    const out = new Set();
+    const re = /<(\/?)([^\s<>/]{1,40})\s*(\/?)>/g;
+    let m;
+    while ((m = re.exec(String(text || '')))) {
+        const name = m[2];
+        // 允许 ~ ! - 等杂字符（实测模型会写出 <konatan_planning~> 这种），只要不是纯符号即可
+        if (/^[A-Za-z\u4e00-\u9fa5][^\s<>\/]{0,39}$/.test(name)) out.add(name);
+    }
+    return [...out];
+}
+
+/** 永远不清理的块：预设/插件已知块 + 通用 HTML（模型按预设 NyPigment 生成的界面就靠它们渲染） */
+export const KEEP_BLOCKS = new Set([
+    'tucao', 'think', 'thinking', 'analysis', 'analysis_zh', 'current_event', 'progress', 'options', 'option',
+    'htmlcontent', 'style', 'script', 'div', 'span', 'p', 'br', 'hr', 'b', 'i', 'u', 's', 'em', 'strong', 'small',
+    'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'img', 'svg', 'path', 'g', 'circle', 'rect',
+    'details', 'summary', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'font', 'center', 'iframe',
+    'ruby', 'rt', 'rp', 'mark', 'del', 'ins', 'sub', 'sup', 'video', 'audio', 'source', 'canvas', 'label', 'input', 'button',
+]);
+
+/**
+ * 清理「本卡没声明、也没人渲染」的结构块 —— 实测病灶：
+ *   模型把世界书原文回显成 <world_setting>…</world_setting>（整段设定铺在聊天里），
+ *   或自创 <status_block>、<konatan_planning~> 之类的块；卡的渲染正则不认它们 → 原文裸露、还顺带把版面撑爆。
+ * 规则：只处理**成对**块；标签必须不在 declared（卡的 findRegex / 酒馆助手脚本里出现过）也不在 KEEP_BLOCKS；
+ *       不成对（只有开标签）→ 只报告不删（避免误伤半截 HTML）。
+ * @returns {{text:string, removed:Array<{tag,chars}>, unclosed:string[]}}
+ */
+export function stripUndeclaredBlocks(text, opts = {}) {
+    let out = String(text ?? '');
+    const declared = new Set(opts.declared || []);
+    const keep = opts.keep || KEEP_BLOCKS;
+    const removed = [];
+    const unclosed = [];
+    const names = [...new Set(broadTagsOf(out))];
+    for (const name of names) {
+        if (declared.has(name) || keep.has(name) || keep.has(name.toLowerCase())) continue;
+        // 转义正则元字符：只保留字母/数字/下划线/汉字，其余一律加反斜杠（用 fromCharCode 免得层层转义写错）
+        const esc = String(name).split('').map((ch) => { const c = ch.codePointAt(0); return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c > 0x2e80 ? ch : String.fromCharCode(92) + ch; }).join('');
+        const pairRe = new RegExp('<' + esc + '(?:\\s[^>]*)?>[\\s\\S]*?</' + esc + '\\s*>', 'g');
+        const hits = out.match(pairRe);
+        if (hits && hits.length) {
+            for (const h of hits) removed.push({ tag: name, chars: h.length });
+            out = out.replace(pairRe, '');
+            continue;
+        }
+        if (new RegExp('<' + esc + '(?:\\s[^>]*)?>').test(out)) unclosed.push(name);
+    }
+    return { text: out, removed, unclosed };
+}
+
 export function tagsOf(text) {
     const out = new Set();
     let m;
@@ -52,6 +105,11 @@ export function buildProfile(ext) {
         anchorForms: forms,
         helperCount: helpers.length,
         helperRenders: helpers.length > 0 && /状态栏|StatusPlaceHolder|StatusBar/i.test(helperText),
+        // 卡自己声明的「格式标签」（含中文，如 <正文>/<女主A_名字>）：来自正则的 findRegex/replaceString 与酒馆助手脚本
+        rawTags: [...new Set([
+            ...broadTagsOf((ext?.regex_scripts || []).map((s) => String(s.findRegex || '') + ' ' + String(s.replaceString || '')).join('\n')),
+            ...broadTagsOf(helperText),
+        ])],
         // 只有剥除脚本盯着、没有任何渲染脚本的标签 → 不补（补了反而多出裸标签）
         injectableAnchors: [...anchors],
     };
@@ -261,7 +319,8 @@ export function detectForeignTags(text, profile) {
 export function buildTailReminder(profile, opts = {}) {
     const data = profile?.dataTags || [];
     const anchors = profile?.anchors || [];
-    if (!data.length && !anchors.length) return "";
+    const formatTags = (profile?.rawTags || []).filter((t) => !KEEP_BLOCKS.has(t) && !KEEP_BLOCKS.has(String(t).toLowerCase()));
+    if (!data.length && !anchors.length && !formatTags.length) return "";
     const lines = ["<tail_reminder>", "回复的最后必须完整输出下列结构块（当前角色卡的要求，不得省略）："];
     for (const t of data) lines.push("- <" + t + "> … </" + t + "> ：变量更新块，内容按角色卡的变量更新规则填写");
     for (const t of anchors) {
@@ -274,7 +333,11 @@ export function buildTailReminder(profile, opts = {}) {
         for (const f of opts.required) lines.push("- " + f.path + (f.check ? "（" + f.check.slice(0, 60) + "）" : ""));
     }
     if (data.length && opts.varSpec) { lines.push("", "变量更新块的格式示例（照此填写，路径/字段名以角色卡为准）：", opts.varSpec.trim()); }
+    if (formatTags.length && !data.length) {
+        lines.push("", "本卡前端要求正文里包含这些标签（标签名与顺序以本卡世界书为准）：" + formatTags.map((t) => "<" + t + ">").join("、"));
+    }
     lines.push("所有标签必须成对完整闭合；不得自创标签；不得使用其他角色卡的标签。");
+    lines.push("不要把世界书/设定/系统提示的原文回显进正文，也不要输出本卡没声明的结构块。");
     if (data.length || anchors.length) lines.push("结构块内的字符串引号必须配对：用英文半角双引号 \"…\" 包起来，不要出现开头是 \" 结尾却是中文引号 ” 的情况（那会让状态栏解析失败）。");
     lines.push("</tail_reminder>");
     return lines.join("\n");

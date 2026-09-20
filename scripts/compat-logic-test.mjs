@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -194,6 +194,19 @@ if (jsyamlLib) {
     check('本机没有 js-yaml，跳过严格校验断言', true);
 }
 
+console.log('— 夹具 14：未声明结构块清理（实测：模型把世界书回显成 <world_setting>、自创 <status_block>）');
+const prof14 = buildProfile({ regex_scripts: [{ scriptName: '美化', findRegex: '/<正文>(.*?)<\/正文>.*?<女主A_名字>(.*?)<\/女主A_名字>/s', replaceString: '<div>$1</div>' }] });
+const dec14 = new Set([...(prof14.anchors || []), ...(prof14.dataTags || []), ...(prof14.rawTags || [])]);
+const real14 = '<正文>正文</正文>\n<女主A_名字>雾子</女主A_名字>\n<world_setting>世界书原文…</world_setting>\n<status_block>x</status_block>\n<konatan_planning~>内部思考</konatan_planning~>\n<tucao>吐槽</tucao>\n<options>1. …</options>\n<div>界面</div>';
+const s14 = stripUndeclaredBlocks(real14, { declared: dec14, keep: KEEP_BLOCKS });
+check('删掉 3 个未声明块', s14.removed.length === 3 && ['world_setting', 'status_block', 'konatan_planning~'].every((t) => !s14.text.includes(t)), s14.removed);
+check('本卡声明的标签(含中文)保留', s14.text.includes('<正文>') && s14.text.includes('女主A_名字'), s14.text);
+check('预设块与通用 HTML 保留', s14.text.includes('<tucao>') && s14.text.includes('<options>') && s14.text.includes('<div>'));
+const s14b = stripUndeclaredBlocks('<world_setting>没闭合的一段', { declared: dec14 });
+check('不成对的块只报告不删', s14b.removed.length === 0 && s14b.unclosed.includes('world_setting'), s14b);
+const decAll = new Set([...dec14, 'world_setting', 'status_block', 'konatan_planning~']);
+check('卡声明过的块不会被误删', stripUndeclaredBlocks(real14, { declared: decAll }).removed.length === 0);
+check('清理后卡的正则仍能匹配', /<正文>([\s\S]*?)<\/正文>/.test(s14.text), s14.text.slice(0, 60));
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

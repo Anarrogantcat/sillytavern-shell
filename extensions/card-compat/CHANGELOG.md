@@ -1,5 +1,14 @@
 # 更新日志
 
+## [0.2.6] - 2026-09-20
+### 新增
+- **清理「本卡未声明、也没人渲染」的结构块**（`stripUndeclaredBlocks`，面板开关 `stripUndeclared` 默认开）：
+  - 实测病灶：模型把**世界书原文回显**成 `<world_setting>…</world_setting>`（截图里整段"城市总览/地图结构/详细地点"铺在聊天里、还带黑代码块），或自创 `<status_block>`、`<konatan_planning~>` 之类标签 —— 卡的渲染正则不认它们，于是**原文裸露、版面被撑爆**
+  - 规则：只处理**成对**块；标签不在「本卡声明集合」（卡的 findRegex / replaceString / 酒馆助手脚本里出现过的标签，含中文）且不在保留名单（预设块 `tucao/current_event/progress/options/htmlcontent…` 与通用 HTML）时删除；**只有开标签的块只报告不删**（怕误伤半截 HTML）
+  - 面板统计新增「清块 N」，日志 `undeclared-block-stripped` / `unclosed-block`
+- 新增 `broadTagsOf()`：宽松标签抽取（支持中文标签，如 `<正文>`、`<女主A_名字>`），`buildProfile` 因此得到 `rawTags` —— 卡自己声明的格式标签集合
+- 生成前提醒：触发条件纳入 `rawTags`；当卡只有格式标签时列出「本卡前端要求正文里包含这些标签」；新增通用要求「不要把世界书/设定原文回显进正文，也不要输出本卡没声明的结构块」（**刻意不点具体标签名**，避免诱导模型输出）
+
 ## [0.2.5] - 2026-09-20
 ### 修复
 - 自带库目录由 `vendor/` 改名为 **`assets/`**：仓库根 `.gitignore` 里有 `vendor/` 规则，导致扩展自带的 `js-yaml.min.js` **从未被提交**

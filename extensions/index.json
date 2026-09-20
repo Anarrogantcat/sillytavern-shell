@@ -6,12 +6,12 @@
     {
       "id": "card-compat",
       "display_name": "卡兼容助手 (Card Compat)",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 5399,
-          "sha1": "4303a5d86b1a44aa8b3243df3cdefcab55d8312c"
+          "size": 6865,
+          "sha1": "32af335eecae3e74d6e7bf2a8dbe6c66d693d93b"
         },
         {
           "path": "README.md",
@@ -30,18 +30,18 @@
         },
         {
           "path": "index.js",
-          "size": 22114,
-          "sha1": "e5ce623c2dd34a72b48d4cba27359346d89c6f77"
+          "size": 23639,
+          "sha1": "0b2e70ecc0dfd6eec3b832fa7fcd315a38ef3903"
         },
         {
           "path": "logic.js",
-          "size": 21383,
-          "sha1": "10937fc1e5e7022be888a86eebcf3cb0136d6f19"
+          "size": 25546,
+          "sha1": "23d9cd17915ce24be9052c044b965229d95ecab2"
         },
         {
           "path": "manifest.json",
           "size": 357,
-          "sha1": "d341e4cd6022dfd4010ff04a0ebe354b34244d1c"
+          "sha1": "2ff188e2b5f023f97614f79925ee4334b8d75768"
         },
         {
           "path": "style.css",
@@ -88,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-19T20:24:38.217Z"
+  "generatedAt": "2026-09-20T02:24:08.910Z"
 }
