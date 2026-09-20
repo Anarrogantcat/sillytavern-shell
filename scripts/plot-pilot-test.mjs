@@ -48,6 +48,10 @@ eq('推进内容·强信号用真实变量名', advancePayload(DEFAULTS, detKey)
 eq('推进内容·弱信号写「剧情蓝图」', advancePayload(DEFAULTS, detWeak), '请根据当前 剧情蓝图，推进至下一个 step');
 eq('推进内容·无信号走兜底文案', advancePayload(DEFAULTS, detNone), DEFAULTS.advanceTextFallback);
 
+eq("显示推进·无信号时看 always 开关", shouldShowAdvance(sanitizeConfig({ showAdvanceAlways: true }), detNone), true);
+eq("显示推进·无信号默认仍隐藏", shouldShowAdvance(sanitizeConfig({}), detNone), false);
+eq("显示推进·本卡隐藏优先于 always", shouldShowAdvance(resolveCard(sanitizeConfig({ showAdvanceAlways: true, cards: { "卡E": { showAdvance: false } } }), "卡E"), detNone), false);
+
 /* ---------------------------- 每卡覆盖 ---------------------------- */
 const cfg = sanitizeConfig({ continueText: '全局续写', cards: { '卡A': { showContinue: false, continueText: '本卡续写' } } });
 const effA = resolveCard(cfg, '卡A');

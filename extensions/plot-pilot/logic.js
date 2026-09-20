@@ -4,7 +4,7 @@
 // 后续要加新策略（新卡型探测、新按钮、自动连发…）都改这里 + 加断言。
 
 export const EXT_ID = 'plot-pilot';
-export const VERSION = '0.1.1';
+export const VERSION = '0.1.2';
 
 /** 配置默认值。新增字段请同时写进 sanitizeConfig 的白名单与 README 表格。 */
 export const DEFAULTS = {
@@ -15,7 +15,8 @@ export const DEFAULTS = {
     continueText: '（按照当前剧情继续推演）',                                  // 点「续写」实际发送的内容
     advanceText: '请根据当前 {var}，推进至下一个 step',                        // 点「推进节点」发送的内容，{var} 会被替换成探测到的变量名
     advanceTextFallback: '（推进到下一个剧情节点）',                            // 没有探测到变量名时的兜底文案
-    showAdvanceWhenUnknown: true,  // 只有弱信号（如卡里仅出现「剧本」二字）时是否也显示推进按钮（默认开＝沿用旧脚本行为）
+    showAdvanceWhenUnknown: true, // 弱信号（剧本/蓝图等泛词）时显示推进按钮
+    showAdvanceAlways: false,      // 完全没探测到也显示（兜底文案）；开了就是每张卡都两个按钮
     sendMode: 'auto',              // auto | api | dom，见 pickSendStrategy
     clickGuardMs: 800,             // 防连点窗口
     waitSendableMs: 2000,          // dom 模式下等待发送按钮可用的最长时间
@@ -152,8 +153,9 @@ export function resolveCard(cfg, cardName) {
 
 /** 推进按钮该不该显示 */
 export function shouldShowAdvance(eff, det) {
-    if (!det || !det.has) return false;
+    if (!det) return false;
     if (typeof eff.showAdvance === 'boolean') return eff.showAdvance;
+    if (!det.has) return !!eff.showAdvanceAlways;   // 完全没信号：看「任何卡都显示」开关
     if (det.confidence === 'strong') return true;
     return !!eff.showAdvanceWhenUnknown;
 }
@@ -165,6 +167,7 @@ export function sanitizeConfig(raw) {
     out.enabled = asBool(src.enabled, DEFAULTS.enabled);
     out.showBar = asBool(src.showBar, DEFAULTS.showBar);
     out.showAdvanceWhenUnknown = asBool(src.showAdvanceWhenUnknown, DEFAULTS.showAdvanceWhenUnknown);
+    out.showAdvanceAlways = asBool(src.showAdvanceAlways, DEFAULTS.showAdvanceAlways);
     out.ignoreLegacy = asBool(src.ignoreLegacy, DEFAULTS.ignoreLegacy);
     out.continueLabel = asText(src.continueLabel, DEFAULTS.continueLabel, 40);
     out.advanceLabel = asText(src.advanceLabel, DEFAULTS.advanceLabel, 40);

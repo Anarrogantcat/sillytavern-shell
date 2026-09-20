@@ -348,6 +348,7 @@ function buildSettingsUi() {
         '<label>「推进节点」发送内容（{var} = 探测到的变量名）</label><input type="text" class="text_pole" id="pp-advance-text">',
         '<label>没有探测到变量时的兜底内容</label><input type="text" class="text_pole" id="pp-advance-fallback">',
         '<label class="checkbox_label"><input type="checkbox" id="pp-advance-unknown"><span>卡里只有弱信号（如只出现「剧本」）时也显示「推进节点」</span></label>',
+        "<label class=\"checkbox_label\"><input type=\"checkbox\" id=\"pp-advance-always\"><span>任何卡都显示「推进节点」（完全没探测到也用兜底文案）</span></label>",
         '<label>发送通道</label><select id="pp-send-mode"><option value="auto">自动（优先 API，失败退回模拟点击）</option><option value="api">只用 API（ST 内部发送）</option><option value="dom">只用模拟点击</option></select>',
         '<label>防连点窗口 <span id="pp-guard-val"></span></label><input type="range" id="pp-guard" min="0" max="3000" step="100">',
         '<label class="checkbox_label"><input type="checkbox" id="pp-ignore-legacy"><span>忽略旧「继续按钮」脚本冲突（勾选后本扩展照常工作）</span></label>',
@@ -369,6 +370,7 @@ function buildSettingsUi() {
     bindCheck('pp-bar', 'showBar', () => { applyBar(); });
     bindCheck('pp-advance-unknown', 'showAdvanceWhenUnknown', () => { applyBar(); });
     bindCheck('pp-ignore-legacy', 'ignoreLegacy', () => { refresh(); });
+    bindCheck('pp-advance-always', 'showAdvanceAlways', () => { applyBar(); });
     bindText('pp-continue-label', 'continueLabel', () => applyBar());
     bindText('pp-advance-label', 'advanceLabel', () => applyBar());
     bindText('pp-continue-text', 'continueText', () => applyBar());
@@ -479,7 +481,7 @@ function syncPanelInputs() {
     const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
     const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
     setChk('pp-enabled', s.enabled); setChk('pp-bar', s.showBar);
-    setChk('pp-advance-unknown', s.showAdvanceWhenUnknown); setChk('pp-ignore-legacy', s.ignoreLegacy);
+    setChk('pp-advance-unknown', s.showAdvanceWhenUnknown); setChk('pp-advance-always', s.showAdvanceAlways); setChk('pp-ignore-legacy', s.ignoreLegacy);
     setVal('pp-continue-label', s.continueLabel); setVal('pp-advance-label', s.advanceLabel);
     setVal('pp-continue-text', s.continueText); setVal('pp-advance-text', s.advanceText);
     setVal('pp-advance-fallback', s.advanceTextFallback); setVal('pp-send-mode', s.sendMode);
