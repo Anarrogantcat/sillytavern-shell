@@ -1,3 +1,4 @@
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 // logic.js — 剧情推进器 Plot Pilot · 纯逻辑层
 // 设计原则：本文件不 import 任何 SillyTavern / DOM / 酒馆助手 的东西，
 // 因此可以在 Node 里直接跑夹具测试（scripts/plot-pilot-test.mjs），

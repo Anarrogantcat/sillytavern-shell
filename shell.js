@@ -1,4 +1,5 @@
 
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 // ── 工具箱自定义排序/折叠（v1.13.0）──────────────────────────────
 function initToolboxGroups() {
     const body = document.querySelector('.bench-body');

@@ -1,3 +1,4 @@
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 // logic.js — 纯函数层（不依赖 ST/DOM，可被 Node 单测）
 // 职责：从角色卡的正则脚本推导「锚点标签族 / 数据块标签族 / 隐藏目标」，并对消息文本做守护
 

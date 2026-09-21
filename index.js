@@ -1,3 +1,4 @@
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 import { app, BrowserWindow, ipcMain, session, Tray, Menu, nativeImage, dialog, shell, Notification, screen, clipboard, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';

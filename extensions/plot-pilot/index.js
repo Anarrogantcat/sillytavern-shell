@@ -1,3 +1,4 @@
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 // index.js — 剧情推进器 Plot Pilot（SillyTavern 扩展）
 // 由来：原「继续按钮」是酒馆助手脚本，配置存 localStorage、无法随 ST 设置一起备份，
 //       也不好扩展。本扩展把它做成 ST 原生扩展：

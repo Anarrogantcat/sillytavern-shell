@@ -1,3 +1,4 @@
+/* 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell */
 /* 面板字号跟随 ST 界面字号（--cc-font 由扩展设置控制，默认 1em） */
 #cc-panel { font-size: var(--cc-font, 1em); line-height: 1.5; }
 #cc-panel .inline-drawer-content > * { margin: 4px 0; }

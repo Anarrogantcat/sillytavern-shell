@@ -1,3 +1,4 @@
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 // i18n.js — 套壳界面英文字典（shell.js 运行时按文本替换）
 window.SHELL_I18N_EN = {
     "22:00-07:00 自动暖色": "Auto warm tint 22:00-07:00",

@@ -1,3 +1,4 @@
+// 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
 // index.js — 卡兼容助手（ST 扩展）v0.2.8
 // ① 锚点守护 ② 数据块守护（绝不改数据内容）③ 消息区字号 ④ 结构块 YAML 修复/严格校验
 // ⑤ 未声明块清理 ⑥ 变量块兜底（静默补一次 + 写回 MVU）⑦ 路径白名单 / 多块记账 / 覆盖度趋势 ⑧ MVU 联动
