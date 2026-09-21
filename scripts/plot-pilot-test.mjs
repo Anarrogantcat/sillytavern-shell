@@ -180,6 +180,7 @@ ok('引用块渲染', h2.indexOf('<blockquote>') >= 0, h2);
 ok('HTML 被转义', renderChangelogMarkdown('<img src=x onerror=1>').indexOf('&lt;img') >= 0);
 const ppSrc = fs.readFileSync(new URL('../extensions/plot-pilot/index.js', import.meta.url), 'utf8');
 ok('面板里有扩展信息块与查看日志', ppSrc.indexOf('id="pp-info"') > 0 && ppSrc.indexOf('id="pp-info-log"') > 0);
+ok('信息卡默认折叠成一行按钮且状态可记忆', ppSrc.indexOf('id="pp-info-toggle"') > 0 && ppSrc.indexOf('id="pp-info-body" class="pp-info-body" style="display:none"') > 0 && ppSrc.indexOf('s2.infoOpen') > 0);
 ok('日志读扩展目录里的 CHANGELOG.md', ppSrc.indexOf("new URL('./CHANGELOG.md', import.meta.url)") > 0);
 ok('用 ST 原生 popup 展示', ppSrc.indexOf('callGenericPopup(') > 0 && ppSrc.indexOf('POPUP_TYPE.TEXT') > 0);
 ok('对外钩子暴露 showChangelog()', ppSrc.indexOf('showChangelog() { return showChangelog(); }') > 0);

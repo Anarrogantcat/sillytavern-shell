@@ -63,3 +63,7 @@
 .pp-log-doc .pp-md-pre, .pp-log-doc .cc-md-pre { background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; overflow: auto; font-size: .9em; }
 .pp-log-doc blockquote { margin: 6px 0; padding-left: 8px; border-left: 3px solid rgba(255,255,255,.25); opacity: .9; }
 .pp-log-head { margin-bottom: 6px; }
+/* v0.1.5：扩展信息卡默认折叠成一行按钮 */
+#pp-panel .pp-info-toggle { cursor: pointer; user-select: none; opacity: .55; font-size: .9em; padding: 4px 2px; }
+#pp-panel .pp-info-toggle:hover { opacity: .95; }
+#pp-panel .pp-info-toggle[aria-expanded="true"] { opacity: .85; }

@@ -31,3 +31,7 @@
 .cc-log-doc .cc-md-pre { background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; overflow: auto; font-size: .9em; }
 .cc-log-doc blockquote { margin: 6px 0; padding-left: 8px; border-left: 3px solid rgba(255,255,255,.25); opacity: .9; }
 .cc-log-head { margin-bottom: 6px; }
+/* v0.3.3：扩展信息卡默认折叠成一行按钮 */
+#cc-panel .cc-info-toggle { cursor: pointer; user-select: none; opacity: .55; font-size: .9em; padding: 4px 2px; }
+#cc-panel .cc-info-toggle:hover { opacity: .95; }
+#cc-panel .cc-info-toggle[aria-expanded="true"] { opacity: .85; }

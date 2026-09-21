@@ -350,6 +350,17 @@ async function showChangelog() {
         await callGenericPopup('<div class="pp-log-doc">' + head + body + '</div>', POPUP_TYPE.TEXT, '', { okButton: '关闭', wide: true, large: true, allowVerticalScrolling: true });
     } catch (e) { toastWarn('打开日志失败：' + String((e && e.message) || e)); }
 }
+/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」（位置参考酒馆助手那张信息卡） */
+function applyInfoOpen() {
+    try {
+        const body = document.getElementById('pp-info-body');
+        const tg = document.getElementById('pp-info-toggle');
+        if (!body) return;
+        const open = settings() && settings().infoOpen === true;
+        body.style.display = open ? '' : 'none';
+        if (tg) { tg.setAttribute('aria-expanded', open ? 'true' : 'false'); tg.textContent = (open ? '▾ ' : 'ⓘ ') + '扩展信息'; }
+    } catch (_) {}
+}
 function buildSettingsUi() {
     const host = document.getElementById('extensions_settings') || document.getElementById('extensions_settings2');
     if (!host || document.getElementById('pp-panel')) return;
@@ -359,13 +370,6 @@ function buildSettingsUi() {
     wrap.innerHTML = [
         '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🎬 剧情推进器 Plot Pilot v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
         '<div class="inline-drawer-content">',
-        '<div id="pp-info" class="pp-info">',
-        '<div class="pp-info-name">🎬 <b>剧情推进器</b> (Plot Pilot)</div>',
-        '<div class="pp-info-ver">Ver ' + VERSION + '</div>',
-        '<div class="pp-info-actions"><button id="pp-info-log" class="menu_button">查看日志</button></div>',
-        '<div class="pp-info-line">作者：小肥鱼（AI）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
-        '<div class="pp-info-note">本扩展免费使用，禁止任何形式的商业用途。它只往输入框里发指令（续写 / 推进节点），不改消息、不改变量、不接管酒馆助手脚本。</div>',
-        '</div>',
         '<div id="pp-state" class="pp-state"></div>',
         '<div id="pp-warn" class="pp-warn" style="display:none"></div>',
         '<label class="checkbox_label"><input type="checkbox" id="pp-enabled"><span>启用</span></label>',
@@ -390,11 +394,22 @@ function buildSettingsUi() {
         '<button id="pp-recheck" class="menu_button">重新探测当前卡</button>',
         '<button id="pp-reset-card" class="menu_button">清除本卡设置</button>',
         '<details><summary>最近动作</summary><pre id="pp-log" class="pp-log"></pre></details>',
+        '<div id="pp-info" class="pp-info">',
+        '<div id="pp-info-toggle" class="pp-info-toggle" role="button" tabindex="0">ⓘ 扩展信息</div>',
+        '<div id="pp-info-body" class="pp-info-body" style="display:none">',
+        '<div class="pp-info-name">🎬 <b>剧情推进器</b> (Plot Pilot) · Ver ' + VERSION + '</div>',
+        '<div class="pp-info-actions"><button id="pp-info-log" class="menu_button">查看日志</button></div>',
+        '<div class="pp-info-line">作者：小肥鱼（AI）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
+        '<div class="pp-info-note">本扩展免费使用，禁止任何形式的商业用途。它只往输入框里发指令（续写 / 推进节点），不改消息、不改变量、不接管酒馆助手脚本。</div>',
+        '</div>',
+        '</div>',
         '</div></div>',
     ].join('');
     host.appendChild(wrap);
 
     document.getElementById('pp-info-log')?.addEventListener('click', () => { showChangelog(); });
+    document.getElementById('pp-info-toggle')?.addEventListener('click', () => { const s2 = settings(); s2.infoOpen = !(s2.infoOpen === true); saveSettingsDebounced(); applyInfoOpen(); });
+    applyInfoOpen();
     bindCheck('pp-enabled', 'enabled', () => { applyBar(); renderState(); });
     bindCheck('pp-bar', 'showBar', () => { applyBar(); });
     bindCheck('pp-advance-unknown', 'showAdvanceWhenUnknown', () => { applyBar(); });

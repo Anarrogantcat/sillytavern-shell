@@ -273,7 +273,7 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.2"') > 0 && idxSrc.indexOf("const VERSION = '0.3.2'") > 0);
+check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.3"') > 0 && idxSrc.indexOf("const VERSION = '0.3.3'") > 0);
 function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
 console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
 const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
@@ -337,7 +337,9 @@ check('分隔线', h22.indexOf('<hr>') >= 0);
 check('围栏里的 HTML 被转义（不会执行）', h22.indexOf('&lt;script&gt;alert(1)&lt;/script&gt;') >= 0 && h22.indexOf('<script>') < 0, h22.slice(-200));
 check('普通一行也包成段落', renderChangelogMarkdown('就一行').indexOf('<p>就一行</p>') >= 0);
 check('空 / null 输入不炸', renderChangelogMarkdown('') === '' && renderChangelogMarkdown(null) === '');
-check('面板里有扩展信息块与「查看日志」按钮', idxSrc.indexOf('id="cc-info"') > 0 && idxSrc.indexOf('id="cc-info-log"') > 0);
+check('扩展信息默认折叠成一行按钮（ⓘ 扩展信息）', idxSrc.indexOf('id="cc-info-toggle"') > 0 && idxSrc.indexOf('id="cc-info-body" class="cc-info-body" style="display:none"') > 0);
+check('展开状态记进设置（infoOpen）', idxSrc.indexOf('st2.infoOpen') > 0 && idxSrc.indexOf('function applyInfoOpen()') > 0);
+check('「查看日志」按钮在信息卡里', idxSrc.indexOf('id="cc-info-log"') > 0);
 check('日志读扩展目录里的 CHANGELOG.md（离线可用）', idxSrc.indexOf("new URL('./CHANGELOG.md', import.meta.url)") > 0);
 check('用 ST 原生 popup 展示', idxSrc.indexOf('callGenericPopup(') > 0 && idxSrc.indexOf('POPUP_TYPE.TEXT') > 0);
 check('对外钩子暴露 changelog()', idxSrc.indexOf('changelog: () => showChangelog()') > 0);

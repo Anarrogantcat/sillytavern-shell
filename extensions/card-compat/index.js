@@ -10,7 +10,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.3.2';
+const VERSION = '0.3.3';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -75,7 +75,7 @@ const STRINGS = {
         mvuExtraOff: 'MVU「额外模型解析」未开启或无法检测。', mvuUnparsed: 'MVU 解析本轮变量块失败：',
         mvuParsed: 'MVU 能解析本轮变量块', toastNoVars: '已连续 {n} 楼没有变量更新块，状态栏可能不会更新',
         floorOff: '关闭', mvuWriteOk: '已写回 MVU 变量', mvuWriteFail: '写回失败：', refreshOK: '已重新读取角色卡数据',
-        viewLog: '查看日志', close: '关闭', logMissing: '读不到 CHANGELOG.md（扩展目录里应当有一份，重新部署即可恢复）', logOpenFail: '打开日志失败：',
+        infoTitle: '扩展信息', viewLog: '查看日志', close: '关闭', logMissing: '读不到 CHANGELOG.md（扩展目录里应当有一份，重新部署即可恢复）', logOpenFail: '打开日志失败：',
         infoAuthor: '作者：小肥鱼（AI）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：',
         infoNote: '本扩展免费使用，禁止任何形式的商业用途。它会就地修改消息里的结构块/变量块（删未声明块 / 修 YAML / 补锚点），请确认理解后再启用。',
         nudgeRender: '重渲染后补发事件：让酒馆助手立刻重画前端块（不勾 = 要手动刷新页面才看到状态栏）',
@@ -105,7 +105,7 @@ const STRINGS = {
         mvuExtraOff: 'MVU extra model parsing is off or undetectable.', mvuUnparsed: 'MVU failed to parse this reply variable block: ',
         mvuParsed: 'MVU parsed this reply variable block', toastNoVars: '{n} replies in a row have no variable block; the status bar may not update',
         floorOff: 'off', mvuWriteOk: 'written back to MVU', mvuWriteFail: 'write back failed: ', refreshOK: 'character card data reloaded',
-        viewLog: 'View changelog', close: 'Close', logMissing: 'Cannot read CHANGELOG.md (a copy ships with the extension; redeploy to restore it)', logOpenFail: 'Cannot open changelog: ',
+        infoTitle: 'Extension info', viewLog: 'View changelog', close: 'Close', logMissing: 'Cannot read CHANGELOG.md (a copy ships with the extension; redeploy to restore it)', logOpenFail: 'Cannot open changelog: ',
         infoAuthor: 'Author: 小肥鱼 (AI) & 染喵 | License: AGPL-3.0 | Homepage: ',
         infoNote: 'Free to use; any commercial use is prohibited. This extension edits structure/variable blocks inside messages in place (strips undeclared blocks, repairs YAML, adds anchors).',
         nudgeRender: 'Re-emit an event after re-rendering so TavernHelper redraws frontend blocks at once (unchecked = you must refresh the page to see the status bar)',
@@ -663,6 +663,17 @@ function renderMvuBox() {
     lines.push('<div class="cc-line ' + (extra === true ? 'cc-warn' : 'cc-muted') + '">' + escHtml(extra === true ? T('mvuExtraOn') : T('mvuExtraOff')) + '</div>');
     box.innerHTML = lines.join('');
 }
+/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」（位置参考酒馆助手那张信息卡） */
+function applyInfoOpen() {
+    try {
+        const body = document.getElementById('cc-info-body');
+        const tg = document.getElementById('cc-info-toggle');
+        if (!body) return;
+        const open = settings()?.infoOpen === true;
+        body.style.display = open ? '' : 'none';
+        if (tg) { tg.setAttribute('aria-expanded', open ? 'true' : 'false'); tg.textContent = (open ? '▾ ' : 'ⓘ ') + T('infoTitle'); }
+    } catch (_) {}
+}
 function buildSettingsUi() {
     const host = document.getElementById('extensions_settings');
     if (!host || document.getElementById('cc-panel')) return;
@@ -673,13 +684,6 @@ function buildSettingsUi() {
     wrap.innerHTML = [
         '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧩 ' + escHtml(T('title')) + ' v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
         '<div class="inline-drawer-content">',
-        '<div id="cc-info" class="cc-info">',
-        '<div class="cc-info-name">🧩 <b>' + escHtml(T('title')) + '</b> (Card Compat)</div>',
-        '<div class="cc-info-ver">Ver ' + VERSION + '</div>',
-        '<div class="cc-info-actions"><button id="cc-info-log" class="menu_button">' + escHtml(T('viewLog')) + '</button></div>',
-        '<div class="cc-info-line">' + escHtml(T('infoAuthor')) + '<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
-        '<div class="cc-info-note">' + escHtml(T('infoNote')) + '</div>',
-        '</div>',
         '<div id="cc-stats" class="cc-stats"></div>',
         '<div id="cc-trend" class="cc-trend"></div>',
         '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
@@ -707,6 +711,15 @@ function buildSettingsUi() {
         '<label>' + escHtml(T('floor')) + ' <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
         '<details><summary>' + escHtml(T('log')) + '</summary><pre id="cc-log" class="cc-log"></pre></details>',
         '</details>',
+        '<div id="cc-info" class="cc-info">',
+        '<div id="cc-info-toggle" class="cc-info-toggle" role="button" tabindex="0">ⓘ ' + escHtml(T('infoTitle')) + '</div>',
+        '<div id="cc-info-body" class="cc-info-body" style="display:none">',
+        '<div class="cc-info-name">🧩 <b>' + escHtml(T('title')) + '</b> (Card Compat) · Ver ' + VERSION + '</div>',
+        '<div class="cc-info-actions"><button id="cc-info-log" class="menu_button">' + escHtml(T('viewLog')) + '</button></div>',
+        '<div class="cc-info-line">' + escHtml(T('infoAuthor')) + '<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
+        '<div class="cc-info-note">' + escHtml(T('infoNote')) + '</div>',
+        '</div>',
+        '</div>',
         '</div></div>',
     ].join('');
     host.appendChild(wrap);
@@ -751,7 +764,9 @@ function buildSettingsUi() {
         else toast(T('mvuUnparsed') + r.reason, 'warning');
         renderMvuBox();
     });
+    document.getElementById('cc-info-toggle')?.addEventListener('click', () => { const st2 = settings(); st2.infoOpen = !(st2.infoOpen === true); saveSettingsDebounced(); applyInfoOpen(); });
     document.getElementById('cc-info-log')?.addEventListener('click', () => { showChangelog(); });
+    applyInfoOpen();
     document.getElementById('cc-refresh')?.addEventListener('click', () => { invalidateProfile(); updatePromptInjection(); toast(T('refreshOK'), 'success'); renderStats(); });
     const fontSel = document.getElementById('cc-font');
     if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
