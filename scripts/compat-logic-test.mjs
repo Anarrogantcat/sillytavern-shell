@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -273,7 +273,7 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.3"') > 0 && idxSrc.indexOf("const VERSION = '0.3.3'") > 0);
+check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.4.0"') > 0 && idxSrc.indexOf("const VERSION = '0.4.0'") > 0);
 function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
 console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
 const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
@@ -344,6 +344,29 @@ check('日志读扩展目录里的 CHANGELOG.md（离线可用）', idxSrc.index
 check('用 ST 原生 popup 展示', idxSrc.indexOf('callGenericPopup(') > 0 && idxSrc.indexOf('POPUP_TYPE.TEXT') > 0);
 check('对外钩子暴露 changelog()', idxSrc.indexOf('changelog: () => showChangelog()') > 0);
 check('信息块含作者/许可/免费声明', idxSrc.indexOf('infoAuthor') > 0 && idxSrc.indexOf('infoNote') > 0);
+console.log('— 夹具 23：变量协议识别 + 按协议覆盖度 + 兼容模式（0.4.0）');
+const pMvu = detectVariableProtocol({ text: '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>', dataTags: ['UpdateVariable'], blockTags: ['UpdateVariable'] });
+check('识别 MVU 协议（可写回）', pMvu.id === 'mvu' && pMvu.canWriteBack === true, pMvu);
+const pJp = detectVariableProtocol({ text: '<Foo><JSONPatch>[{"op":"replace","path":"/a"}]</JSONPatch></Foo>', dataTags: ['Foo'], blockTags: ['Foo'] });
+check('识别任意标签内的 JSONPatch', pJp.id === 'jsonpatch' && pJp.canWriteBack === true, pJp);
+const pYaml = detectVariableProtocol({ text: '状态栏:' + NL + '  地点: "青云镇"', dataTags: [], blockTags: ['Status_block'] });
+check('识别 YAML 结构块（天狐3 那类）', pYaml.id === 'yaml-block' && pYaml.canWriteBack === false, pYaml);
+const pSet = detectVariableProtocol({ text: "_.set('角色.好感', 10);", blockTags: [] });
+check('识别 _.set 写法（不可写回）', pSet.id === 'lodash-set' && pSet.canWriteBack === false, pSet);
+check('识别 setvar 宏', detectVariableProtocol({ text: '{{setvar::好感::10}}' }).id === 'setvar-macro');
+check('普通正文 -> none（面板会收起变量开关）', detectVariableProtocol({ text: '就是一段普通正文' }).id === 'none');
+const setPaths = extractSetPaths("_.set('角色.好感', 1); _.set('/系统/时间', '2')");
+check('extractSetPaths 归一路径', setPaths.join() === '/角色/好感,/系统/时间', setPaths);
+const covSet = coverageByProtocol("_.set('角色.好感', 1);", [{ path: '角色.好感' }, { path: '角色.心情' }], { id: 'lodash-set' });
+check('_.set 协议下覆盖度正确', covSet.covered.join() === '角色.好感' && covSet.missing.join() === '角色.心情' && covSet.kind === 'lodash-set', covSet);
+const covMvu = coverageByProtocol('<UpdateVariable><JSONPatch>[{"op":"replace","path":"/角色/好感","value":1}]</JSONPatch></UpdateVariable>', [{ path: '角色.好感' }], { id: 'mvu' });
+check('MVU 协议下覆盖度仍按补丁路径', covMvu.covered.length === 1 && covMvu.written.join() === '/角色/好感', covMvu);
+check('面板有依赖状态块与变量协议行', idxSrc.indexOf('id="cc-dep"') > 0 && idxSrc.indexOf('id="cc-proto"') > 0);
+check('兼容模式开关存在且默认关', /compatMode: false/.test(idxSrc) && idxSrc.indexOf("bind('cc-compat-mode', 'compatMode', true)") > 0);
+check('兼容模式跳过补发事件 / MVU 试解析 / 自动补变量', /s.nudgeRender === false \|\| s.compatMode/.test(idxSrc) && /!s.mvuVerify \|\| s.compatMode/.test(idxSrc) && /!s.autoFixVars \|\| s.compatMode/.test(idxSrc));
+check('补发事件后有自检（未渲染记 nudge-missed）', idxSrc.indexOf('checkNudgeApplied(messageId)') > 0 && idxSrc.indexOf("'nudge-missed'") > 0);
+check('依赖探测读酒馆助手 manifest', idxSrc.indexOf("/scripts/extensions/third-party/") > 0);
+check('对外钩子暴露 protocol/compatMode/deps', idxSrc.indexOf('protocol: () => profileOf().protocol') > 0 && idxSrc.indexOf('compatMode: () => settings()?.compatMode === true') > 0 && idxSrc.indexOf('deps: (f) => depStatus(!!f)') > 0);
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

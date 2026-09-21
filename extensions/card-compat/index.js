@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.3.3';
+const VERSION = '0.4.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -39,8 +39,10 @@ const DEFAULTS = {
     lang: 'auto',          // 面板语言 auto|zh|en（P3 ⑩）
     nudgeRender: true,     // 重渲染后补发 MESSAGE_UPDATED，让酒馆助手立刻重画前端块（见 nudgeRender()）
     rerenderOldFloors: false, // 历史楼层修正后是否也重渲染（默认否：不拆掉已经画好的状态栏面板）
+    compatMode: false,     // 0.4.0 兼容模式：关掉所有跨扩展联动（补发事件 / MVU 写回 / 自动补变量），只留纯文本守护
+    depCheck: true,        // 0.4.0 面板显示 ST / 酒馆助手 / MVU 的版本与可用性
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
 let lastCoverage = null;
 let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
@@ -54,7 +56,9 @@ let mvuExtraLogged = false;
 const STRINGS = {
     zh: {
         title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
-        secMvu: 'MVU 联动', secUi: '界面与诊断', enabled: '启用守护',
+        secMvu: 'MVU 联动', secDep: '依赖与联动', secUi: '界面与诊断', enabled: '启用守护',
+        protocol: '变量协议', capWrite: '可写回变量', capReadonly: '只读守护（不改宿主变量）', depLoading: '读取依赖版本…', depOff: '依赖检测已关（面板开关）',
+        compatNote: '兼容模式：关掉补发事件 / MVU 写回 / 自动补变量，只留纯文本守护 —— 酒馆助手或 MVU 大更新出问题时打开它',
         injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
         repair: '未闭合自动补结束标签', stale: '数据疑似未更新时提示',
         fixQuotes: '修结构块里的引号错配（英文引号开头 + 中文引号结尾）',
@@ -84,7 +88,9 @@ const STRINGS = {
     },
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
-        secMvu: 'MVU integration', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
+        secMvu: 'MVU integration', secDep: 'Dependencies and linkage', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
+        protocol: 'Variable protocol', capWrite: 'can write variables back', capReadonly: 'read-only guard (does not touch host variables)', depLoading: 'Reading dependency versions...', depOff: 'Dependency check is off (panel switch)',
+        compatNote: 'Compat mode: disables the event nudge / MVU write-back / auto var fix, leaving pure text guarding - turn it on when TavernHelper or MVU updates break things',
         injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
         repair: 'Auto-close unclosed tags', stale: 'Warn when data looks unchanged',
         fixQuotes: 'Fix mismatched quotes in blocks (ASCII opener + CJK closer)',
@@ -148,6 +154,24 @@ const settings = () => extension_settings[NAME];
 /* ── P1 ④ 角色卡档案缓存：同一角色 60s 内只解析一次（世界书很大时每次解析都卡） ── */
 let profCache = { key: '', prof: null, at: 0 };
 function invalidateProfile() { profCache = { key: '', prof: null, at: 0 }; }
+/** 汇总卡的文本（正则脚本 + 酒馆助手脚本 + 世界书 + 主字段），供变量协议识别使用 */
+function cardTextForProtocol(ch) {
+    try {
+        const d = ch?.data || ch || {};
+        const parts = [];
+        for (const k of ['description', 'personality', 'scenario', 'system_prompt', 'post_history_instructions', 'first_mes', 'mes_example']) {
+            const v = d[k];
+            if (typeof v === 'string' && v) parts.push(v.slice(0, 20000));
+        }
+        const ext = d.extensions || {};
+        for (const s of (ext.regex_scripts || [])) parts.push(String(s.findRegex || '') + ' ' + String(s.replaceString || ''));
+        const th = ext.tavern_helper || {};
+        for (const s of (th.scripts || [])) parts.push(String(s.content || '').slice(0, 40000));
+        const entries = (d.character_book && d.character_book.entries) || [];
+        for (const e of entries) parts.push(String(e.content || '').slice(0, 20000));
+        return parts.join(String.fromCharCode(10)).slice(0, 200000);
+    } catch (_) { return ''; }
+}
 function profileOf() {
     try {
         const ctx = getContext();
@@ -165,6 +189,15 @@ function profileOf() {
             prof.required = extractRequiredFields(entries);
             prof.allowed = extractAllowedPaths(entries);      // P2 ⑤ 路径白名单
         } catch (_) { prof.varSpec = ''; prof.required = []; prof.allowed = { paths: [], prefixes: [], wildcards: [], all: [] }; }
+        // 0.4.0 变量协议识别（MVU / 任意 JSONPatch / YAML 块 / _.set / setvar 宏 / 无）
+        try {
+            prof.protocol = detectVariableProtocol({
+                text: cardTextForProtocol(ch),
+                varSpec: prof.varSpec,
+                dataTags: prof.dataTags,
+                blockTags: [...(prof.dataTags || []), ...(prof.anchors || [])],
+            });
+        } catch (_) { prof.protocol = { id: 'none', label: '（识别失败）', canWriteBack: false, tags: [] }; }
         profCache = { key: key, prof: prof, at: Date.now() };
         return prof;
     } catch (_) { return buildProfile({}); }
@@ -293,6 +326,7 @@ function blockOfMessage(messageId) {
 }
 /** P1 ①：MVU 写回兜底 —— 若 API 不在，明确告诉用户点 MVU 面板的「重新处理变量」 */
 async function writeBackMvu(messageId, quiet) {
+    if (settings()?.compatMode) { if (!quiet) toast(langOf() === 'en' ? 'Compat mode is on' : '兼容模式已开启，已跳过 MVU 写回', 'info'); return { ok: false, reason: 'compat-mode' }; }
     const block = blockOfMessage(messageId);
     if (!block) { if (!quiet) toast(langOf() === 'en' ? 'No variable block in this reply' : '该楼层没有变量块', 'warning'); return { ok: false, reason: 'no-block' }; }
     const r = await applyPatchToMvu(block, messageId);
@@ -305,7 +339,7 @@ async function writeBackMvu(messageId, quiet) {
 async function mvuVerifyMessage(messageId) {
     try {
         const s = settings();
-        if (!s || !s.enabled || !s.mvuVerify) return null;
+        if (!s || !s.enabled || !s.mvuVerify || s.compatMode) return null;
         const m = chat && chat[messageId];
         if (!m || m.is_user || typeof m.mes !== 'string') return null;
         const ex = extractUpdateBlock(m.mes);
@@ -332,7 +366,7 @@ let varFixPausedUntil = 0;
 async function maybeFixVars(messageId) {
     try {
         const s = settings();
-        if (!s || !s.enabled || !s.autoFixVars) return null;
+        if (!s || !s.enabled || !s.autoFixVars || s.compatMode) return null;
         if (messageId == null || varFixTriedIds.has(messageId)) return null;
         if (Date.now() < varFixPausedUntil) return null;
         const extra = mvuExtraParseEnabled();
@@ -403,7 +437,7 @@ async function maybeFixVars(messageId) {
 function nudgeRender(messageId) {
     try {
         const s = settings();
-        if (!s || s.nudgeRender === false) return false;
+        if (!s || s.nudgeRender === false || s.compatMode) return false;   // 兼容模式：不发事件、不碰别人的渲染
         const ev = event_types.MESSAGE_UPDATED;
         if (!ev) return false;
         const r = eventSource.emit(ev, messageId);
@@ -411,6 +445,21 @@ function nudgeRender(messageId) {
         if (s.logActions) console.debug('[card-compat] 重渲染后补发 MESSAGE_UPDATED #' + messageId + '（让酒馆助手重新转换前端块）');
         return true;
     } catch (e) { return false; }
+}
+/** 补发事件后自检：前端块有没有真的被渲染成面板（酒馆助手改了渲染方式时这里会命中） */
+function checkNudgeApplied(messageId) {
+    try {
+        const s = settings();
+        if (!s || s.compatMode || messageId == null) return;
+        const el = document.querySelector('#chat .mes[mesid="' + messageId + '"] .mes_text');
+        if (!el) return;
+        const pres = [...el.querySelectorAll('pre')];
+        const fe = pres.filter((p) => /html>|<head>|<body/.test(p.textContent || ''));
+        if (!fe.length) return;                 // 这一楼本来就没有前端块
+        if (el.querySelector('iframe')) return;  // 已经是面板了
+        stats.nudgeMisses++;
+        log('nudge-missed', '第' + messageId + '层', '补发事件后前端块仍未渲染：酒馆助手可能改了渲染方式 → 刷新页面，或用面板第④组的「兼容模式」');
+    } catch (_) {}
 }
 function log(type, tag, extra) {
     recent.unshift({ t: new Date().toLocaleTimeString(), type: type, tag: tag, extra: extra || '' });
@@ -537,6 +586,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
             stats.rerendered++;
             try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (e) { log('rerender-failed', '', String(e?.message || e)); }
             nudgeRender(messageId);
+            setTimeout(() => checkNudgeApplied(messageId), 1500);
         }
     }
     // 变量 patch 覆盖度 + 路径白名单（P1 ② / P2 ⑤ / P2 ⑥）
@@ -544,7 +594,8 @@ function guardMessage(messageId, { rerender = true } = {}) {
         const req = profile.required || [];
         const hasBlock = m.mes.includes('<UpdateVariable>');
         if (req.length && hasBlock) {
-            const cov = patchCoverage(m.mes, req);
+            // 0.4.0：按识别到的协议统计（MVU/JSONPatch 看补丁路径，_.set 看赋值路径）
+            const cov = coverageByProtocol(m.mes, req, profile.protocol);
             lastCoverage = cov;
             stats.coverageTotal = cov.total;
             stats.coverageHit = cov.covered.length;
@@ -644,7 +695,7 @@ function renderCoverageTable() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
@@ -652,8 +703,60 @@ function renderStats() {
     if (trendBox) trendBox.textContent = covHistory.length ? (T('covTrend') + '：' + coverageTrendText()) : '';
     renderCoverageTable();
     renderMvuBox();
+    renderProtocolLine();
+    refreshDepBox(false);
 }
 /** P3 ⑨ 面板里的 MVU 状态块 */
+/* ── 0.4.0：依赖状态 / 变量协议 / 兼容模式 ─────────────────────── */
+const depCache = { at: 0, rows: null };
+/** 探测三方版本与可用性：ST / 酒馆助手（读它的 manifest）/ MVU（window.Mvu） */
+async function depStatus(force) {
+    if (!force && depCache.rows && (Date.now() - depCache.at) < 60000) return depCache.rows;
+    const rows = [];
+    let stv = '';
+    try { const ctx = getContext(); stv = String(ctx?.version || ctx?.VERSION || ''); } catch (_) {}
+    if (!stv) { try { const res = await fetch('/version', { cache: 'no-cache' }); if (res && res.ok) { const j = await res.json(); stv = String(j.pkgVersion || j.version || ''); } } catch (_) {} }
+    rows.push({ name: 'SillyTavern', version: stv || '未知', ok: true, note: '核心依赖（本扩展只依赖它）' });
+    let th = { ok: false, version: '' };
+    for (const id of ['JS-Slash-Runner', 'TavernHelper', 'tavern-helper']) {
+        try {
+            const res = await fetch('/scripts/extensions/third-party/' + id + '/manifest.json', { cache: 'no-cache' });
+            if (res && res.ok) {
+                const j = await res.json();
+                if (j && (j.display_name || j.name)) { th = { ok: true, version: String(j.version || '?'), id: id }; break; }
+            }
+        } catch (_) {}
+    }
+    rows.push({ name: '酒馆助手（TavernHelper）', version: th.ok ? th.version : '未安装 / 读不到', ok: th.ok, note: th.ok ? '前端块渲染；本扩展只「补发事件」这一处联动' : '不影响守护功能，只是重渲染后可能需刷新页面' });
+    const M = mvuApi();
+    rows.push({ name: 'MVU', version: M ? String(M.version || M.VERSION || '未知') : '未加载', ok: !!M, note: M ? (typeof M.parseMessage === 'function' ? '可解析补丁（写回需要它）' : '只读（没有 parseMessage）') : '变量写回 / 试解析不可用，其它功能照常' });
+    depCache.rows = rows; depCache.at = Date.now();
+    return rows;
+}
+let depRenderedAt = 0;
+async function refreshDepBox(force) {
+    const box = document.getElementById('cc-dep');
+    if (!box) return;
+    if (settings()?.depCheck === false) { box.innerHTML = '<div class="cc-muted">' + escHtml(T('depOff')) + '</div>'; return; }
+    if (!force && (Date.now() - depRenderedAt) < 30000) return;
+    depRenderedAt = Date.now();
+    box.innerHTML = '<div class="cc-muted">' + escHtml(T('depLoading')) + '</div>';
+    try {
+        const rows = await depStatus(force);
+        box.innerHTML = rows.map((r) => '<div class="cc-line ' + (r.ok ? '' : 'cc-warn') + '"><b>' + escHtml(r.name) + '</b>：' + escHtml(r.version) + ' <span class="cc-muted">' + escHtml(r.note) + '</span></div>').join('');
+    } catch (e) { box.innerHTML = '<div class="cc-warn">' + escHtml(String(e && e.message || e)) + '</div>'; }
+}
+/** 面板里显示「本卡用的是哪种变量协议 + 能不能写回」；没有变量系统就把相关开关收起来 */
+function renderProtocolLine() {
+    const box = document.getElementById('cc-proto');
+    if (!box) return;
+    try {
+        const pr = (profileOf().protocol) || { id: 'none', label: '（未识别）', canWriteBack: false };
+        box.innerHTML = '<b>' + escHtml(T('protocol')) + '</b>：' + escHtml(pr.label) + ' ｜ ' + escHtml(pr.canWriteBack ? T('capWrite') : T('capReadonly'));
+        const cfg = document.getElementById('cc-var-cfg');
+        if (cfg) cfg.style.display = (pr.id === 'none') ? 'none' : '';
+    } catch (_) {}
+}
 function renderMvuBox() {
     const box = document.getElementById('cc-mvu');
     if (!box) return;
@@ -699,10 +802,16 @@ function buildSettingsUi() {
         "<button id=\"cc-yaml-check\" class=\"menu_button\">" + escHtml(T('btnYaml')) + "</button>",
         '</details>',
         '<details class="cc-grp" open><summary>③ ' + escHtml(T('secReport')) + '</summary><div id="cc-table" class="cc-table"></div></details>',
-        '<details class="cc-grp"><summary>④ ' + escHtml(T('secMvu')) + '</summary><div id="cc-mvu" class="cc-mvu"></div>',
+        '<details class="cc-grp"><summary>④ ' + escHtml(T('secDep')) + '</summary>',
+        '<div id="cc-dep" class="cc-mvu"></div>',
+        '<div id="cc-proto" class="cc-line"></div>',
+        cb('cc-compat-mode', 'compatMode'),
+        '<div class="cc-line cc-muted">' + escHtml(T('compatNote')) + '</div>',
+        '<div id="cc-var-cfg">',
         cb('cc-mvu-verify', 'mvuVerify'),
         "<button id=\"cc-mvu-write\" class=\"menu_button\">" + escHtml(T('btnMvu')) + "</button>",
         "<button id=\"cc-mvu-test\" class=\"menu_button\">" + escHtml(T('btnMvuTest')) + "</button>",
+        '</div>',
         '</details>',
         '<details class="cc-grp"><summary>⑤ ' + escHtml(T('secUi')) + '</summary>',
         cb('cc-nudge-render', 'nudgeRender'), cb('cc-rerender-old', 'rerenderOld'),
@@ -749,6 +858,7 @@ function buildSettingsUi() {
     bind('cc-path-warn', 'pathWarn', true);
     bind('cc-toast-fail', 'toastOnFail', true);
     bind('cc-mvu-verify', 'mvuVerify', true);
+    bind('cc-compat-mode', 'compatMode', true);
     bind('cc-nudge-render', 'nudgeRender', true);
     bind('cc-rerender-old', 'rerenderOldFloors', true);
     document.getElementById('cc-varfix-now')?.addEventListener('click', async () => { varFixTriedIds.delete(chat.length - 1); await maybeFixVars(chat.length - 1); });
@@ -818,6 +928,9 @@ function exposeApi() {
             applyToMvu: (block, id) => applyPatchToMvu(block, id),
             writeBack: (id) => writeBackMvu(id, true),
             mvu: () => mvuInfo(),
+            protocol: () => profileOf().protocol,
+            compatMode: () => settings()?.compatMode === true,
+            deps: (f) => depStatus(!!f),
             invalidate: () => invalidateProfile(),
             changelog: () => showChangelog(),
             stats: () => Object.assign({}, stats),

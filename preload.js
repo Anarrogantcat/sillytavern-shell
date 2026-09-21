@@ -63,7 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         backupRestore: name => ipcRenderer.invoke('tools:backupRestore', name),
         backupConfig: () => ipcRenderer.invoke('tools:backupConfig'),
         backupSave: cfg => ipcRenderer.invoke('tools:backupSave', cfg),
-        rollbackList: () => ipcRenderer.invoke('tools:rollbackList'),
+        rollbackList: (opts) => ipcRenderer.invoke('tools:rollbackList', opts || {}),
         rollbackInstall: v => ipcRenderer.invoke('tools:rollbackInstall', v),
         autostartGet: () => ipcRenderer.invoke('tools:autostartGet'),
         autostartSet: on => ipcRenderer.invoke('tools:autostartSet', on),

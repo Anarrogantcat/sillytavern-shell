@@ -797,6 +797,82 @@ export function renderChangelogMarkdown(md) {
     return out.join('\n');
 }
 
+/**
+ * 变量协议识别（0.4.0）：不同角色卡用的是完全不同的"变量/状态"协议，不能只认 MVU 一种。
+ * 输入是「卡的文本汇总」（正则 findRegex/replaceString + 酒馆助手脚本 + 世界书条目）
+ * 与卡声明的结构标签，输出协议档案供面板显示、覆盖度统计与能力标注使用。
+ * @returns {{id:string, label:string, canWriteBack:boolean, tags:string[], sample:string}}
+ */
+export function detectVariableProtocol(opts = {}) {
+    const text = String(opts.text || '');
+    const spec = String(opts.varSpec || '');
+    const dataTags = (opts.dataTags || []).map(String);
+    const blockTags = (opts.blockTags || []).map(String);
+    const both = text + String.fromCharCode(10) + spec;
+    const has = (re) => re.test(both);
+    if (has(/<UpdateVariable\b/i) || dataTags.some((t) => /UpdateVariable/i.test(t))) {
+        return { id: 'mvu', label: 'MVU：<UpdateVariable> + <JSONPatch>', canWriteBack: true, tags: ['UpdateVariable'], sample: '<UpdateVariable><JSONPatch>[…]</JSONPatch></UpdateVariable>' };
+    }
+    if (has(/<JSONPatch>/i)) {
+        return { id: 'jsonpatch', label: '任意标签内的 <JSONPatch>', canWriteBack: true, tags: dataTags, sample: '<Tag><JSONPatch>[…]</JSONPatch></Tag>' };
+    }
+    const yamlish = /^[ \t]{0,6}[^\s:#]{1,24}:[ \t]*\S/m.test(text) && blockTags.length > 0;
+    if (yamlish) {
+        return { id: 'yaml-block', label: 'YAML 结构块（' + blockTags.join(' / ') + '）', canWriteBack: false, tags: blockTags, sample: '<' + blockTags[0] + '>' + String.fromCharCode(10) + '字段: 值' + String.fromCharCode(10) + '</' + blockTags[0] + '>' };
+    }
+    if (has(/_[ \t]*\.[ \t]*set[ \t]*\(/)) {
+        return { id: 'lodash-set', label: "_.set('角色.字段', 值)", canWriteBack: false, tags: [], sample: "_.set('角色.好感', 10);" };
+    }
+    if (has(/\{\{[ \t]*setvar::/)) {
+        return { id: 'setvar-macro', label: '{{setvar::名::值}} 宏', canWriteBack: false, tags: [], sample: '{{setvar::好感::10}}' };
+    }
+    return { id: 'none', label: '（本卡未声明变量/状态协议）', canWriteBack: false, tags: [], sample: '' };
+}
+
+/** 从回复里抽出 _.set('a.b', …) 这类写法用到的路径（归一成 /a/b 便于比对） */
+export function extractSetPaths(text) {
+    const out = [];
+    const seen = new Set();
+    const re = /_[ \t]*\.[ \t]*set[ \t]*\([ \t]*['"]([^'"]{1,80})['"]/g;
+    let m;
+    while ((m = re.exec(String(text || '')))) {
+        const q = normalizePath(m[1]);
+        if (q && !seen.has(q)) { seen.add(q); out.push(q); }
+    }
+    return out;
+}
+
+/**
+ * 按协议统计"必更字段覆盖度"：
+ *   mvu / jsonpatch → 看补丁里出现的路径
+ *   lodash-set      → 看 _.set('路径', …) 出现的路径
+ *   其它协议（YAML 块 / 宏）→ 退化为"文本里是否出现字段名"的粗略判断
+ * @returns {{total:number, covered:string[], missing:string[], written:string[], kind:string}}
+ */
+export function coverageByProtocol(text, required, protocol) {
+    const kind = (protocol && protocol.id) || 'mvu';
+    const t = String(text || '');
+    const written = [];
+    const seen = new Set();
+    if (kind === 'lodash-set') {
+        for (const q of extractSetPaths(t)) { if (!seen.has(q)) { seen.add(q); written.push(q); } }
+    } else {
+        for (const b of extractUpdateBlocks(t)) {
+            for (const op of parsePatchOps(b.patchText || b.block).ops) {
+                const q = normalizePath(op.path);
+                if (q && !seen.has(q)) { seen.add(q); written.push(q); }
+            }
+        }
+    }
+    const covered = [], missing = [];
+    for (const f of (required || [])) {
+        const want = normalizePath(f.path) || String(f.path || '');
+        const hit = written.indexOf(want) >= 0 || (kind !== 'lodash-set' && t.indexOf(want) >= 0);
+        if (hit) covered.push(f.path); else missing.push(f.path);
+    }
+    return { total: (required || []).length, covered, missing, written, kind };
+}
+
 export function isStale(prevText, curText) {
     if (!prevText || !curText) return { stale: false, reason: 'no-prev' };
     const a = freshnessFields(prevText), b = freshnessFields(curText);
