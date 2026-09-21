@@ -5,10 +5,12 @@
 //       → 本版把它放回 guardMessage 的入口，并补上 P1/P2/P3 全部路线图条目。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure } from './logic.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.3.0';
+const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
+const VERSION = '0.3.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -73,6 +75,9 @@ const STRINGS = {
         mvuExtraOff: 'MVU「额外模型解析」未开启或无法检测。', mvuUnparsed: 'MVU 解析本轮变量块失败：',
         mvuParsed: 'MVU 能解析本轮变量块', toastNoVars: '已连续 {n} 楼没有变量更新块，状态栏可能不会更新',
         floorOff: '关闭', mvuWriteOk: '已写回 MVU 变量', mvuWriteFail: '写回失败：', refreshOK: '已重新读取角色卡数据',
+        viewLog: '查看日志', close: '关闭', logMissing: '读不到 CHANGELOG.md（扩展目录里应当有一份，重新部署即可恢复）', logOpenFail: '打开日志失败：',
+        infoAuthor: '作者：sillytavern-shell ｜ 许可：AGPL-3.0 ｜ 项目主页：',
+        infoNote: '本扩展免费使用，禁止任何形式的商业用途。它会就地修改消息里的结构块/变量块（删未声明块 / 修 YAML / 补锚点），请确认理解后再启用。',
         nudgeRender: '重渲染后补发事件：让酒馆助手立刻重画前端块（不勾 = 要手动刷新页面才看到状态栏）',
         rerenderOld: '历史楼层修正后也重渲染（会拆掉已画好的状态栏面板，默认不勾）',
     },
@@ -100,6 +105,9 @@ const STRINGS = {
         mvuExtraOff: 'MVU extra model parsing is off or undetectable.', mvuUnparsed: 'MVU failed to parse this reply variable block: ',
         mvuParsed: 'MVU parsed this reply variable block', toastNoVars: '{n} replies in a row have no variable block; the status bar may not update',
         floorOff: 'off', mvuWriteOk: 'written back to MVU', mvuWriteFail: 'write back failed: ', refreshOK: 'character card data reloaded',
+        viewLog: 'View changelog', close: 'Close', logMissing: 'Cannot read CHANGELOG.md (a copy ships with the extension; redeploy to restore it)', logOpenFail: 'Cannot open changelog: ',
+        infoAuthor: 'Author: sillytavern-shell | License: AGPL-3.0 | Homepage: ',
+        infoNote: 'Free to use; any commercial use is prohibited. This extension edits structure/variable blocks inside messages in place (strips undeclared blocks, repairs YAML, adds anchors).',
         nudgeRender: 'Re-emit an event after re-rendering so TavernHelper redraws frontend blocks at once (unchecked = you must refresh the page to see the status bar)',
         rerenderOld: 'Also re-render historical replies after fixing them (tears down drawn status bars; off by default)',
     },
@@ -665,6 +673,13 @@ function buildSettingsUi() {
     wrap.innerHTML = [
         '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧩 ' + escHtml(T('title')) + ' v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
         '<div class="inline-drawer-content">',
+        '<div id="cc-info" class="cc-info">',
+        '<div class="cc-info-name">🧩 <b>' + escHtml(T('title')) + '</b> (Card Compat)</div>',
+        '<div class="cc-info-ver">Ver ' + VERSION + '</div>',
+        '<div class="cc-info-actions"><button id="cc-info-log" class="menu_button">' + escHtml(T('viewLog')) + '</button></div>',
+        '<div class="cc-info-line">' + escHtml(T('infoAuthor')) + '<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
+        '<div class="cc-info-note">' + escHtml(T('infoNote')) + '</div>',
+        '</div>',
         '<div id="cc-stats" class="cc-stats"></div>',
         '<div id="cc-trend" class="cc-trend"></div>',
         '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
@@ -736,6 +751,7 @@ function buildSettingsUi() {
         else toast(T('mvuUnparsed') + r.reason, 'warning');
         renderMvuBox();
     });
+    document.getElementById('cc-info-log')?.addEventListener('click', () => { showChangelog(); });
     document.getElementById('cc-refresh')?.addEventListener('click', () => { invalidateProfile(); updatePromptInjection(); toast(T('refreshOK'), 'success'); renderStats(); });
     const fontSel = document.getElementById('cc-font');
     if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
@@ -753,6 +769,27 @@ function buildSettingsUi() {
     renderStats();
 }
 /** P3 ⑨ 对外钩子：其它扩展（MVU / 酒馆助手脚本）可以直接调用 */
+/* ── 扩展信息 / 查看日志（0.3.1）── */
+let changelogCache = null;
+/** 读扩展目录里的 CHANGELOG.md（跟着扩展一起部署，离线也有） */
+async function loadChangelog() {
+    if (changelogCache) return changelogCache;
+    try {
+        const url = new URL('./CHANGELOG.md', import.meta.url).href;
+        const res = await fetch(url, { cache: 'no-cache' });
+        changelogCache = (res && res.ok) ? await res.text() : '';
+    } catch (_) { changelogCache = ''; }
+    return changelogCache;
+}
+/** 打开「更新日志」弹窗（ST 原生 popup） */
+async function showChangelog() {
+    try {
+        const md = await loadChangelog();
+        const head = '<div class="cc-log-head"><b>🧩 ' + escHtml(T('title')) + '</b> v' + VERSION + ' ｜ <a href="' + REPO + '/blob/main/extensions/card-compat/CHANGELOG.md" target="_blank" rel="noopener">GitHub</a></div>';
+        const body = md ? renderChangelogMarkdown(md) : ('<p>' + escHtml(T('logMissing')) + '</p>');
+        await callGenericPopup('<div class="cc-log-doc">' + head + body + '</div>', POPUP_TYPE.TEXT, '', { okButton: T('close'), wide: true, large: true, allowVerticalScrolling: true });
+    } catch (e) { toast(T('logOpenFail') + String((e && e.message) || e), 'warning'); }
+}
 function exposeApi() {
     try {
         if (typeof window === 'undefined') return;
@@ -766,6 +803,7 @@ function exposeApi() {
             writeBack: (id) => writeBackMvu(id, true),
             mvu: () => mvuInfo(),
             invalidate: () => invalidateProfile(),
+            changelog: () => showChangelog(),
             stats: () => Object.assign({}, stats),
             trend: () => covHistory.slice(),
         };

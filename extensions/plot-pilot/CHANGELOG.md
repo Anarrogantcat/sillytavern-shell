@@ -1,4 +1,13 @@
 # 更新日志
+## [0.1.3] - 2026-09-20
+### 新增
+- **扩展信息块**（面板顶部，参考「酒馆助手 Tavern Helper」那张扩展信息卡）：名称 + `Ver 0.1.3` + 作者 / 许可 / 项目主页 + 免费使用与风险说明（本扩展只往输入框发指令，不改消息、不改变量）
+- **「查看日志」按钮**：ST 原生 `callGenericPopup`（`POPUP_TYPE.TEXT`，wide + large + 可滚动）展示更新日志；正文取自**扩展目录里的 CHANGELOG.md**（离线可用、带缓存），附 GitHub 直链
+- `renderChangelogMarkdown()`：极简 Markdown → HTML（先整段转义再白名单替换，不会执行日志里的 HTML）
+- 对外钩子新增 `window.PlotPilot.showChangelog()`
+### 变更
+- 夹具 `plot-pilot-test.mjs` **49 → 56 项**：新增 7 条（Markdown 渲染 3 条 + 面板与弹窗接线 4 条）
+
 ## [0.1.2] - 2026-09-20
 ### 新增
 - 面板新增开关 **「任何卡都显示「推进节点」（完全没探测到也用兜底文案）」**（`showAdvanceAlways`，默认关）——

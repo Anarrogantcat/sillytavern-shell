@@ -4,7 +4,7 @@
 // 后续要加新策略（新卡型探测、新按钮、自动连发…）都改这里 + 加断言。
 
 export const EXT_ID = 'plot-pilot';
-export const VERSION = '0.1.2';
+export const VERSION = '0.1.3';
 
 /** 配置默认值。新增字段请同时写进 sanitizeConfig 的白名单与 README 表格。 */
 export const DEFAULTS = {
@@ -198,6 +198,45 @@ export function sanitizeConfig(raw) {
     }
     out.cards = cards;
     return out;
+}
+
+/** 行内 Markdown：**粗体** 与 `行内代码`（输入已在 renderChangelogMarkdown 里转义过） */
+function mdInline(s) {
+    return String(s)
+        .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/**
+ * 极简 Markdown → HTML（0.1.3）：只用于把扩展自己的 CHANGELOG.md 显示在弹窗里。
+ * 先整段转义（& < >）再做白名单替换，CHANGELOG 里就算写了 HTML 也不会被当标签执行。
+ * 支持：标题 #~######、无序列表 - 与 *、引用 >、分隔线 ---、代码围栏、**粗体**、行内代码、段落。
+ */
+export function renderChangelogMarkdown(md) {
+    const esc = String(md == null ? '' : md).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
+    const out = [];
+    let inList = false, inPre = false, inQuote = false;
+    const closeList = () => { if (inList) { out.push('</ul>'); inList = false; } };
+    const closeQuote = () => { if (inQuote) { out.push('</blockquote>'); inQuote = false; } };
+    for (const line of esc.split('\n')) {
+        if (/^\s*```/.test(line)) {
+            closeList(); closeQuote();
+            if (inPre) { out.push('</pre>'); inPre = false; } else { out.push('<pre class="pp-md-pre">'); inPre = true; }
+            continue;
+        }
+        if (inPre) { out.push(line); continue; }
+        const t = line.trim();
+        if (!t) { closeList(); closeQuote(); continue; }
+        const h = t.match(/^(#{1,6})\s+(.*)$/);
+        if (h) { closeList(); closeQuote(); const lv = Math.min(6, h[1].length); out.push('<h' + lv + '>' + mdInline(h[2]) + '</h' + lv + '>'); continue; }
+        if (/^([-*_])\1{2,}$/.test(t)) { closeList(); closeQuote(); out.push('<hr>'); continue; }
+        if (/^&gt;\s?/.test(t)) { closeList(); if (!inQuote) { out.push('<blockquote>'); inQuote = true; } out.push('<p>' + mdInline(t.replace(/^&gt;\s?/, '')) + '</p>'); continue; }
+        if (/^[-*]\s+/.test(t)) { closeQuote(); if (!inList) { out.push('<ul>'); inList = true; } out.push('<li>' + mdInline(t.replace(/^[-*]\s+/, '')) + '</li>'); continue; }
+        closeList(); closeQuote();
+        out.push('<p>' + mdInline(t) + '</p>');
+    }
+    closeList(); closeQuote(); if (inPre) out.push('</pre>');
+    return out.join('\n');
 }
 
 /**

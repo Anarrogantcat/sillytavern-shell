@@ -1,5 +1,20 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.1.0 (2026-09-20) — 两个扩展都补上「扩展信息 + 查看日志」（card-compat 0.3.1 / plot-pilot 0.1.3）
+
+### 背景（用户要求）
+- 用户给出「酒馆助手 Tavern Helper 4.10.0」的扩展信息卡截图：版本号 + 查看日志按钮 + 作者 + 免费使用声明 + 风险提示，要求参考它给我们的扩展也写一份扩展信息与更新日志
+
+### 新增
+- **card-compat 0.3.1**：面板顶部扩展信息块（名称 / Ver / 作者 sillytavern-shell / AGPL-3.0 / 项目主页 / 免费使用与风险说明）+ **「查看日志」按钮**
+- **plot-pilot 0.1.3**：同样一份扩展信息块 + 「查看日志」
+- 日志来源是**扩展目录里随扩展一起部署的 CHANGELOG.md**（离线可用、首次读取后缓存），用 ST 原生 `callGenericPopup` 弹出；`renderChangelogMarkdown()` 先整段转义再白名单替换，日志里的 HTML 不会被执行
+- 两个扩展的对外钩子分别新增 `window.CardCompat.changelog()` / `window.PlotPilot.showChangelog()`
+
+### 变更
+- 版本进位：壳 **2.0.6 → 2.1.0**（第三位已到上限 6）；card-compat **0.3.0 → 0.3.1**；plot-pilot **0.1.2 → 0.1.3**
+- 夹具：compat **121 → 133**、plot-pilot **49 → 56**；其余不变（deploy 37 · remote 33 · manage 49 · toolbox 14）
+
 ## v2.0.6 (2026-09-20) — 修卡内 YAML 结构错误导致面板不渲染（扩展 card-compat 0.3.0）
 
 ### 背景（用户实测截图）
@@ -377,8 +392,3 @@
 
 ## v1.28.0 (2026-08-22) — 修复原生输入弹窗 + 仓库清理
 - 修复 prompt.html / prompt-preload.js 为 0 字节导致 ST 的 prompt() 弹窗空白且永不返回结果的问题
-- 修复 webview-preload.js 在 type:module 下被当作 ESM 加载、require 报错导致 webview 增强（缩放上报/右键菜单/快捷键/原生弹窗桥）全部失效的问题，改为 ESM import
-- 清理旧完整版产物 dist-electron-v3 与 staging 构建缓存
-- 清理 scripts/ 下 32 个一次性测试脚本，只保留构建与检查所需脚本
-
-## v1.27.4 (2026-08-22) — ST 本体字号修正配套

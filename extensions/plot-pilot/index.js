@@ -6,10 +6,11 @@
 //       ③ 公开 window.PlotPilot，方便后续用脚本或别的扩展继续扩展
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, Generate } from '../../../../script.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
 import {
     EXT_ID, VERSION, DEFAULTS, sanitizeConfig, detectBlueprint, detectLegacySignals,
     formatDetection, advancePayload, resolveCard, shouldShowAdvance, legacyStandby,
-    pickSendStrategy, summarizeState,
+    pickSendStrategy, summarizeState, renderChangelogMarkdown,
 } from './logic.js';
 
 const NAME = EXT_ID;
@@ -329,6 +330,26 @@ function bindCheck(id, key, onChange) {
     el.addEventListener('input', () => { settings()[key] = el.checked; saveSettingsDebounced(); if (onChange) onChange(); });
 }
 
+/* ── 扩展信息 / 查看日志（0.1.3）── */
+const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
+let changelogCache = null;
+async function loadChangelog() {
+    if (changelogCache) return changelogCache;
+    try {
+        const url = new URL('./CHANGELOG.md', import.meta.url).href;
+        const res = await fetch(url, { cache: 'no-cache' });
+        changelogCache = (res && res.ok) ? await res.text() : '';
+    } catch (_) { changelogCache = ''; }
+    return changelogCache;
+}
+async function showChangelog() {
+    try {
+        const md = await loadChangelog();
+        const head = '<div class="pp-log-head"><b>🎬 剧情推进器 Plot Pilot</b> v' + VERSION + ' ｜ <a href="' + REPO + '/blob/main/extensions/plot-pilot/CHANGELOG.md" target="_blank" rel="noopener">GitHub</a></div>';
+        const body = md ? renderChangelogMarkdown(md) : '<p>读不到 CHANGELOG.md（扩展目录里应当有一份，重新部署即可恢复）</p>';
+        await callGenericPopup('<div class="pp-log-doc">' + head + body + '</div>', POPUP_TYPE.TEXT, '', { okButton: '关闭', wide: true, large: true, allowVerticalScrolling: true });
+    } catch (e) { toastWarn('打开日志失败：' + String((e && e.message) || e)); }
+}
 function buildSettingsUi() {
     const host = document.getElementById('extensions_settings') || document.getElementById('extensions_settings2');
     if (!host || document.getElementById('pp-panel')) return;
@@ -338,6 +359,13 @@ function buildSettingsUi() {
     wrap.innerHTML = [
         '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🎬 剧情推进器 Plot Pilot v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
         '<div class="inline-drawer-content">',
+        '<div id="pp-info" class="pp-info">',
+        '<div class="pp-info-name">🎬 <b>剧情推进器</b> (Plot Pilot)</div>',
+        '<div class="pp-info-ver">Ver ' + VERSION + '</div>',
+        '<div class="pp-info-actions"><button id="pp-info-log" class="menu_button">查看日志</button></div>',
+        '<div class="pp-info-line">作者：sillytavern-shell ｜ 许可：AGPL-3.0 ｜ 项目主页：<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
+        '<div class="pp-info-note">本扩展免费使用，禁止任何形式的商业用途。它只往输入框里发指令（续写 / 推进节点），不改消息、不改变量、不接管酒馆助手脚本。</div>',
+        '</div>',
         '<div id="pp-state" class="pp-state"></div>',
         '<div id="pp-warn" class="pp-warn" style="display:none"></div>',
         '<label class="checkbox_label"><input type="checkbox" id="pp-enabled"><span>启用</span></label>',
@@ -366,6 +394,7 @@ function buildSettingsUi() {
     ].join('');
     host.appendChild(wrap);
 
+    document.getElementById('pp-info-log')?.addEventListener('click', () => { showChangelog(); });
     bindCheck('pp-enabled', 'enabled', () => { applyBar(); renderState(); });
     bindCheck('pp-bar', 'showBar', () => { applyBar(); });
     bindCheck('pp-advance-unknown', 'showAdvanceWhenUnknown', () => { applyBar(); });
@@ -470,6 +499,7 @@ function buildSettingsUi() {
         advance() { const eff = resolveCard(settings(), cardName()); const det = detect(); return send(advancePayload(eff, det), 'api-advance'); },
         sendText(text, kind) { return send(text, kind || 'api-send'); },
         cardName() { return cardName(); },
+        showChangelog() { return showChangelog(); },
     };
 
     console.log('[plot-pilot] 已加载 v' + VERSION + '（' + formatDetection(lastDet) + '）');

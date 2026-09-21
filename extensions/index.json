@@ -6,12 +6,12 @@
     {
       "id": "card-compat",
       "display_name": "卡兼容助手 (Card Compat)",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 15538,
-          "sha1": "e42b6722d54c613dcd7ab5bca1cc5888977c2468"
+          "size": 16546,
+          "sha1": "e1dea5101a6b8ab3ee166fca71e898c2f018d7e7"
         },
         {
           "path": "README.md",
@@ -30,35 +30,35 @@
         },
         {
           "path": "index.js",
-          "size": 55423,
-          "sha1": "bfd04d2370748f1d443031f147902aa16190c490"
+          "size": 58543,
+          "sha1": "e3151e2fc0b8e24bb0d1d8fc8f941dfdd09922c8"
         },
         {
           "path": "logic.js",
-          "size": 40564,
-          "sha1": "26efffa4ea25acea3d8cbbe4aa0ed42a297a22ca"
+          "size": 42876,
+          "sha1": "418580590d6fc06bf34432d589018a97588bf9ab"
         },
         {
           "path": "manifest.json",
           "size": 464,
-          "sha1": "afc5fd74bbca6b6b9673daacee0467cbdb2188f0"
+          "sha1": "76c2d801005b9f91e3b45a1d7ade563743a211a7"
         },
         {
           "path": "style.css",
-          "size": 1617,
-          "sha1": "2ce4a62a447cf606784089eca87d47e03b4549f3"
+          "size": 2750,
+          "sha1": "cee4370f28c55a0664e107730add038cf10a023e"
         }
       ]
     },
     {
       "id": "plot-pilot",
       "display_name": "剧情推进器 (Plot Pilot)",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 2770,
-          "sha1": "6a2135c15250fc86b5b6dbf8c4c96dd997dbb8bc"
+          "size": 3608,
+          "sha1": "c58f01c77599c17b5ca0269018fc8cf193552d32"
         },
         {
           "path": "README.md",
@@ -67,26 +67,26 @@
         },
         {
           "path": "index.js",
-          "size": 24717,
-          "sha1": "f4854d76bb596add4fb0a7c021592f9e81c4b544"
+          "size": 26945,
+          "sha1": "e3ed60cdd14a70b68ff94bdcaf377f2559b7fee2"
         },
         {
           "path": "logic.js",
-          "size": 11620,
-          "sha1": "5272fd4be7fa3407e5a6daea1f8ab69cc2713854"
+          "size": 13908,
+          "sha1": "67d67a3d9f0fc89b77e7ba01e97774606dfda8b7"
         },
         {
           "path": "manifest.json",
           "size": 419,
-          "sha1": "ab771b72a30bc5166551e58f4861993113fa444f"
+          "sha1": "b49c31faf58066c730c77e8d61cf71bbc4c94ac4"
         },
         {
           "path": "style.css",
-          "size": 2543,
-          "sha1": "cf395d4e1d882c8c410de308e98946e8cd650bfd"
+          "size": 3700,
+          "sha1": "e4f46c060d7d069a658e1d1abce6fa4c80750792"
         }
       ]
     }
   ],
-  "generatedAt": "2026-09-21T13:18:44.334Z"
+  "generatedAt": "2026-09-21T13:34:09.455Z"
 }

@@ -1,4 +1,14 @@
 # 更新日志
+## [0.3.1] - 2026-09-20
+### 新增
+- **扩展信息块**（面板顶部，参考「酒馆助手 Tavern Helper」那张扩展信息卡）：名称 + `Ver 0.3.1` + 作者 / 许可 / 项目主页 + 「免费使用、禁止任何形式的商业用途」与风险说明
+- **「查看日志」按钮**：用 ST 原生 `callGenericPopup`（`POPUP_TYPE.TEXT`，wide + large + 可滚动）弹出本扩展的更新日志
+  - 日志正文取自**扩展目录里的 CHANGELOG.md**（跟扩展一起部署，离线也有；首次读取后缓存），另外给了 GitHub 直链
+- `renderChangelogMarkdown()`：极简 Markdown → HTML —— **先整段转义再做白名单替换**，日志里就算有 HTML 也不会被执行；支持标题 / 无序列表 / 引用 / 分隔线 / 代码围栏 / **粗体** / 行内代码 / 段落
+- 对外钩子新增 `window.CardCompat.changelog()`
+### 变更
+- 夹具 `compat-logic-test.mjs` **121 → 133 项**：新增 12 条（Markdown 渲染 7 条 + 面板与弹窗接线 5 条）
+
 ## [0.3.0] - 2026-09-20
 ### 修复
 - **卡弹出「错误详情：YAML格式错误: bad indentation of a mapping entry (6:9)」、面板整块渲染不出**（用户实测截图，角色卡「天狐3」，聊天数据已逐行核对）：

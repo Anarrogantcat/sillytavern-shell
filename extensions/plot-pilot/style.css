@@ -49,3 +49,17 @@
 #pp-panel .pp-log { max-height: 150px; overflow: auto; font-size: .92em; white-space: pre-wrap; line-height: 1.5; }
 #pp-panel fieldset { border: 1px solid rgba(255, 255, 255, .12); border-radius: 6px; margin: 8px 0; padding: 6px 8px; }
 #pp-panel legend { font-size: .95em; opacity: .9; padding: 0 4px; }
+/* v0.1.3：扩展信息块 + 更新日志弹窗 */
+#pp-panel .pp-info { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 8px 10px; margin: 6px 0 8px; background: rgba(255,255,255,.03); }
+#pp-panel .pp-info-name { font-size: 1.05em; }
+#pp-panel .pp-info-ver { opacity: .8; font-size: .95em; margin: 2px 0 6px; }
+#pp-panel .pp-info-actions { margin: 4px 0 6px; }
+#pp-panel .pp-info-line { font-size: .9em; opacity: .85; line-height: 1.5; word-break: break-all; }
+#pp-panel .pp-info-note { font-size: .9em; opacity: .75; line-height: 1.5; margin-top: 6px; }
+.pp-log-doc { text-align: left; font-size: .95em; line-height: 1.55; }
+.pp-log-doc h1, .pp-log-doc h2, .pp-log-doc h3 { margin: 10px 0 4px; }
+.pp-log-doc h2 { border-bottom: 1px solid rgba(255,255,255,.15); padding-bottom: 2px; }
+.pp-log-doc ul { margin: 4px 0 8px 18px; }
+.pp-log-doc .pp-md-pre, .pp-log-doc .cc-md-pre { background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; overflow: auto; font-size: .9em; }
+.pp-log-doc blockquote { margin: 6px 0; padding-left: 8px; border-left: 3px solid rgba(255,255,255,.25); opacity: .9; }
+.pp-log-head { margin-bottom: 6px; }

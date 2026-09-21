@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
     DEFAULTS, detectBlueprint, formatDetection, buildAdvanceText, resolveCard,
     shouldShowAdvance, sanitizeConfig, legacyStandby, detectLegacySignals,
-    pickSendStrategy, summarizeState, advancePayload,
+    pickSendStrategy, summarizeState, advancePayload, renderChangelogMarkdown,
 } from '../extensions/plot-pilot/logic.js';
 
 let pass = 0;
@@ -171,6 +171,18 @@ if (!process.argv.includes('--no-real')) {
     }
 }
 
+console.log('— 夹具：扩展信息 / 更新日志弹窗（0.1.3）');
+const BT2 = String.fromCharCode(96);
+const md2 = ['## 版本节', '- 条目 **粗**', '> 引用'].join(String.fromCharCode(10));
+const h2 = renderChangelogMarkdown(md2);
+ok('标题/列表/粗体都渲染', h2.indexOf('<h2>版本节</h2>') >= 0 && h2.indexOf('<li>条目 <b>粗</b></li>') >= 0, h2);
+ok('引用块渲染', h2.indexOf('<blockquote>') >= 0, h2);
+ok('HTML 被转义', renderChangelogMarkdown('<img src=x onerror=1>').indexOf('&lt;img') >= 0);
+const ppSrc = fs.readFileSync(new URL('../extensions/plot-pilot/index.js', import.meta.url), 'utf8');
+ok('面板里有扩展信息块与查看日志', ppSrc.indexOf('id="pp-info"') > 0 && ppSrc.indexOf('id="pp-info-log"') > 0);
+ok('日志读扩展目录里的 CHANGELOG.md', ppSrc.indexOf("new URL('./CHANGELOG.md', import.meta.url)") > 0);
+ok('用 ST 原生 popup 展示', ppSrc.indexOf('callGenericPopup(') > 0 && ppSrc.indexOf('POPUP_TYPE.TEXT') > 0);
+ok('对外钩子暴露 showChangelog()', ppSrc.indexOf('showChangelog() { return showChangelog(); }') > 0);
 console.log('');
 if (failures.length) {
     console.log('夹具结果：' + pass + ' 项通过，' + failures.length + ' 项失败');

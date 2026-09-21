@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -273,7 +273,7 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.0"') > 0 && idxSrc.indexOf("const VERSION = '0.3.0'") > 0);
+check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.1"') > 0 && idxSrc.indexOf("const VERSION = '0.3.1'") > 0);
 function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
 console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
 const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
@@ -325,6 +325,23 @@ if (jsyaml21) {
   check('修复后 用户列表[0].用户 是对象且带名字（卡的契约）', !!u21 && typeof u21 === 'object' && typeof u21['名字'] === 'string' && typeof u21['行动'] === 'string', u21);
   check('修复后仍是 2 个用户、2 条选项', p21['状态栏']['用户列表'].length === 2 && p21['状态栏']['行动选项'].length === 2, Object.keys(p21['状态栏']));
 } else { check('本机没有 js-yaml，跳过端到端断言', true); }
+console.log('— 夹具 22：扩展信息 / 更新日志弹窗（0.3.1）');
+const BT22 = String.fromCharCode(96);
+const F22 = BT22 + BT22 + BT22;
+const md22 = ['# 标题一', '## 版本节', '', '- 条目 A', '- 条目 **加粗** 与 ' + BT22 + '代码' + BT22, '', '> 引用行', '', '---', '', F22, '<script>alert(1)</script>', F22].join(NL);
+const h22 = renderChangelogMarkdown(md22);
+check('标题渲染', h22.indexOf('<h1>标题一</h1>') >= 0 && h22.indexOf('<h2>版本节</h2>') >= 0, h22.slice(0, 80));
+check('列表 + 粗体 + 行内代码', h22.indexOf('<ul>') >= 0 && h22.indexOf('<li>条目 <b>加粗</b> 与 <code>代码</code></li>') >= 0, h22);
+check('引用块', h22.indexOf('<blockquote>') >= 0 && h22.indexOf('<p>引用行</p>') >= 0);
+check('分隔线', h22.indexOf('<hr>') >= 0);
+check('围栏里的 HTML 被转义（不会执行）', h22.indexOf('&lt;script&gt;alert(1)&lt;/script&gt;') >= 0 && h22.indexOf('<script>') < 0, h22.slice(-200));
+check('普通一行也包成段落', renderChangelogMarkdown('就一行').indexOf('<p>就一行</p>') >= 0);
+check('空 / null 输入不炸', renderChangelogMarkdown('') === '' && renderChangelogMarkdown(null) === '');
+check('面板里有扩展信息块与「查看日志」按钮', idxSrc.indexOf('id="cc-info"') > 0 && idxSrc.indexOf('id="cc-info-log"') > 0);
+check('日志读扩展目录里的 CHANGELOG.md（离线可用）', idxSrc.indexOf("new URL('./CHANGELOG.md', import.meta.url)") > 0);
+check('用 ST 原生 popup 展示', idxSrc.indexOf('callGenericPopup(') > 0 && idxSrc.indexOf('POPUP_TYPE.TEXT') > 0);
+check('对外钩子暴露 changelog()', idxSrc.indexOf('changelog: () => showChangelog()') > 0);
+check('信息块含作者/许可/免费声明', idxSrc.indexOf('infoAuthor') > 0 && idxSrc.indexOf('infoNote') > 0);
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

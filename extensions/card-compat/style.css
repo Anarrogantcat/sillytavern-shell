@@ -17,3 +17,17 @@
 #cc-panel .cc-line { margin: 4px 0; font-size: .95em; line-height: 1.5; }
 #cc-panel .cc-warn { color: #ffb86b; }
 #cc-panel .cc-muted { opacity: .75; }
+/* v0.3.1：扩展信息块 + 更新日志弹窗 */
+#cc-panel .cc-info { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 8px 10px; margin: 6px 0 8px; background: rgba(255,255,255,.03); }
+#cc-panel .cc-info-name { font-size: 1.05em; }
+#cc-panel .cc-info-ver { opacity: .8; font-size: .95em; margin: 2px 0 6px; }
+#cc-panel .cc-info-actions { margin: 4px 0 6px; }
+#cc-panel .cc-info-line { font-size: .9em; opacity: .85; line-height: 1.5; word-break: break-all; }
+#cc-panel .cc-info-note { font-size: .9em; opacity: .75; line-height: 1.5; margin-top: 6px; }
+.cc-log-doc { text-align: left; font-size: .95em; line-height: 1.55; }
+.cc-log-doc h1, .cc-log-doc h2, .cc-log-doc h3 { margin: 10px 0 4px; }
+.cc-log-doc h2 { border-bottom: 1px solid rgba(255,255,255,.15); padding-bottom: 2px; }
+.cc-log-doc ul { margin: 4px 0 8px 18px; }
+.cc-log-doc .cc-md-pre { background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; overflow: auto; font-size: .9em; }
+.cc-log-doc blockquote { margin: 6px 0; padding-left: 8px; border-left: 3px solid rgba(255,255,255,.25); opacity: .9; }
+.cc-log-head { margin-bottom: 6px; }
