@@ -1,5 +1,22 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.0.6 (2026-09-20) — 修卡内 YAML 结构错误导致面板不渲染（扩展 card-compat 0.3.0）
+
+### 背景（用户实测截图）
+- 角色卡「天狐3」在聊天里弹出 **「错误详情：YAML格式错误: bad indentation of a mapping entry (6:9)」**，状态栏面板整块渲染不出
+
+### 根因（读卡源码 + 聊天数据逐行核对，非推测）
+- 模型把变量块写成了两类非法 YAML：
+  1. `- 用户: "涂山清璃"` 后面紧跟更深缩进的兄弟键（`行动: …`）→ js-yaml 抛 `bad indentation of a mapping entry`
+  2. `穿搭: "长裙堆叠。", 衬衫…` —— 引号闭合后又跟了「, 文字」
+- 卡自己的渲染脚本 `createCharacterCard()` 有个硬约束：`userItem['用户']` **必须是对象**，否则整张角色卡 `return null`（卡片消失）——这决定了修复方向
+
+### 修复 / 变更
+- card-compat **0.2.9 → 0.3.0**（按「patch ≤ 6」规则进位）：新增 `repairYamlStructure`，把行内标量**下沉**为子映射的 `名字` 键、把引号后的逗号文字并回引号内；兄弟键已有名字类键时只删冗余标量
+- 面板第②组新增开关「结构级修复 YAML」（默认开）；统计新增「结构修复 N」
+- 夹具 `scripts/compat-logic-test.mjs` **111 → 121 项**（含真实病灶块的 js-yaml 端到端断言与「卡的契约」断言）
+- 夹具全绿：compat 121 · ext-deploy 37 · ext-remote 33 · ext-manage 49 · plot-pilot 49 · toolbox 14
+
 ## v2.0.5 (2026-09-20) — 修「状态栏要刷新页面才变回面板」（扩展 card-compat 0.2.9）
 
 ### 背景（用户实测）

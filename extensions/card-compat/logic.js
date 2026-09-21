@@ -395,7 +395,75 @@ export function repairSmartQuotes(text, tags) {
 }
 
 /**
- * 结构块 YAML「预检 + 修复」（不依赖 js-yaml，纯行级规则）——覆盖实测会打挂卡前端解析的两类写法：
+ * 结构块 YAML「结构级」修复（0.3.0）—— 覆盖实测会让整块解析失败、卡前端直接弹「错误详情」的两类写法：
+ *   a) 列表项写成行内映射，后续兄弟键却缩进更深（实测病灶：天狐3 卡）
+ *        - 用户: "涂山清璃"        ← 值直接跟在键后面
+ *            行动: "…"            ← 比键所在列更深 → js-yaml: bad indentation of a mapping entry
+ *      修法：把行内标量**下沉**成子映射的第一个键（默认 名字），兄弟键保持原样：
+ *        - 用户:
+ *            名字: "涂山清璃"
+ *            行动: "…"
+ *      为什么下沉而不是把兄弟键左移：该卡渲染脚本 createCharacterCard() 要求 userItem[用户] 必须是**对象**，
+ *      不是对象就整张角色卡不渲染；左移会让它变成字符串，卡片直接消失。
+ *      若兄弟键里已经有名字类键，则只删掉行内的冗余标量。
+ *   b) 引号标量后面又跟了「, 文字」（模型把两句写在一行）
+ *        穿搭: "长裙堆叠。" , 衬衫由于贴合产生褶皱。
+ *      修法：把逗号后的文字并回引号内（左侧已是句末标点就不再补逗号）。
+ * 只在给定标签族的块内逐行处理，块外正文一律不动。
+ * @returns {{text:string, fixes:Array<{tag,kind,key}>, blocks:number}}
+ */
+export function repairYamlStructure(text, tags, opts = {}) {
+    const nameKey = String(opts.nameKey || '名字');
+    const NAME_RE = new RegExp('^\\s*(名字|姓名|名称|name)\\s*:');
+    let out = String(text ?? '');
+    const fixes = [];
+    let blocks = 0;
+    const indentOf = (t) => (String(t).match(/^\s*/) || [''])[0].length;
+    for (const tag of tags || []) {
+        const blockRe = new RegExp('(<' + tag + '(?:\\s[^>]*)?>)([\\s\\S]*?)(</' + tag + '>)', 'g');
+        out = out.replace(blockRe, (whole, open, body, close) => {
+            blocks++;
+            const src = String(body).split('\n');
+            const dst = [];
+            for (let i = 0; i < src.length; i++) {
+                const line = src[i];
+                const m1 = line.match(/^(\s*)-\s*([^\s:]{1,40}):[ \t]*(\S.*)$/);
+                if (m1) {
+                    const itemIndent = m1[1].length;
+                    const keyCol = itemIndent + 2;
+                    let nx = -1;
+                    for (let k = i + 1; k < src.length; k++) { if (String(src[k]).trim()) { nx = k; break; } }
+                    if (nx > 0 && indentOf(src[nx]) > keyCol) {
+                        const sibs = [];
+                        for (let k = nx; k < src.length; k++) {
+                            if (String(src[k]).trim() && indentOf(src[k]) <= itemIndent) break;
+                            sibs.push(src[k]);
+                        }
+                        const first = sibs.find((s) => String(s).trim());
+                        const sibIndent = first ? indentOf(first) : keyCol + 2;
+                        const hasName = sibs.some((s) => NAME_RE.test(String(s)));
+                        dst.push(m1[1] + '- ' + m1[2] + ':');
+                        if (!hasName) dst.push(' '.repeat(sibIndent) + nameKey + ': ' + m1[3]);
+                        fixes.push({ tag: tag, kind: hasName ? 'list-inline-drop' : 'list-inline-demote', key: m1[2] });
+                        continue;
+                    }
+                }
+                const m2 = line.match(/^(\s*[^\s:]{1,40}:[ \t]*)(["'])([\s\S]*?)\2[ \t]*[,，][ \t]*(\S.*)$/);
+                if (m2) {
+                    const sep = /[。！？…，,、；;：:]$/.test(m2[3]) ? '' : '，';
+                    dst.push(m2[1] + m2[2] + m2[3] + sep + m2[4].split('"').join('').split("'").join('') + m2[2]);
+                    fixes.push({ tag: tag, kind: 'trailing-text-merged', key: (m2[1].match(/[^\s:]{1,40}/) || [''])[0] });
+                    continue;
+                }
+                dst.push(line);
+            }
+            return open + dst.join('\n') + close;
+        });
+    }
+    return { text: out, fixes: fixes, blocks: blocks };
+}
+
+/**——覆盖实测会打挂卡前端解析的两类写法：
  *   a) 值以英文引号开头、却以**中文引号**结尾：\`内心: "……。”\` → 解析器报 bad indentation → 状态栏「未解析到角色数据」
  *   b) 值**没加引号**但里面有 \`: \`（冒号+空格）或 \` #\`（空格+井号）→ YAML 会把它当嵌套键/注释，值被截断或整段解析失败
  * 只处理角色卡自己声明的结构块内的行；块外正文、已经加引号的值、\`|\`/\`>\` 字面量块内的行一律不动。

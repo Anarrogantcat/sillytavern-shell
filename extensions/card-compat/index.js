@@ -5,10 +5,10 @@
 //       → 本版把它放回 guardMessage 的入口，并补上 P1/P2/P3 全部路线图条目。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.9';
+const VERSION = '0.3.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -24,6 +24,7 @@ const DEFAULTS = {
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
     fixSmartQuotes: true, // 结构块内「英文引号开头 + 中文引号结尾」自动修（实测会让 YAML 解析失败）
     quoteScalars: true,   // 结构块内未加引号、但含「: 」或「 #」的值自动加英文引号（YAML 会截断/当嵌套键）
+    fixYamlStructure: true, // 结构级修复：列表项行内映射+更深兄弟键、引号后跟「, 文字」（实测会让整块解析失败）
     yamlStrict: true,      // 结构块严格 YAML 校验（用扩展自带的 assets/js-yaml.min.js，失败会报警）
     stripUndeclared: true, // 清理「本卡没声明也没人渲染」的结构块（实测：模型把世界书原文回显成 <world_setting>）
     autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
@@ -36,7 +37,7 @@ const DEFAULTS = {
     nudgeRender: true,     // 重渲染后补发 MESSAGE_UPDATED，让酒馆助手立刻重画前端块（见 nudgeRender()）
     rerenderOldFloors: false, // 历史楼层修正后是否也重渲染（默认否：不拆掉已经画好的状态栏面板）
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
 let lastCoverage = null;
 let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
@@ -55,6 +56,7 @@ const STRINGS = {
         repair: '未闭合自动补结束标签', stale: '数据疑似未更新时提示',
         fixQuotes: '修结构块里的引号错配（英文引号开头 + 中文引号结尾）',
         quoteScalars: '结构块里含「: 」「 #」却没加引号的值自动加引号',
+        fixYamlStructure: '结构级修复 YAML：列表项写成「- 键: 值」后面兄弟键缩进更深、引号后多写了「, 文字」（会让整块解析失败）',
         yamlStrict: '结构块严格 YAML 校验（用扩展自带的 js-yaml，失败报警）',
         stripUndeclared: '清理本卡未声明的块（模型回显世界书原文 / 自创标签）',
         autoFixVars: '模型漏输出变量块时自动补一次（静默生成，只补补丁）',
@@ -81,6 +83,7 @@ const STRINGS = {
         repair: 'Auto-close unclosed tags', stale: 'Warn when data looks unchanged',
         fixQuotes: 'Fix mismatched quotes in blocks (ASCII opener + CJK closer)',
         quoteScalars: 'Quote plain values containing colon-space or hash',
+        fixYamlStructure: 'Structural YAML repair: list item written as "- key: value" with deeper sibling keys, or extra text after a closing quote',
         yamlStrict: 'Strict YAML check of blocks (bundled js-yaml)',
         stripUndeclared: 'Strip blocks this card never declared (lorebook echo / invented tags)',
         autoFixVars: 'Silently regenerate a missing variable block once',
@@ -469,6 +472,16 @@ function guardMessage(messageId, { rerender = true } = {}) {
         stats.multiBlocks += bp.duplicates.length;
         log('multi-block', bp.duplicates.map((b) => b.tag + '×' + (b.pairs + b.selfs)).join(','), '同一条回复里有多个同名结构块（只有最后一个通常生效）');
     }
+    // 0.3.0 结构级修复：见 logic.js repairYamlStructure（列表项行内映射 + 更深兄弟键 / 引号后跟「, 文字」）
+    if (s.fixYamlStructure !== false) {
+        const ys = repairYamlStructure(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])]);
+        if (ys.fixes.length) {
+            res.text = ys.text;
+            stats.yamlStructFixed += ys.fixes.length;
+            log('yaml-structure-fixed', ys.fixes.map((f) => f.tag + ':' + f.key).join(','), 'YAML 结构级修复：' + ys.fixes.map((f) => f.kind).join(' / '));
+            changed = true;
+        }
+    }
     // 结构块 YAML 预检 + 修复：见 logic.js guardBlockYaml（引号错配 / 未加引号却含「: 」「 #」的值）
     const yg = guardBlockYaml(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])], {
         fixSmartQuotes: s.fixSmartQuotes !== false,
@@ -622,7 +635,7 @@ function renderCoverageTable() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
@@ -660,7 +673,7 @@ function buildSettingsUi() {
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         '</details>',
         '<details class="cc-grp"><summary>② ' + escHtml(T('secBlocks')) + '</summary>',
-        cb('cc-fix-quotes', 'fixQuotes'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
+        cb('cc-fix-quotes', 'fixQuotes'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-structure', 'fixYamlStructure'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
         cb('cc-autofix-vars', 'autoFixVars'), cb('cc-path-warn', 'pathWarn'), cb('cc-toast-fail', 'toastOnFail'),
         "<button id=\"cc-varfix-now\" class=\"menu_button\">" + escHtml(T('btnVarfix')) + "</button>",
         "<button id=\"cc-yaml-check\" class=\"menu_button\">" + escHtml(T('btnYaml')) + "</button>",
@@ -700,6 +713,7 @@ function buildSettingsUi() {
     bind('cc-inject-prompt', 'injectPrompt', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
     bind('cc-quote-scalars', 'quoteScalars', true);
+    bind('cc-yaml-structure', 'fixYamlStructure', true);
     bind('cc-yaml-strict', 'yamlStrict', true);
     bind('cc-strip-undeclared', 'stripUndeclared', true);
     bind('cc-autofix-vars', 'autoFixVars', true);

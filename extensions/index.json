@@ -6,17 +6,17 @@
     {
       "id": "card-compat",
       "display_name": "卡兼容助手 (Card Compat)",
-      "version": "0.2.9",
+      "version": "0.3.0",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 13642,
-          "sha1": "1a570a2374e6220686e78ef561b2b1582f4f75f8"
+          "size": 15538,
+          "sha1": "e42b6722d54c613dcd7ab5bca1cc5888977c2468"
         },
         {
           "path": "README.md",
-          "size": 2976,
-          "sha1": "d6d221380cb983f6c41fd14d0a075bfb9db03003"
+          "size": 3080,
+          "sha1": "a8401cb4c3dcbb72d4e93ed6486bb99188539e1e"
         },
         {
           "path": "assets/js-yaml.LICENSE.txt",
@@ -30,18 +30,18 @@
         },
         {
           "path": "index.js",
-          "size": 54144,
-          "sha1": "c41c791b52b4f38bb9b496ed2034baac1bdf1772"
+          "size": 55423,
+          "sha1": "bfd04d2370748f1d443031f147902aa16190c490"
         },
         {
           "path": "logic.js",
-          "size": 36563,
-          "sha1": "264a2b58e5e63c3de9eedb58cdae9f9170dacc34"
+          "size": 40564,
+          "sha1": "26efffa4ea25acea3d8cbbe4aa0ed42a297a22ca"
         },
         {
           "path": "manifest.json",
           "size": 464,
-          "sha1": "7909aa7eede5bb0a59cd7050e75d841fcd8fca26"
+          "sha1": "afc5fd74bbca6b6b9673daacee0467cbdb2188f0"
         },
         {
           "path": "style.css",
@@ -88,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-21T12:52:05.868Z"
+  "generatedAt": "2026-09-21T13:18:44.334Z"
 }

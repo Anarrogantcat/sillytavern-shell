@@ -1,5 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
+import { repairYamlStructure } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -272,7 +273,7 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.2.9"') > 0 && idxSrc.indexOf("const VERSION = '0.2.9'") > 0);
+check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.0"') > 0 && idxSrc.indexOf("const VERSION = '0.3.0'") > 0);
 function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
 console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
 const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
@@ -286,6 +287,44 @@ check('默认不重渲染历史楼（不拆已画好的状态栏）', /rerenderO
 check('默认开启补发', /nudgeRender: true/.test(idxSrc));
 check('面板给了两个开关', idxSrc.indexOf("cb('cc-nudge-render', 'nudgeRender')") > 0 && idxSrc.indexOf("bind('cc-rerender-old', 'rerenderOldFloors', true)") > 0);
 check('中英文案都补齐', !!STRINGS_ZH_HAS('nudgeRender') && !!STRINGS_ZH_HAS('rerenderOld'), 'nudgeRender/rerenderOld');
+console.log('— 夹具 21：YAML 结构级修复（实测：天狐3 卡弹「YAML格式错误: bad indentation of a mapping entry」）');
+const broken21 = [
+  '<Status_block>',
+  '状态栏:',
+  '  地点: "📍 青溪镇外 白桦林"',
+  '  用户列表:',
+  '    - 用户: "👤 涂山清璃 "',
+  '        行动: "被请求抱抱后身体侧倾。"',
+  '        穿搭: "长裙堆叠。", 衬衫由于贴合而产生褶皱。',
+  '    - 用户: "👤 染 "',
+  '        行动: "上前两步发出邀请。"',
+  '  行动选项:',
+  '    - "1. 选项一"',
+  '    - "2. 选项二"',
+  '</Status_block>',
+].join(NL);
+const r21 = repairYamlStructure(broken21, ['Status_block']);
+check('修出 3 处：两个列表项下沉 + 一处逗号并回', r21.fixes.length === 3 && r21.fixes.filter((f) => f.kind === 'list-inline-demote').length === 2 && r21.fixes.some((f) => f.kind === 'trailing-text-merged'), r21.fixes);
+check('行内标量下沉为「名字」子键', r21.text.includes('    - 用户:') && r21.text.includes('        名字: "👤 涂山清璃 "') && !r21.text.includes('- 用户: "'), r21.text.split(NL).slice(3, 8));
+check('逗号后的文字并回引号内', r21.text.includes('穿搭: "长裙堆叠。衬衫由于贴合而产生褶皱。"'), r21.text);
+check('普通字符串列表项不动', r21.text.includes('    - "1. 选项一"'));
+const r21b = repairYamlStructure('<T>' + NL + '  - 用户: "A"' + NL + '      名字: "B"' + NL + '      行动: "C"' + NL + '</T>', ['T']);
+check('兄弟键已有名字类键 → 只删冗余标量', r21b.text.includes('- 用户:') && !r21b.text.includes('- 用户: "A"') && r21b.fixes[0].kind === 'list-inline-drop', r21b);
+const clean21 = '<T>' + NL + '状态栏:' + NL + '  用户列表:' + NL + '    - 用户:' + NL + '        名字: "X"' + NL + '</T>';
+check('本来就合法的块一处都不动', repairYamlStructure(clean21, ['T']).fixes.length === 0);
+check('块外正文不动', repairYamlStructure('正文 - 用户: "X"' + NL, ['T']).fixes.length === 0);
+let jsyaml21 = null;
+try { jsyaml21 = (await import('js-yaml')).default; } catch (_) {}
+if (jsyaml21) {
+  const inner21 = (t) => t.replace('<Status_block>', '').replace('</Status_block>', '');
+  let before21 = 'ok';
+  try { jsyaml21.load(inner21(broken21)); } catch (_) { before21 = 'fail'; }
+  const p21 = jsyaml21.load(inner21(r21.text));
+  const u21 = p21['状态栏']['用户列表'][0]['用户'];
+  check('js-yaml 端到端：修复前解析失败', before21 === 'fail', before21);
+  check('修复后 用户列表[0].用户 是对象且带名字（卡的契约）', !!u21 && typeof u21 === 'object' && typeof u21['名字'] === 'string' && typeof u21['行动'] === 'string', u21);
+  check('修复后仍是 2 个用户、2 条选项', p21['状态栏']['用户列表'].length === 2 && p21['状态栏']['行动选项'].length === 2, Object.keys(p21['状态栏']));
+} else { check('本机没有 js-yaml，跳过端到端断言', true); }
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
