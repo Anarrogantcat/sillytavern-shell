@@ -363,7 +363,7 @@ function buildSettingsUi() {
         '<div class="pp-info-name">🎬 <b>剧情推进器</b> (Plot Pilot)</div>',
         '<div class="pp-info-ver">Ver ' + VERSION + '</div>',
         '<div class="pp-info-actions"><button id="pp-info-log" class="menu_button">查看日志</button></div>',
-        '<div class="pp-info-line">作者：sillytavern-shell ｜ 许可：AGPL-3.0 ｜ 项目主页：<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
+        '<div class="pp-info-line">作者：小肥鱼（AI）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
         '<div class="pp-info-note">本扩展免费使用，禁止任何形式的商业用途。它只往输入框里发指令（续写 / 推进节点），不改消息、不改变量、不接管酒馆助手脚本。</div>',
         '</div>',
         '<div id="pp-state" class="pp-state"></div>',

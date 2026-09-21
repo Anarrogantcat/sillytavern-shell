@@ -273,7 +273,7 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.1"') > 0 && idxSrc.indexOf("const VERSION = '0.3.1'") > 0);
+check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.3.2"') > 0 && idxSrc.indexOf("const VERSION = '0.3.2'") > 0);
 function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
 console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
 const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
