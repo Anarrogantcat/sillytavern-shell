@@ -1164,6 +1164,43 @@ const AUTO_ENABLE_RE = /自动开启.{0,8}正则|开启角色卡局部正则|aut
  * 实测有卡就是这么设计的（本体 disabled，靠自带 helper 在运行时打开），所以必须区分出这种情况，否则会误报。
  * @returns {{total:number, images:Array, bars:Array, panels:Array, others:Array, autoEnable:boolean}}
  */
+// 名字里的「版本/端/形态」修饰词：判断两条正则是不是同一个东西的变体时先去掉
+const VIEW_QUALIFIER_RE = /旧版|新版|备用|备选|适配|适化|移动端|手机端|电脑端|桌面端|简化版|文字版|图片版|在线版|离线版|选一|选择|可选|替换|测试|beta|mobile|desktop|old|new|backup|alt/gi;
+
+/** 名字归一化：去括号与修饰词，只留中英文数字（用于「这条是不是那条的备选」判断） */
+export function viewNameCore(name) {
+    return String(name || '').replace(/[【】\[\]（）(){}<>「」]/g, ' ').replace(VIEW_QUALIFIER_RE, ' ').replace(/[^\u4e00-\u9fa5A-Za-z0-9]+/g, ' ').trim();
+}
+
+/** 最长公共子串长度（名字都很短，O(n*m) 足够） */
+export function longestCommonRun(a, b) {
+    const s = String(a || ''), t = String(b || '');
+    if (!s || !t) return 0;
+    let best = 0;
+    const dp = new Array(t.length + 1).fill(0);
+    for (let i = 1; i <= s.length; i++) {
+        let prev = 0;
+        for (let j = 1; j <= t.length; j++) {
+            const cur = dp[j];
+            dp[j] = s[i - 1] === t[j - 1] ? prev + 1 : 0;
+            if (dp[j] > best) best = dp[j];
+            prev = cur;
+        }
+    }
+    return best;
+}
+
+/** 视图种类：插图 / 状态栏 / 面板 / 其它（启用的、禁用的都用这一套判定） */
+function classifyViewKind(s) {
+    const rep = typeof s.replaceString === 'string' ? s.replaceString : '';
+    const name = String(s.scriptName || '');
+    const find = normalizeRegexForTags(s.findRegex);
+    if (/<img/i.test(rep) || /插图|图片|image/i.test(rep + ' ' + name) || /NSFW_IMG|SFW_IMG/i.test(find)) return 'image';
+    if (VIEW_BAR_RE.test(name) || /StatusPlaceHolder|状态栏/i.test(find)) return 'bar';
+    if (VIEW_PANEL_RE.test(rep) || rep.length > 20000) return 'panel';
+    return 'other';
+}
+
 export function detectDisabledViews(ext) {
     const images = [], bars = [], panels = [], others = [];
     for (const s of (ext?.regex_scripts || [])) {
@@ -1173,17 +1210,31 @@ export function detectDisabledViews(ext) {
         const hasImg = /<img/i.test(rep);
         // 插图正则本体很短（实测 305 字节），门槛要单独放宽，否则「图片不显示」这类卡漏报
         if (rep.length < (hasImg ? 40 : 400)) continue;   // 含 <img> 的替换内容本身就是渲染器，门槛要低
-        const name = String(s.scriptName || '');
-        const find = normalizeRegexForTags(s.findRegex);
-        const rec = { name: name, len: rep.length };
-        if (hasImg || /插图|图片|image/i.test(rep + ' ' + name) || /NSFW_IMG|SFW_IMG/i.test(find)) { rec.kind = 'image'; images.push(rec); }
-        else if (VIEW_BAR_RE.test(name) || /StatusPlaceHolder|状态栏/i.test(find)) { rec.kind = 'bar'; bars.push(rec); }
-        else if (VIEW_PANEL_RE.test(rep) || rep.length > 20000) { rec.kind = 'panel'; panels.push(rec); }
-        else { rec.kind = 'other'; others.push(rec); }
+        const rec = { name: String(s.scriptName || ''), len: rep.length, kind: classifyViewKind(s) };
+        if (rec.kind === 'image') images.push(rec);
+        else if (rec.kind === 'bar') bars.push(rec);
+        else if (rec.kind === 'panel') panels.push(rec);
+        else others.push(rec);
     }
     const helpers = (ext?.tavern_helper?.scripts) || [];
     const autoEnable = helpers.some((h) => AUTO_ENABLE_RE.test(String(h.name || '') + ' ' + String(h.content || '')));
-    return { total: images.length + bars.length + panels.length + others.length, images: images, bars: bars, panels: panels, others: others, autoEnable: autoEnable };
+    // 0.9.1：判断每条被禁用的正则「是不是已经有同类启用项」—— 旧版/移动端/备用/二选一就不该报警
+    const enabled = (ext?.regex_scripts || []).filter((s) => !s.disabled && String(s.replaceString || '').length > 0)
+        .map((s) => ({ name: String(s.scriptName || ''), kind: classifyViewKind(s), core: viewNameCore(s.scriptName) }));
+    const coveredBy = (rec) => {
+        const core = viewNameCore(rec.name);
+        for (const e of enabled) {
+            if (e.kind === rec.kind) return e.name;                                       // ① 同类已有启用项
+            if (!core || !e.core) continue;
+            if (e.core.indexOf(core) >= 0 || core.indexOf(e.core) >= 0) return e.name;     // ② 名字互相包含
+            if (longestCommonRun(core, e.core) >= 3) return e.name;                        // ③ 名字共 3 字以上
+        }
+        return '';
+    };
+    const all = [...images, ...bars, ...panels, ...others];
+    let uncovered = 0;
+    for (const rec of all) { rec.coveredBy = coveredBy(rec); rec.covered = !!rec.coveredBy; if (!rec.covered) uncovered++; }
+    return { total: all.length, uncovered: uncovered, images: images, bars: bars, panels: panels, others: others, autoEnable: autoEnable };
 }
 
 /**
@@ -1243,12 +1294,14 @@ export function scanCardCompatibility(cards) {
                 // 0.7.0：没抽到规则时标出「为什么」——是没写规则，还是写法没认出来
                 ruleStyle: ruleStyle,
                 disabledViews: dis.total,
+                disabledUncovered: dis.uncovered || 0,
                 autoEnable: dis.autoEnable,
                 // 0.9.0 新卡哨兵：需要人注意的两件事 —— 没见过的新方言 / 渲染正则是关着的
                 alerts: (function () {
                     const list = [];
                     if (ruleStyle === 'check-unparsed' || ruleStyle === 'other') list.push('new-dialect');
-                    if (dis.total > 0 && !dis.autoEnable) list.push('disabled-views');
+                    // 0.9.1：有同类启用项的算「备选」，只有真缺一块才报警
+                    if (dis.total > 0 && !dis.autoEnable) list.push((dis.uncovered || 0) > 0 ? 'disabled-views' : 'disabled-alternative');
                     return list;
                 })(),
                 allowedPaths: allowed.paths.length,
@@ -1285,6 +1338,7 @@ export function scanCardCompatibility(cards) {
         dynBarsDynamic: by((r) => r.bars > 0 && r.dynBar),
         panels: by((r) => r.panels > 0),
         disabledViews: by((r) => r.disabledViews > 0),
+        disabledUncovered: by((r) => (r.disabledUncovered || 0) > 0),
         autoEnableCards: by((r) => r.autoEnable),
         alerts: (function () { const m = {}; for (const r of rows) for (const a of (r.alerts || [])) m[a] = (m[a] || 0) + 1; return m; })(),
         noRulesStyles: rows.reduce((m, r) => { if (r.ruleStyle) m[r.ruleStyle] = (m[r.ruleStyle] || 0) + 1; return m; }, {}),

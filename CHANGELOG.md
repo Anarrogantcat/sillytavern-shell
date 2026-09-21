@@ -1,5 +1,16 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.3 (2026-09-22) — card-compat 0.9.1：哨兵细分「真缺 / 备选」
+
+### 变更
+- 0.9.0 的 `disabled-views` 把所有「被禁用的渲染正则」都算预警，实际 14 张里只有 1 张真缺；现在按「是否已有同类启用项」细分：
+  - 真缺 → `disabled-views` 预警（实测仅 `Science Worship 20260718`）
+  - 旧版 / 移动端 / 备用 / 二选一 → `disabled-alternative`（面板注明「有同类启用项，属备选」，不打扰）
+- 新增 `viewNameCore()` / `longestCommonRun()` 与 `disabledUncovered` 计数
+
+### 夹具
+- compat **245/0**（新增夹具 31，11 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
+
 ## v2.2.2 (2026-09-22) — card-compat 0.9.0：新卡哨兵（禁用渲染正则 / 疑似新方言）
 
 ### 新增

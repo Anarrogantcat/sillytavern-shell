@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -572,7 +572,36 @@ check('⑥ 关着又不自动开启 → 预警 disabled-views', (sc30.rows[0].al
 check('⑦ 卡自带开启脚本 → 不预警，但仍报告条数', (sc30.rows[1].alerts || []).indexOf('disabled-views') < 0 && sc30.rows[1].disabledViews === 1 && sc30.rows[1].autoEnable === true, sc30.rows[1]);
 check('⑧ 有 check 却抽不出 → 预警 new-dialect（给我看的信号）', (sc30.rows[2].alerts || []).indexOf('new-dialect') >= 0 && sc30.rows[2].ruleStyle === 'check-unparsed', sc30.rows[2]);
 check('⑨ 总览带预警直方图与禁用渲染正则计数', sc30.summary.alerts['disabled-views'] === 1 && sc30.summary.alerts['new-dialect'] === 1 && sc30.summary.disabledViews === 2 && sc30.summary.autoEnableCards === 1, sc30.summary);
-check('⑩ 面板接线（预警标签/协议行/每行 ❗/复制报告）', idxSrc.indexOf('alertLabel') > 0 && idxSrc.indexOf('scanAlerts') > 0 && idxSrc.indexOf('disViews') > 0 && idxSrc.indexOf('disabledViews') > 0 && idxSrc.indexOf("((r.alerts || []).length ? ' ❗' : '')") > 0);
+check('⑩ 面板接线（预警标签/协议行/每行 ❗/复制报告）', idxSrc.indexOf('alertLabel') > 0 && idxSrc.indexOf('scanAlerts') > 0 && idxSrc.indexOf('disViews') > 0 && idxSrc.indexOf('disabledViews') > 0 && idxSrc.indexOf("' ❗'") > 0 && idxSrc.indexOf("' ◇'") > 0);
+
+console.log('— 夹具 31：哨兵细分「真缺」与「备选」（0.9.1）');
+check('① 名字归一化去掉括号与版本/端修饰词', viewNameCore('【选一】数据库默认正则1（移动端适配）').indexOf('数据库默认正则1') >= 0 && viewNameCore('✅状态栏-美化 旧版').indexOf('旧版') < 0, viewNameCore('【选一】数据库默认正则1（移动端适配）'));
+check('② 公共子串：两条不同名字也能认出同一块', longestCommonRun(viewNameCore('【选一】数据库默认正则1'), viewNameCore('【选一】数据库多功能美化正则1')) >= 3);
+check('② 公共子串：不相关名字不会误判', longestCommonRun(viewNameCore('开场白简化版'), viewNameCore('战斗系统')) < 3);
+const enabledImg = { scriptName: '正文美化', findRegex: '/<content>/', replaceString: '<img src=\"https://x/a.png\" style=\"max-width:100%; height:auto; border-radius:12px;\">' };
+const coveredBySameKind = detectDisabledViews({ regex_scripts: [
+    { scriptName: '正文美化-离线版', disabled: true, findRegex: '/<content>/', replaceString: '<img src=\"https://x/a.png\" style=\"max-width:100%; height:auto; border-radius:12px;\">' },
+    enabledImg,
+] });
+check('③ 同类已有启用项 → 标记 covered 并给出 coveredBy', coveredBySameKind.total === 1 && coveredBySameKind.uncovered === 0 && coveredBySameKind.images[0].coveredBy === '正文美化', coveredBySameKind.images);
+const coveredByName = detectDisabledViews({ regex_scripts: [
+    { scriptName: '正文美化-离线版', disabled: true, findRegex: '/<content>/', replaceString: '<!DOCTYPE html><html><body>' + 'x'.repeat(2600) + '</body></html>' },
+    enabledImg,
+] });
+check('④ 名字互相包含也算备选（跨种类）', coveredByName.uncovered === 0 && !!coveredByName.panels[0].coveredBy, coveredByName);
+const uncoveredOne = detectDisabledViews({ regex_scripts: [
+    { scriptName: '单独状态栏', disabled: true, findRegex: '/<StatusPlaceHolderImpl\\/>/', replaceString: '<div>' + 'x'.repeat(600) + '</div>' },
+] });
+check('⑤ 没有任何同类/相似启用项 → uncovered=1', uncoveredOne.total === 1 && uncoveredOne.uncovered === 1 && !uncoveredOne.bars[0].coveredBy, uncoveredOne.bars);
+const sc31 = scanCardCompatibility([
+    { name: '真缺渲染正则', data: { extensions: { regex_scripts: [{ scriptName: '单独状态栏', disabled: true, findRegex: '/<StatusPlaceHolderImpl\\/>/', replaceString: '<div>' + 'x'.repeat(600) + '</div>' }] } } },
+    { name: '只是备选', data: { extensions: { regex_scripts: [{ scriptName: '正文美化-离线版', disabled: true, findRegex: '/<content>/', replaceString: '<img src=\"https://x/a.png\" style=\"max-width:100%; height:auto; border-radius:12px;\">' }, enabledImg] } } },
+]);
+check('⑥ 真缺 → 报警 disabled-views；备选 → 只算 disabled-alternative', (sc31.rows[0].alerts || []).indexOf('disabled-views') >= 0 && (sc31.rows[1].alerts || []).indexOf('disabled-alternative') >= 0 && (sc31.rows[1].alerts || []).indexOf('disabled-views') < 0, sc31.rows.map((x) => x.name + ':' + JSON.stringify(x.alerts)));
+check('⑦ 行字段带 disabledUncovered', sc31.rows[0].disabledUncovered === 1 && sc31.rows[1].disabledUncovered === 0, sc31.rows.map((x) => x.disabledUncovered));
+check('⑧ 总览直方图分开计数', sc31.summary.alerts['disabled-views'] === 1 && sc31.summary.alerts['disabled-alternative'] === 1 && sc31.summary.disabledUncovered === 1 && sc31.summary.disabledViews === 2, sc31.summary);
+check('⑨ 面板接线（备选说明/未覆盖计数/预警标签）', idxSrc.indexOf('disAlt') > 0 && idxSrc.indexOf('disabledUncovered') > 0 && idxSrc.indexOf("'alert_disabled-alternative'") > 0);
+check('⑨ 行尾标记分开：❗=真缺/新方言，◇=备选', idxSrc.indexOf("' ❗'") > 0 && idxSrc.indexOf("' ◇'") > 0 && /indexOf\('disabled-alternative'\)/.test(idxSrc));
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
