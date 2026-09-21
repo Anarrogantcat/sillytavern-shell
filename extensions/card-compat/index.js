@@ -664,7 +664,7 @@ function renderMvuBox() {
     lines.push('<div class="cc-line ' + (extra === true ? 'cc-warn' : 'cc-muted') + '">' + escHtml(extra === true ? T('mvuExtraOn') : T('mvuExtraOff')) + '</div>');
     box.innerHTML = lines.join('');
 }
-/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」（位置参考酒馆助手那张信息卡） */
+/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」 */
 function applyInfoOpen() {
     try {
         const body = document.getElementById('cc-info-body');

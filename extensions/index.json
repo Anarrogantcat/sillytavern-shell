@@ -10,8 +10,8 @@
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 16878,
-          "sha1": "c4304af6f414ddd9c4a809f28fb56eafe9d782e7"
+          "size": 16741,
+          "sha1": "05f625b411c2eaff9cf8071e5e67a504a0beea8c"
         },
         {
           "path": "README.md",
@@ -30,8 +30,8 @@
         },
         {
           "path": "index.js",
-          "size": 59747,
-          "sha1": "e01de1be2cf99be5f731ea75b0922169cbec3196"
+          "size": 59702,
+          "sha1": "ab7156e473905ba4af24b298d89af13db2cdca1b"
         },
         {
           "path": "logic.js",
@@ -57,8 +57,8 @@
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 3915,
-          "sha1": "275c47d61573669eb8d0dd847c4adf03a827ce2b"
+          "size": 3776,
+          "sha1": "5f89b68a7ead5c4a3a3ce53e356db87e0047d0b9"
         },
         {
           "path": "README.md",
@@ -67,8 +67,8 @@
         },
         {
           "path": "index.js",
-          "size": 28063,
-          "sha1": "57850669f19230d420727083e862ffe7ebcd9d5d"
+          "size": 28018,
+          "sha1": "177b970e2973e5e1a3504fc93f88b2fd8671728d"
         },
         {
           "path": "logic.js",
@@ -88,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-21T14:00:12.744Z"
+  "generatedAt": "2026-09-21T14:03:27.241Z"
 }

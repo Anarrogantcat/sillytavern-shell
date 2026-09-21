@@ -351,7 +351,7 @@ async function showChangelog() {
         await callGenericPopup('<div class="pp-log-doc">' + head + body + '</div>', POPUP_TYPE.TEXT, '', { okButton: '关闭', wide: true, large: true, allowVerticalScrolling: true });
     } catch (e) { toastWarn('打开日志失败：' + String((e && e.message) || e)); }
 }
-/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」（位置参考酒馆助手那张信息卡） */
+/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」 */
 function applyInfoOpen() {
     try {
         const body = document.getElementById('pp-info-body');
