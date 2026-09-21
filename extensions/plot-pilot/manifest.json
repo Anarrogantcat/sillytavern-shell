@@ -5,7 +5,7 @@
     "optional": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "小肥鱼 (AI) & 染喵",
+    "author": "小肥鱼 (DeepSeek V4 Flash) & 染喵",
     "version": "0.1.5",
     "description": "发送栏上方的「续写 / 推进节点」按钮：自动探测角色卡是否带剧本·蓝图推进系统，按卡显示、文案可配、配置随 ST 设置持久化"
 }

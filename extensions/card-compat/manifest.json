@@ -5,7 +5,7 @@
     "optional": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "小肥鱼 (AI) & 染喵",
+    "author": "小肥鱼 (DeepSeek V4 Flash) & 染喵",
     "version": "0.3.3",
     "description": "保证角色卡状态栏正常显示与数据更新：锚点守护 + 数据块守护 + 结构块 YAML 修复 + 未声明块清理 + 变量块兜底与 MVU 联动 + 路径白名单/覆盖度趋势，面板中英双语"
 }

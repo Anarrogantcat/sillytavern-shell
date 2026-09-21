@@ -468,8 +468,8 @@ window.SHELL_I18N_EXTRA = [
     ["不可用：", "Unavailable: "],
     ["失败：", "Failed: "],
     // —— 作者署名 ——
-    ["小肥鱼（AI）· 染喵", "小肥鱼 (AI) & 染喵"],
-    ["小肥鱼（AI）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：", "Author: 小肥鱼 (AI) & 染喵 | License: AGPL-3.0 | Homepage: "],
+    ["小肥鱼（DeepSeek V4 Flash）· 染喵", "小肥鱼 (DeepSeek V4 Flash) & 染喵"],
+    ["小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：", "Author: 小肥鱼 (DeepSeek V4 Flash) & 染喵 | License: AGPL-3.0 | Homepage: "],
     ["作者", "Author"],
     // —— 设置「关于」页 ——
     ["关于", "About"],
