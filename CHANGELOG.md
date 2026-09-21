@@ -1,5 +1,15 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.1 (2026-09-22) — card-compat 0.8.1：修 P0 —— 变量补丁被当「未声明块」删掉（新卡兼容性审计）
+
+### 修复
+- **P0**：MVU 的标准输出 `<UpdateVariable>…<JSONPatch>[…]</JSONPatch>…</UpdateVariable>` 里，`<JSONPatch>` 在多数卡里并未单独声明 → 被「未声明块清理」整段删掉，**变量更新静默失效**；91 张卡里 74 张会跑守护，**67 张中招**
+  - 修法：① 协议内部标签进 `KEEP_BLOCKS`（`jsonpatch` / `updatevariable` / `stat_data`…）；② 成对块清理加「保护区」，声明块内部的子块一律不碰
+  - 实测：修前 67 张丢补丁 → **0 张**；清世界书回显的原有能力不受影响（反向断言在夹具里）
+
+### 夹具
+- compat **224/0**（新增夹具 29，8 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
+
 ## v2.2.0 (2026-09-21) — card-compat 0.8.0：修「图片丢失」（标签括号错乱）
 
 ### 修复

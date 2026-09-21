@@ -1,4 +1,13 @@
 # 更新日志
+## [0.8.1] - 2026-09-22
+### 修复
+- **P0：「未声明块清理」会把变量补丁整段删掉**（做「新卡兼容性」审计时用真实回复测出来的）：MVU 标准输出是 `<UpdateVariable>…<JSONPatch>[…]</JSONPatch>…</UpdateVariable>`，而 `<JSONPatch>` 在多数卡里**没有被单独声明**（卡的 findRegex 只声明了 `<UpdateVariable>`）→ 旧实现把它当「未声明块」删掉，**变量补丁静默失效**
+  - 实测影响面：91 张卡里 74 张会跑守护，其中 **67 张**会丢补丁
+  - 两层修法：① `KEEP_BLOCKS` 补上协议内部标签（`jsonpatch` / `updatevariable` / `stat_data` 等）；② 成对块清理新增「保护区」—— 落在本卡声明过、或永不清理的成对块内部的子块，一律不碰
+  - 实测：修前 67 张丢补丁 → 修后 **0 张**；原有「清掉世界书回显」的能力不受影响（`<world_setting>…</world_setting>` 仍会被清）
+### 变更
+- 夹具 `scripts/compat-logic-test.mjs` **216 → 224** 项（夹具 29：嵌套/独立 JSONPatch 保留、未知子标签、回显仍清理、半截块只报告、KEEP_BLOCKS 与保护区接线）
+
 ## [0.8.0] - 2026-09-21
 ### 新增
 - **标签括号错乱修复 `repairBracketTags()`**（开关 `fixBracketTags`，默认开）：模型偶尔把尖括号写成全角方括号，卡的渲染正则就一个都匹配不上 —— 实测「与继母的丝袜与日常」里输出 `【NSFW_IMG>她压在我身上/美咲_5.jpg</NSFW_IMG>`，正文里只剩一串原文标签、图片整块不显示

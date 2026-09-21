@@ -531,6 +531,25 @@ check('⑥ 关掉开关就不动（fixBracketTags=false）', guardText('【NSFW_
 check('⑦ 面板有开关、统计与日志接线', idxSrc.indexOf('fixBracketTags') > 0 && idxSrc.indexOf("'bracket-tag-fixed'") > 0 && idxSrc.indexOf('cc-bracket-tags') > 0 && idxSrc.indexOf('括号修复') > 0);
 check('⑦ 括号修好会强制重渲染该楼（否则图片/面板出不来）', /forceRerender = true/.test(idxSrc) && /if \(rerender \|\| forceRerender\)/.test(idxSrc), 'forceRerender 接线');
 
+console.log('— 夹具 29：不许把变量补丁当「未声明块」删掉（0.8.1 修 P0）');
+const decl29 = new Set(['UpdateVariable', 'StatusBar']);
+const st29 = (txt) => stripUndeclaredBlocks(txt, { declared: decl29, keep: KEEP_BLOCKS });
+const nestedPatch = '<UpdateVariable>' + NL + '<JSONPatch>[{"op":"replace","path":"/a","value":1}]</JSONPatch>' + NL + '</UpdateVariable>';
+const r29a = st29(nestedPatch);
+check('① 嵌套的 <JSONPatch> 不会被删（实测 67/74 张卡中招）', r29a.text === nestedPatch && r29a.removed.length === 0, r29a);
+const alonePatch = '<JSONPatch>[{"op":"replace","path":"/a","value":1}]</JSONPatch>';
+check('② 独立的 <JSONPatch> 也保留（KEEP_BLOCKS）', st29(alonePatch).text === alonePatch);
+const innerUnknown = '<UpdateVariable>' + NL + '<DeltaPatch>[1]</DeltaPatch>' + NL + '</UpdateVariable>';
+check('③ 声明块里的未知子标签也保留（通用嵌套保护）', st29(innerUnknown).text === innerUnknown && st29(innerUnknown).removed.length === 0);
+const echo = '<world_setting>' + NL + '一大段设定原文' + NL + '</world_setting>' + NL + '正文';
+const r29d = st29(echo);
+check('④ 世界书回显仍然被清理（原有功能没被削弱）', r29d.removed.length === 1 && r29d.removed[0].tag === 'world_setting' && r29d.text.indexOf('一大段设定原文') < 0, r29d);
+check('⑤ 自创标签仍然被清理', st29('<status_block>x</status_block>').removed.length === 1);
+const halfOpen = '<konatan_planning~>半截块';
+check('⑥ 未声明但没闭合 → 只报告不删', (function () { const r = st29(halfOpen); return r.text === halfOpen && r.unclosed.join(',') === 'konatan_planning~'; })());
+check('⑦ KEEP_BLOCKS 已含协议内部标签', ['jsonpatch', 'updatevariable'].every((t) => KEEP_BLOCKS.has(t)));
+check('⑧ 保护区逻辑在位', /insideProtected/.test(readFileSync(new URL('../extensions/card-compat/logic.js', import.meta.url), 'utf8')));
+
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

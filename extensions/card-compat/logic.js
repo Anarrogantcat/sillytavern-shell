@@ -31,6 +31,10 @@ export const KEEP_BLOCKS = new Set([
     'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'img', 'svg', 'path', 'g', 'circle', 'rect',
     'details', 'summary', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'font', 'center', 'iframe',
     'ruby', 'rt', 'rp', 'mark', 'del', 'ins', 'sub', 'sup', 'video', 'audio', 'source', 'canvas', 'label', 'input', 'button',
+    // 0.8.1：变量协议自己的内部标签永不清理 —— 实测 P0：
+    // <UpdateVariable>…<JSONPatch>[…]</JSONPatch>…</UpdateVariable> 里的 JSONPatch 往往没被单独声明，
+    // 旧实现把整段补丁当「未声明块」删掉 → MVU 变量更新静默失效（91 张卡里 67 张会中招）
+    'jsonpatch', 'json_patch', 'updatevariable', 'update_variable', 'variable_update', 'stat_data',
 ]);
 
 /**
@@ -48,17 +52,45 @@ export function stripUndeclaredBlocks(text, opts = {}) {
     const removed = [];
     const unclosed = [];
     const names = [...new Set(broadTagsOf(out))];
+    // 0.8.1：先算出「本卡声明过 / 永不清理」的成对块占据的区间 —— 落在这里面的子块一律不碰。
+    // 实测 P0：<UpdateVariable>…<JSONPatch>[…]</JSONPatch>…</UpdateVariable> 里 JSONPatch 常常没被单独声明，
+    //         旧实现会把整段补丁当「未声明块」删掉，MVU 变量更新静默失效（91 张卡里 67 张中招）。
+    const protectSpans = () => {
+        const spans = [];
+        const all = new Set([...declared, ...[...keep].map((x) => String(x).toLowerCase())]);
+        for (const t of all) {
+            if (!t) continue;
+            const e = escTag(t);
+            const re = new RegExp('<' + e + '(?:\\s[^>]*)?>[\\s\\S]*?</' + e + '\\s*>', 'gi');
+            let m;
+            while ((m = re.exec(out))) spans.push({ a: m.index, b: m.index + m[0].length });
+        }
+        return spans;
+    };
+    let spans = protectSpans();
+    const insideProtected = (i) => spans.some((s) => i >= s.a && i < s.b);
     for (const name of names) {
         if (declared.has(name) || keep.has(name) || keep.has(name.toLowerCase())) continue;
         // 转义正则元字符：只保留字母/数字/下划线/汉字，其余一律加反斜杠（用 fromCharCode 免得层层转义写错）
         const esc = String(name).split('').map((ch) => { const c = ch.codePointAt(0); return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c > 0x2e80 ? ch : String.fromCharCode(92) + ch; }).join('');
+        const anyRe = new RegExp('<' + esc + '(?:\\s[^>]*)?>', 'g');
+        const occ = [];
+        let mo;
+        while ((mo = anyRe.exec(out))) occ.push(mo.index);
+        if (!occ.length) continue;
+        if (occ.every((i) => insideProtected(i))) continue;   // 整个标签都活在本卡的协议块里 → 不删也不报
         const pairRe = new RegExp('<' + esc + '(?:\\s[^>]*)?>[\\s\\S]*?</' + esc + '\\s*>', 'g');
-        const hits = out.match(pairRe);
-        if (hits && hits.length) {
-            for (const h of hits) removed.push({ tag: name, chars: h.length });
-            out = out.replace(pairRe, '');
+        const hits = [];
+        let mp;
+        while ((mp = pairRe.exec(out))) hits.push({ a: mp.index, b: mp.index + mp[0].length });
+        const removable = hits.filter((h) => !insideProtected(h.a));
+        if (removable.length) {
+            for (const h of removable) removed.push({ tag: name, chars: h.b - h.a });
+            for (const h of removable.slice().sort((x, y) => y.a - x.a)) out = out.slice(0, h.a) + out.slice(h.b);
+            spans = protectSpans();
             continue;
         }
+        if (hits.length) continue;                             // 有成对的（哪怕全在保护区里）就不报「只有开标签」
         if (new RegExp('<' + esc + '(?:\\s[^>]*)?>').test(out)) unclosed.push(name);
     }
     return { text: out, removed, unclosed };
