@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -466,6 +466,46 @@ const g26b = guardText('这是模型的一轮正常回复。', anchoredProf, { i
 check('普通回复照样补锚点（没回退）', g26b.text.indexOf('<StatusPlaceHolderImpl/>') >= 0 && g26b.actions.some((a) => a.type === 'anchor-injected'), g26b);
 check('regexFromFindRegex：保留 i/s 但去掉 g', (function () { const rx = regexFromFindRegex('/abc/gsi'); return rx && rx.flags.indexOf('g') < 0 && rx.flags.indexOf('i') >= 0 && rx.flags.indexOf('s') >= 0; })());
 check('对话入口接线：guardMessage 先判整条接管', idxSrc.indexOf('anchoredViewConsuming(profile.views, base)') > 0 && idxSrc.indexOf("'anchored-view-skip'") > 0);
+
+console.log('— 夹具 27：check 的三种写法 + 「为什么没有规则」分类（0.7.0）');
+// ① check: + 缩进列表（一直支持）
+const rk1 = extractRequiredFields([{ comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  系统:' + NL + '    日期:' + NL + '      check:' + NL + '        - 场景跳转后更新' }], 10);
+check('① check: + 缩进列表仍可用', rk1.length === 1 && rk1[0].path === '系统.日期', rk1);
+// ② check: 同行条件（实测「蛊」）
+const rk2 = extractRequiredFields([{ comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  主角数据:' + NL + '    银两:' + NL + '      type: number' + NL + '      check: 每次购买道具时变动。' }], 10);
+check('② check: 同行条件能抽出（0.6.x 是 0 条）', rk2.length === 1 && rk2[0].path === '主角数据.银两' && rk2[0].check.indexOf('每次购买道具') >= 0, rk2);
+// ③ 行内对象（实测「欲妈群」）
+const rk3 = extractRequiredFields([{ comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  元数据:' + NL + '    小时: { type: number, range: 0~23, check: 跨日时归零联动 }' + NL + '    回合: { type: number, check: 每轮+1 }' }], 10);
+check('③ 行内对象里的 check 能抽出（0.6.x 是 0 条）', rk3.length === 2 && rk3[0].path === '元数据.小时' && rk3[1].path === '元数据.回合', rk3);
+check('③ 条件到逗号/右花括号为止，不夹带 type', rk3[0].check === '跨日时归零联动', rk3[0]);
+// ④ 竖线块标量：条件在下面的缩进行里
+const rk4 = extractRequiredFields([{ comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  世界:' + NL + '    天气:' + NL + '      check: |' + NL + '        - 每轮根据剧情更新' + NL + '        - 不能凭空变化' }], 10);
+check('④ check: 竖线块标量取下面的缩进行', rk4.length === 1 && rk4[0].check.indexOf('每轮根据剧情更新') >= 0, rk4);
+// ⑤ 三种写法混在一张卡里
+const rk5 = extractRequiredFields([{ comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  A:' + NL + '    甲:' + NL + '      check:' + NL + '        - 列表条件' + NL + '    乙:' + NL + '      check: 同行条件' + NL + '    丙: { check: 行内条件 }' }], 10);
+check('⑤ 三种写法混在一张卡里全部抽到', rk5.length === 3 && rk5.map((x) => x.path).join(',') === 'A.甲,A.乙,A.丙', rk5);
+// ⑥ 「为什么没有规则」分类
+check('分类：有 check 却没抽到 → check-unparsed', classifyNoRules([{ content: 'check: 条件' }], {}) === 'check-unparsed');
+check('分类：命令式规则', classifyNoRules([{ content: '用 _.set(path, new) 修改' }], {}) === 'command');
+check('分类：只有 paths 白名单', classifyNoRules([{ content: 'paths:' + NL + '  /a/b' }], {}) === 'paths');
+check('分类：只有变量结构', classifyNoRules([{ content: '变量结构:' + NL + '  世界:' }], {}) === 'structure');
+check('分类：规则写成散文', classifyNoRules([{ comment: '[mvu_update]变量更新规则', content: '变量更新规则: 在回复最后根据剧情判断' + '是否需要更新，随剧情自然变化。'.repeat(20) }], {}) === 'prose');
+check('分类：规则在 schema 脚本里', classifyNoRules([], { tavern_helper: { scripts: [{ content: 'registerMvuSchema(z.object({ 世界: z.object({}) }))' }] } }) === 'schema');
+check('分类：世界书里根本没有规则', classifyNoRules([], {}) === 'none');
+// ⑦ 体检：只有「有数据块但抽不到规则」的卡才带 ruleStyle
+const proseRule = { comment: '[mvu_update]变量更新规则', content: '变量更新规则: 在回复最后根据剧情判断' + '是否需要更新，随剧情自然变化。'.repeat(20) };
+const scan27 = scanCardCompatibility([
+    { name: '有数据块无规则-散文', data: { extensions: Object.assign({}, scanDataNoRule.extensions), character_book: { entries: [proseRule] } } },
+    { name: '纯正文卡', data: { first_mes: '你好' } },
+    { name: '有规则', data: { extensions: Object.assign({}, scanDataNoRule.extensions), character_book: { entries: [rule25] } } },
+]);
+check('⑦ 只有 no-rules 的卡带 ruleStyle', scan27.rows[0].verdict === 'no-rules' && scan27.rows[0].ruleStyle === 'prose' && !scan27.rows[1].ruleStyle && !scan27.rows[2].ruleStyle, scan27.rows.map((x) => x.verdict + ':' + x.ruleStyle));
+check('⑦ 总览带无规则原因直方图', scan27.summary.noRulesStyles.prose === 1, scan27.summary.noRulesStyles);
+// ⑧ 上限放开：规则多的卡不再只算前 10 条
+const many27 = '变量更新规则:' + NL + Array.from({ length: 25 }).map((z, i) => '  G:' + NL + '    F' + i + ':' + NL + '      check: 条件' + i).join(NL);
+const manyOut = extractRequiredFields([{ comment: '变量更新规则', content: many27 }], 200);
+check('⑧ 25 条规则全部抽出（上限已放开到 200）', manyOut.length === 25, manyOut.length);
+check('⑨ 面板显示无规则原因', idxSrc.indexOf('scanNoRules') > 0 && idxSrc.indexOf('rs_prose') > 0 && idxSrc.indexOf('noRulesStyles') > 0 && idxSrc.indexOf('rsLabel(r.ruleStyle)') > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

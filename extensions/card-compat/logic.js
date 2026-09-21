@@ -797,35 +797,77 @@ export function extractRequiredFields(entries, limit = 10) {
         }
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
-            if (!r.isKey || !/^check$/i.test(r.key)) continue;
-            let ownIdx = -1;
-            for (let j = i - 1; j >= 0; j--) {
-                const p = rows[j];
-                if (!p.isKey || p.indent >= r.indent) continue;
-                if (META.test(p.key) || WRAP.test(p.key)) continue;
-                ownIdx = j; break;
+            if (!r.isKey) continue;
+            // 0.7.0：check 的三种写法都要认（①②以前会漏，实测「蛊」「欲妈群」因此被判「抽不到规则」）——
+            //   ① check:              + 缩进列表（一直支持）
+            //   ② check: 条件文本       同行直接给条件
+            //   ③ 字段: { …, check: 条件文本 }   整个字段写成行内对象
+            const isCheckRow = /^check$/i.test(r.key);
+            const isInlineObj = !isCheckRow && /[{,，]\s*check\s*[:：]/i.test(r.rest || "");
+            if (!isCheckRow && !isInlineObj) continue;
+            let ownIdx = i;
+            if (isCheckRow) {
+                ownIdx = -1;
+                for (let j = i - 1; j >= 0; j--) {
+                    const p = rows[j];
+                    if (!p.isKey || p.indent >= r.indent) continue;
+                    if (META.test(p.key) || WRAP.test(p.key)) continue;
+                    ownIdx = j; break;
+                }
             }
             if (ownIdx < 0) continue;
             const cond = [];
-            for (let k = i + 1; k < rows.length; k++) {
-                const p = rows[k];
-                if (p.indent <= r.indent) break;
-                if (p.isKey && !/^[-*]/.test(p.raw)) break;
-                const item = p.raw.replace(/^[-*]\s*/, '').replace(/^[：:]\s*/, '').trim();
-                if (item) cond.push(item);
+            if (isCheckRow) {
+                // ② 同行条件（竖线/大于号是块标量标记，条件在下面的缩进行里）
+                if (r.rest && !/^[|>][-+]?\s*$/.test(r.rest)) cond.push(r.rest);
+                for (let k = i + 1; k < rows.length; k++) {
+                    const p = rows[k];
+                    if (p.indent <= r.indent) break;
+                    if (p.isKey && !/^[-*]/.test(p.raw)) break;
+                    const item = p.raw.replace(/^[-*]\s*/, "").replace(/^[：:]\s*/, "").trim();
+                    if (item) cond.push(item);
+                }
+            } else {
+                // ③ 行内对象：取 check 后面到逗号或右花括号为止
+                const m = String(r.rest).match(/[{,，]\s*check\s*[:：]\s*([^,}，]*)/i);
+                const text = m && m[1] ? m[1].trim() : "";
+                if (text) cond.push(text);
             }
-            const path = ancestors(rows, ownIdx).join('.');
+            const path = ancestors(rows, ownIdx).join(".");
             if (!path || !cond.length) continue;
-            const dedup = path + '|' + cond.join(' / ');
+            const dedup = path + "|" + cond.join(" / ");
             if (seen.has(dedup)) continue;
             seen.add(dedup);
-            out.push({ path: path, check: cond.join(' / ') });
+            out.push({ path: path, check: cond.join(" / ") });
         }
     }
     const expanded = [];
     for (const f of out) for (const q of expandTemplateGroups([f.path])) expanded.push({ path: q, check: f.check });
     return expanded.slice(0, limit);
 }
+/**
+ * 0.7.0：规则条目「为什么抽不出必更字段」—— 只归类，不猜不编。
+ * 体检里给 no-rules 的卡标出原因，用户一眼能看出是没写规则、还是写法没认出来。
+ * @returns {"check-unparsed"|"command"|"paths"|"structure"|"schema"|"prose"|"none"}
+ */
+export function classifyNoRules(entries, ext) {
+    const text = (entries || []).map((e) => String(e?.content || "")).join("\n");
+    // 行级 check: 或行内对象里的 , check:
+    if (/^\s*check\s*[:：]/im.test(text) || /[{,，]\s*check\s*[:：]/i.test(text)) return "check-unparsed";
+    if (/_\s*\.\s*(set|assign|remove|add)\s*\(/.test(text)) return "command";
+    if (/^\s*paths\s*[:：]/im.test(text)) return "paths";
+    if (/^\s*(变量结构|变量列表|变量说明)\s*[:：]/m.test(text)) return "structure";
+    // 规则条目本身就写成散文（有「更新/变动」但没有任何机器可读标记）→ prose 比 schema 更贴近事实
+    const ruleText = (entries || []).filter((e) => /变量更新规则|变量规则|更新规则|变量结构|\[mvu_update\]/i.test(String(e?.content || "") + " " + String(e?.comment || ""))).map((e) => String(e?.content || "")).join("\n");
+    // 规则条目本身写成散文 → prose（规则在那儿，只是没有机器可读标记）
+    if (/更新|变动|变化|规则/.test(ruleText) && ruleText.replace(/\s+/g, "").length > 200) return "prose";
+    const scripts = ((ext && ext.tavern_helper && ext.tavern_helper.scripts) || []).map((s) => String(s.content || "")).join("\n");
+    if (/registerMvuSchema|z\s*\.\s*object\s*\(/.test(scripts)) return "schema";
+    // 规则条目都没单独命名，但整本世界书里到处都是「规则/更新」的散文
+    if (/更新|变动|变化|规则/.test(text) && text.replace(/\s+/g, "").length > 200) return "prose";
+    return text.trim() ? "other" : "none";
+}
+
 /**
  * 统计模型写出的 <UpdateVariable> 块覆盖了哪些必更字段
  * @returns {{total:number, covered:string[], missing:string[]}}
@@ -1058,7 +1100,7 @@ export function scanCardCompatibility(cards) {
             const ext = d.extensions || {};
             const prof = buildProfile(ext);
             const entries = (d.character_book && d.character_book.entries) || [];
-            const required = extractRequiredFields(entries);
+            const required = extractRequiredFields(entries, 200);
             const varSpec = extractVarSpec(entries);
             const allowed = extractAllowedPaths(entries, { limit: 400 });
             const proto = detectVariableProtocol({ text: cardTextOf(ch), varSpec: varSpec, dataTags: prof.dataTags, blockTags: [...prof.dataTags, ...prof.anchors] });
@@ -1086,6 +1128,8 @@ export function scanCardCompatibility(cards) {
                 helper: prof.helperCount || 0,
                 book: entries.length,
                 required: required.length,
+                // 0.7.0：没抽到规则时标出「为什么」——是没写规则，还是写法没认出来
+                ruleStyle: (!required.length && hasData) ? classifyNoRules(entries, ext) : "",
                 allowedPaths: allowed.paths.length,
                 varSpec: String(varSpec || '').length > 40,
                 bars: (views.bars || []).length,
@@ -1119,6 +1163,7 @@ export function scanCardCompatibility(cards) {
         dynBars: by((r) => r.bars > 0),
         dynBarsDynamic: by((r) => r.bars > 0 && r.dynBar),
         panels: by((r) => r.panels > 0),
+        noRulesStyles: rows.reduce((m, r) => { if (r.ruleStyle) m[r.ruleStyle] = (m[r.ruleStyle] || 0) + 1; return m; }, {}),
     };
     return { summary: summary, rows: rows };
 }
