@@ -52,6 +52,7 @@ npm run build:portable  # 便携版
 
 - 交付机制（内置 / 在线 / ST 本体更新 / 换机 / 别人装套壳怎么拿到）：[`docs/extension-delivery.md`](docs/extension-delivery.md)
 - 两个扩展的完善方向与优先级：[`docs/extension-roadmap.md`](docs/extension-roadmap.md)
+- 剧情推进器 v0.2 完整方案（推进目标 / 选项推进 / 连推 / 与 card-compat 联动）：[`docs/plot-pilot-plan.md`](docs/plot-pilot-plan.md)
 
 ### 版本号规则
 

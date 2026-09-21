@@ -1458,6 +1458,104 @@ document.getElementById('t-ext-auto')?.addEventListener('change', async (e) => {
         if (cb) cb.checked = on !== false;
     } catch (_) {}
 })();
+// ── 扩展管理器（v2.0.4）────────────────────────────────────────────
+function fmtBytes(n) {
+    const b = Number(n) || 0;
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1024 / 1024).toFixed(2) + ' MB';
+}
+function extmSrcTag(row) {
+    if (row.managed) return row.source === 'remote' ? '在线安装' : '套壳内置';
+    if (row.source === 'bundled-norecord') return '内置（无部署记录）';
+    return '用户自装';
+}
+function extmRowHtml(row) {
+    const dot = row.hasManifest ? '' : ' <span class="tool-note">（没有 manifest.json，可能不是扩展）</span>';
+    const tags = [extmSrcTag(row)];
+    if (row.version) tags.push('v' + row.version);
+    if (row.updateAvailable) tags.push('<b style="color:#7fd1a0">可更新到 v' + escapeHtml(row.bundledVersion) + '</b>');
+    if (row.dirty === true) tags.push('<b style="color:#ffb86b">本地已改动</b>');
+    if (!row.managed && row.source === 'user') tags.push('不受套壳管理');
+    const id = escapeHtml(row.id);
+    const acts = [];
+    acts.push('<button class="btn-secondary btn-xs" data-extm-act="reinstall" data-extm-id="' + id + '">' + (row.updateAvailable ? '更新/重装' : '强制重装') + '</button>');
+    acts.push('<button class="btn-secondary btn-xs" data-extm-act="open" data-extm-id="' + id + '">打开目录</button>');
+    if (row.managed) acts.push('<button class="btn-secondary btn-xs" data-extm-act="reset-settings" data-extm-id="' + id + '">重置设置</button>');
+    acts.push('<button class="btn-danger btn-xs" data-extm-act="uninstall" data-extm-id="' + id + '">卸载</button>');
+    acts.push('<button class="btn-danger btn-xs" data-extm-act="purge" data-extm-id="' + id + '">彻底删除</button>');
+    return '<div class="tool-row" style="align-items:flex-start;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)">' +
+        '<div><b>' + escapeHtml(row.displayName) + '</b> <span class="tool-note">' + id + '</span>' + dot + '</div>' +
+        '<div class="tool-note">' + tags.join(' ｜ ') + ' ｜ ' + row.files + ' 个文件 ' + fmtBytes(row.bytes) + (row.installedAt ? ' ｜ 部署于 ' + escapeHtml(row.installedAt) : '') + '</div>' +
+        '<div class="tool-actions">' + acts.join('') + '</div>' +
+        '</div>';
+}
+async function extManageRefresh() {
+    const note = document.getElementById('t-extm-note');
+    const box = document.getElementById('t-extm-list');
+    const trashBox = document.getElementById('t-extm-trash');
+    setNote(note, '读取中…');
+    try {
+        const r = await TL()?.extManage?.({ action: 'list' });
+        if (!r || r.ok === false) { setNote(note, '不可用：' + ((r && r.reason) || '请看终端')); return; }
+        const rows = r.rows || [];
+        setNote(note, rows.length + ' 个扩展' + (r.extRoot ? '（' + r.extRoot + '）' : ''));
+        if (box) {
+            box.style.display = '';
+            setDetailHtml(box, rows.length ? rows.map(extmRowHtml).join('') : '<div class="tool-note">没有发现扩展目录</div>');
+        }
+        const trash = r.trash || [];
+        if (trashBox) {
+            if (trash.length) {
+                trashBox.style.display = '';
+                setDetailHtml(trashBox, '<div><b>回收站</b>（' + trash.length + ' 项，点还原可放回扩展目录）</div>' + trash.map((t) =>
+                    '<div class="tool-row"><span>' + escapeHtml(t.id) + '</span><span class="tool-note">' + escapeHtml(t.stamp || '') + ' ｜ ' + t.files + ' 个文件 ' + fmtBytes(t.bytes) + '</span>' +
+                    '<button class="btn-secondary btn-xs" data-extm-act="trash-restore" data-extm-name="' + escapeHtml(t.name) + '">还原</button></div>').join(''));
+            } else { trashBox.style.display = 'none'; }
+        }
+    } catch (e) { setNote(note, '失败：' + e.message); }
+}
+function extmConfirm(msg) { try { return window.confirm(msg); } catch (_) { return false; } }
+async function extManageAct(act, id, name) {
+    const note = document.getElementById('t-extm-note');
+    try {
+        if (act === 'reinstall') {
+            setNote(note, '重装 ' + id + '…');
+            const r = await TL()?.extManage?.({ action: 'reinstall', id });
+            setNote(note, (r && r.ok ? '已重装：' : '重装失败：') + ((r && (r.summary || r.reason)) || ''));
+        } else if (act === 'uninstall') {
+            if (!extmConfirm('卸载 ' + id + '？\n\n目录会移到扩展目录下的 .shell-trash/ 回收站，可随时还原（不是真的删除）。')) return;
+            const r = await TL()?.extManage?.({ action: 'uninstall', id });
+            setNote(note, r && r.ok ? ('已移入回收站：' + id) : ('卸载失败：' + ((r && r.reason) || '')));
+        } else if (act === 'purge') {
+            if (!extmConfirm('彻底删除 ' + id + '？\n\n这会真正删除磁盘文件，无法还原！')) return;
+            const r = await TL()?.extManage?.({ action: 'uninstall', id, purge: true });
+            setNote(note, r && r.ok ? ('已彻底删除：' + id) : ('删除失败：' + ((r && r.reason) || '')));
+        } else if (act === 'reset-settings') {
+            if (!extmConfirm('重置 ' + id + ' 的界面设置？\n\n会先备份 settings.json，再删掉该扩展保存的设置项。ST 正在运行时可能被覆写回去，建议先关闭 ST。')) return;
+            const r = await TL()?.extManage?.({ action: 'reset-settings', id });
+            setNote(note, r && r.ok ? (r.had ? ('设置已重置，备份：' + (r.backup || '')) : (r.reason || '本来就没有设置')) : ('重置失败：' + ((r && r.reason) || '')));
+        } else if (act === 'open') {
+            await TL()?.extManage?.({ action: 'open', id });
+            setNote(note, '已在文件管理器打开');
+        } else if (act === 'trash-restore') {
+            const r = await TL()?.extManage?.({ action: 'trash-restore', name });
+            setNote(note, r && r.ok ? ('已还原：' + r.id) : ('还原失败：' + ((r && r.reason) || '')));
+        }
+    } catch (e) { setNote(note, '失败：' + e.message); }
+    await extManageRefresh();
+}
+document.getElementById('t-extm-refresh')?.addEventListener('click', extManageRefresh);
+(function () {
+    const onClick = (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('[data-extm-act]') : null;
+        if (!btn) return;
+        e.preventDefault();
+        extManageAct(btn.getAttribute('data-extm-act'), btn.getAttribute('data-extm-id') || '', btn.getAttribute('data-extm-name') || '');
+    };
+    document.getElementById('t-extm-list')?.addEventListener('click', onClick);
+    document.getElementById('t-extm-trash')?.addEventListener('click', onClick);
+})();
 async function renderGenericStatusBar() {
     setDiag('渲染中…');
     try {

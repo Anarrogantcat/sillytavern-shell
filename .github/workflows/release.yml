@@ -52,11 +52,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error "回提交失败（检查仓库 secret GH_TOKEN 是否有 contents:write）"; exit 1 }
           Write-Host "已把重建后的清单推回 main"
 
-      - name: 扩展夹具（部署 + 在线更新）
+      - name: 扩展夹具（部署 + 在线更新 + 管理器 + 逻辑层）
         run: |
           node scripts/ext-index.mjs --check
           node scripts/ext-deploy-test.mjs
           node scripts/ext-remote-test.mjs
+          node scripts/ext-manage-test.mjs
+          node scripts/compat-logic-test.mjs
+          node scripts/plot-pilot-test.mjs
 
       - name: Build Lite and publish
         env:

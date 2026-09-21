@@ -1,13 +1,14 @@
-// index.js — 卡兼容助手（ST 扩展）v0.1.1
-// 三件事：① 锚点守护 ② 数据块守护（绝不改数据内容）③ 消息区字号
-// v0.1.1 修复：流式模式下 MESSAGE_RECEIVED 不会触发（ST 用 fromStreaming 跳过），
-//             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
+// index.js — 卡兼容助手（ST 扩展）v0.2.8
+// ① 锚点守护 ② 数据块守护（绝不改数据内容）③ 消息区字号 ④ 结构块 YAML 修复/严格校验
+// ⑤ 未声明块清理 ⑥ 变量块兜底（静默补一次 + 写回 MVU）⑦ 路径白名单 / 多块记账 / 覆盖度趋势 ⑧ MVU 联动
+// 历史：v0.2.7 的「未声明块清理」被误插进 strictCheckMessage（那里没有 res，一进入就抛错并被吞掉）
+//       → 本版把它放回 guardMessage 的入口，并补上 P1/P2/P3 全部路线图条目。
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.7';
+const VERSION = '0.2.8';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -27,27 +28,126 @@ const DEFAULTS = {
     stripUndeclared: true, // 清理「本卡没声明也没人渲染」的结构块（实测：模型把世界书原文回显成 <world_setting>）
     autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
     autoFixVarsMaxChars: 6000,
+    pathWarn: true,        // 补丁路径白名单校验（只提示，不改写）
+    mvuVerify: true,       // 用 MVU 的 parseMessage 试解析本轮变量块（能提前发现「块在但解析不了」）
+    toastOnFail: true,     // 连续多楼缺变量块 → 弹一次气泡
+    profileTtlMs: 60000,   // 角色卡档案缓存时长（P1 ④）
+    lang: 'auto',          // 面板语言 auto|zh|en（P3 ⑩）
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
 let lastCoverage = null;
+let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
+const covHistory = [];            // P2 ⑥ 覆盖度历史（最多 40 条）
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
+let hardFailStreak = 0;           // P1 ③ 连续缺变量块的楼层数
+let lastToastAt = 0;
+let mvuExtraLogged = false;
+
+/* ── P3 ⑩ 面板双语（zh/en），auto 跟随浏览器语言 ── */
+const STRINGS = {
+    zh: {
+        title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
+        secMvu: 'MVU 联动', secUi: '界面与诊断', enabled: '启用守护',
+        injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
+        repair: '未闭合自动补结束标签', stale: '数据疑似未更新时提示',
+        fixQuotes: '修结构块里的引号错配（英文引号开头 + 中文引号结尾）',
+        quoteScalars: '结构块里含「: 」「 #」却没加引号的值自动加引号',
+        yamlStrict: '结构块严格 YAML 校验（用扩展自带的 js-yaml，失败报警）',
+        stripUndeclared: '清理本卡未声明的块（模型回显世界书原文 / 自创标签）',
+        autoFixVars: '模型漏输出变量块时自动补一次（静默生成，只补补丁）',
+        mvuVerify: '校验 MVU 能否解析本轮变量块', pathWarn: '校验补丁路径是否在本卡规则内（只提示，不改写）',
+        toastOnFail: '连续多楼缺变量块时弹气泡提醒', btnVarfix: '立即补当前楼层变量块',
+        btnYaml: '严格校验当前楼层', btnMvu: '用 MVU 解析并写回当前层', btnMvuTest: '测试 MVU 连接',
+        btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
+        fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限',
+        lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', colField: '卡要求的字段', colDone: '本轮是否更新',
+        wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
+        covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
+        mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
+        mvuExtraOff: 'MVU「额外模型解析」未开启或无法检测。', mvuUnparsed: 'MVU 解析本轮变量块失败：',
+        mvuParsed: 'MVU 能解析本轮变量块', toastNoVars: '已连续 {n} 楼没有变量更新块，状态栏可能不会更新',
+        floorOff: '关闭', mvuWriteOk: '已写回 MVU 变量', mvuWriteFail: '写回失败：', refreshOK: '已重新读取角色卡数据',
+    },
+    en: {
+        title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
+        secMvu: 'MVU integration', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
+        injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
+        repair: 'Auto-close unclosed tags', stale: 'Warn when data looks unchanged',
+        fixQuotes: 'Fix mismatched quotes in blocks (ASCII opener + CJK closer)',
+        quoteScalars: 'Quote plain values containing colon-space or hash',
+        yamlStrict: 'Strict YAML check of blocks (bundled js-yaml)',
+        stripUndeclared: 'Strip blocks this card never declared (lorebook echo / invented tags)',
+        autoFixVars: 'Silently regenerate a missing variable block once',
+        mvuVerify: 'Check MVU can parse this reply variable block', pathWarn: 'Check patch paths against this card rules (report only)',
+        toastOnFail: 'Toast when several replies in a row miss the variable block', btnVarfix: 'Fix variable block for current reply',
+        btnYaml: 'Strict-check current reply', btnMvu: 'Parse with MVU and write back', btnMvuTest: 'Test MVU connection',
+        btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
+        fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size',
+        lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', colField: 'Required field', colDone: 'Updated this reply',
+        wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
+        covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
+        mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
+        mvuExtraOff: 'MVU extra model parsing is off or undetectable.', mvuUnparsed: 'MVU failed to parse this reply variable block: ',
+        mvuParsed: 'MVU parsed this reply variable block', toastNoVars: '{n} replies in a row have no variable block; the status bar may not update',
+        floorOff: 'off', mvuWriteOk: 'written back to MVU', mvuWriteFail: 'write back failed: ', refreshOK: 'character card data reloaded',
+    },
+};
+function langOf() {
+    try {
+        const s = settings();
+        if (s && s.lang === 'en') return 'en';
+        if (s && s.lang === 'zh') return 'zh';
+        const l = (typeof navigator !== 'undefined' && navigator.language) || '';
+        if (/^en/i.test(l)) return 'en';
+    } catch (_) {}
+    return 'zh';
+}
+function T(key, vars) {
+    const pack = STRINGS[langOf()] || STRINGS.zh;
+    let v = pack[key];
+    if (v === undefined) v = STRINGS.zh[key];
+    if (v === undefined) v = key;
+    if (vars) v = String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined ? m : String(vars[k])));
+    return v;
+}
+function escHtml(x) {
+    return String(x == null ? '' : x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c));
+}
+function toast(msg, type) {
+    try {
+        const Tt = (typeof window !== 'undefined' && window.toastr) ? window.toastr : null;
+        if (Tt && typeof Tt[type || 'info'] === 'function') { Tt[type || 'info'](msg, 'Card Compat'); stats.toasts++; renderStats(); return true; }
+    } catch (_) {}
+    console.warn('[card-compat] ' + msg);
+    return false;
+}
 
 const settings = () => extension_settings[NAME];
+
+/* ── P1 ④ 角色卡档案缓存：同一角色 60s 内只解析一次（世界书很大时每次解析都卡） ── */
+let profCache = { key: '', prof: null, at: 0 };
+function invalidateProfile() { profCache = { key: '', prof: null, at: 0 }; }
 function profileOf() {
     try {
         const ctx = getContext();
         const chid = ctx?.characterId ?? ctx?.this_chid;
         const ch = ctx?.characters?.[chid];
+        const key = String(chid) + '|' + String(ch?.avatar || ch?.name || '');
+        const ttl = Number(settings()?.profileTtlMs) || 60000;
+        if (profCache.prof && profCache.key === key && (Date.now() - profCache.at) < ttl) return profCache.prof;
         const ext = ch?.data?.extensions || ch?.extensions || {};
         const prof = buildProfile(ext);
-        // 变量块格式：优先取角色卡的变量更新规则条目（模型照抄成功率最高）
         try {
             const book = ch?.data?.character_book || ch?.character_book;
             const entries = book?.entries || [];
             prof.varSpec = extractVarSpec(entries);
             prof.required = extractRequiredFields(entries);
-        } catch (_) { prof.varSpec = ''; prof.required = []; }
+            prof.allowed = extractAllowedPaths(entries);      // P2 ⑤ 路径白名单
+        } catch (_) { prof.varSpec = ''; prof.required = []; prof.allowed = { paths: [], prefixes: [], wildcards: [], all: [] }; }
+        profCache = { key: key, prof: prof, at: Date.now() };
         return prof;
     } catch (_) { return buildProfile({}); }
 }
@@ -56,12 +156,12 @@ const PROMPT_KEY = 'card-compat-tail';
 function updatePromptInjection() {
     try {
         const s = settings();
-        if (!s?.enabled || !s.injectPrompt) { setExtensionPrompt(PROMPT_KEY, "", extension_prompt_types.NONE, 0); return; }
+        if (!s?.enabled || !s.injectPrompt) { setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.NONE, 0); return; }
         const prof = profileOf();
         const text = buildTailReminder(prof, { varSpec: prof.varSpec || '', required: prof.required || [] });
         setExtensionPrompt(PROMPT_KEY, text, text ? extension_prompt_types.IN_CHAT : extension_prompt_types.NONE, 0, false, extension_prompt_roles.SYSTEM);
         if (settings().logActions) console.debug('[card-compat] 注入提醒长度=' + text.length + ' 变量格式=' + ((prof.varSpec || '').length) + ' 字符');
-    } catch (e) { console.error("[card-compat] prompt inject failed", e); }
+    } catch (e) { console.error('[card-compat] prompt inject failed', e); }
 }
 /** 懒加载扩展自带的 js-yaml（页面里已有 window.jsyaml 就直接用，避免重复加载） */
 const VENDOR_YAML_URL = (() => { try { return new URL('./assets/js-yaml.min.js', import.meta.url).href; } catch (_) { return 'assets/js-yaml.min.js'; } })();
@@ -92,28 +192,12 @@ async function strictCheckMessage(messageId, opts = {}) {
         if (!s || !s.enabled || !m || typeof m.mes !== 'string') return null;
         if (!s.yamlStrict && !opts.force) return null;
         const profile = profileOf();
-    // ① 先清理「本卡未声明、也没人渲染」的块（模型回显世界书 / 自创标签）：它们会以原文裸露在聊天里
-    if (s.stripUndeclared) {
-        const declared = new Set([...(profile.anchors || []), ...(profile.dataTags || []), ...(profile.hideTargets || []), ...(profile.strippers || []), ...(profile.rawTags || [])]);
-        const sr = stripUndeclaredBlocks(res.text, { declared, keep: KEEP_BLOCKS });
-        if (sr.removed.length) {
-            res.text = sr.text;
-            stats.blocksStripped += sr.removed.length;
-            log("undeclared-block-stripped", sr.removed.map((r) => r.tag).join(","), "共 " + sr.removed.reduce((a, b) => a + b.chars, 0) + " 字（本卡未声明，会以原文裸露）");
-            changed = true;
-        }
-        if (sr.unclosed.length) {
-            stats.unclosedBlocks += sr.unclosed.length;
-            log("unclosed-block", sr.unclosed.join(","), "只有开标签，未自动删（怕误伤半截 HTML）");
-        }
-    }
-
         const tags = [...(profile.dataTags || []), ...(profile.anchors || [])];
         if (!tags.length) return null;
         if (!tags.some((t) => m.mes.includes('<' + t))) return null;   // 没结构块就不去加载库
         if (strictChecked.get(messageId) === m.mes && !opts.force) return null;
         const lib = await loadYamlLib();
-        if (!lib) { stats.yamlStrictSkipped++; log('yaml-strict-skipped', '', 'js-yaml 不可用（vendor 加载失败），已跳过严格校验'); renderStats(); return null; }
+        if (!lib) { stats.yamlStrictSkipped++; log('yaml-strict-skipped', '', 'js-yaml 不可用（assets 加载失败），已跳过严格校验'); renderStats(); return null; }
         const r = strictYamlCheck(m.mes, tags, lib);
         strictChecked.set(messageId, m.mes);
         if (!r.checked) return null;
@@ -129,18 +213,48 @@ async function strictCheckMessage(messageId, opts = {}) {
     } catch (e) { console.warn('[card-compat] strictCheckMessage: ' + ((e && e.message) || e)); return null; }
 }
 
-/* ── 变量块兜底（v0.2.7）：模型没输出 <UpdateVariable> 时，用一次「只补补丁」的静默生成补上 ── */
-const varFixTriedIds = new Set();
-let varFixFailStreak = 0;
-let varFixPausedUntil = 0;
-
-/** MVU 的公开 API 在宿主窗口上（楼层 iframe 是通过 parent 找的，同理） */
+/* ── MVU 联动（P3 ⑨）：探测 API、试解析、检测「额外模型解析」以免双写 ── */
 function mvuApi() {
     try { if (typeof window !== 'undefined' && window.Mvu) return window.Mvu; } catch (_) {}
     try { if (typeof window !== 'undefined' && window.parent && window.parent.Mvu) return window.parent.Mvu; } catch (_) {}
     return null;
 }
-
+function mvuInfo() {
+    const M = mvuApi();
+    if (!M) return { api: false };
+    return {
+        api: true,
+        version: String(M.version || M.VERSION || ''),
+        parse: typeof M.parseMessage === 'function',
+        write: typeof M.replaceCurrentMvuData === 'function' || typeof M.replaceMvuData === 'function',
+        read: typeof M.getCurrentMvuData === 'function' || typeof M.getMvuData === 'function',
+    };
+}
+/** 读 MVU 自己的设置：额外模型解析开着的话，本扩展的自动补变量让位，避免同一轮被解析两次 */
+function mvuExtraParseEnabled() {
+    try {
+        const ctx = getContext();
+        const es = (ctx && ctx.extensionSettings) || extension_settings || {};
+        const pools = [es.mvu_settings, es.MVU, es.MagVarUpdate, es.mag_var_update, es['mag-var-update']];
+        for (const pool of pools) {
+            if (!pool || typeof pool !== 'object') continue;
+            let v = pool['额外模型解析'];
+            if (v === undefined) v = pool.extra_model_parse;
+            if (v === undefined) v = pool.extraModelParse;
+            if (v === undefined && pool['额外模型解析配置'] && typeof pool['额外模型解析配置'] === 'object') v = pool['额外模型解析配置'].enabled;
+            if (typeof v === 'boolean') return v;
+            if (typeof v === 'string') return /^(true|on|开|启用|yes)$/i.test(v.trim());
+        }
+    } catch (_) {}
+    return null;
+}
+/** 让 MVU 真解析一次（只读试算：parseMessage 接收当前数据副本、返回新数据，不改宿主） */
+async function mvuCanParse(blockText) {
+    const M = mvuApi();
+    if (!M || typeof M.parseMessage !== 'function') return { checked: false, reason: 'no-api' };
+    try { await M.parseMessage(blockText, {}); return { checked: true, ok: true }; }
+    catch (e) { return { checked: true, ok: false, reason: String((e && e.message) || e).slice(0, 160) }; }
+}
 /** 把补出来的补丁真正写回 MVU（否则只追加文本，状态栏不会更新） */
 async function applyPatchToMvu(blockText, messageId) {
     const M = mvuApi();
@@ -155,10 +269,47 @@ async function applyPatchToMvu(blockText, messageId) {
         return { ok: true };
     } catch (e) { return { ok: false, reason: '写入 MVU 失败: ' + String((e && e.message) || e) }; }
 }
+/** 找出某楼层里第一个变量块文本（供「写回 MVU」按钮用） */
+function blockOfMessage(messageId) {
+    try { const m = chat && chat[messageId]; if (!m || typeof m.mes !== 'string') return ''; const ex = extractUpdateBlock(m.mes); return ex ? ex.block : ''; } catch (_) { return ''; }
+}
+/** P1 ①：MVU 写回兜底 —— 若 API 不在，明确告诉用户点 MVU 面板的「重新处理变量」 */
+async function writeBackMvu(messageId, quiet) {
+    const block = blockOfMessage(messageId);
+    if (!block) { if (!quiet) toast(langOf() === 'en' ? 'No variable block in this reply' : '该楼层没有变量块', 'warning'); return { ok: false, reason: 'no-block' }; }
+    const r = await applyPatchToMvu(block, messageId);
+    if (r.ok) { log('mvu-writeback', '第' + messageId + '层', '已写回 MVU 变量'); if (!quiet) toast(T('mvuWriteOk'), 'success'); }
+    else { log('mvu-writeback-fail', '第' + messageId + '层', r.reason + '；可在 MVU 面板点「重新处理变量」'); if (!quiet) toast(T('mvuWriteFail') + r.reason, 'warning'); }
+    renderStats();
+    return r;
+}
+/** P2 ⑨ / P1 ③：MVU 能否解析本轮变量块（提前发现「块在但解析不了」） */
+async function mvuVerifyMessage(messageId) {
+    try {
+        const s = settings();
+        if (!s || !s.enabled || !s.mvuVerify) return null;
+        const m = chat && chat[messageId];
+        if (!m || m.is_user || typeof m.mes !== 'string') return null;
+        const ex = extractUpdateBlock(m.mes);
+        if (!ex) return null;
+        const r = await mvuCanParse(ex.block);
+        if (!r.checked) return null;
+        if (r.ok) { stats.mvuParseOk++; if (s.logActions) console.debug('[card-compat] MVU 试解析通过 #' + messageId); }
+        else { stats.mvuParseFail++; log('mvu-parse-fail', '第' + messageId + '层', T('mvuUnparsed') + r.reason); }
+        renderStats();
+        return r;
+    } catch (_) { return null; }
+}
+
+/* ── 变量块兜底（v0.2.8）：模型没输出 <UpdateVariable> 时，用一次「只补补丁」的静默生成补上 ── */
+const varFixTriedIds = new Set();
+let varFixFailStreak = 0;
+let varFixPausedUntil = 0;
 
 /**
  * 兜底主流程：卡声明了变量块 + 该层缺块 + 开关打开 → 用一段「只输出补丁」的短提示词静默生成一次，
  * 校验通过才写盘；连续失败 2 次自动暂停 10 分钟，避免刷 API。
+ * MVU 自己的「额外模型解析」开着时直接让位（同一轮解析两次会互相覆盖）。
  */
 async function maybeFixVars(messageId) {
     try {
@@ -166,6 +317,11 @@ async function maybeFixVars(messageId) {
         if (!s || !s.enabled || !s.autoFixVars) return null;
         if (messageId == null || varFixTriedIds.has(messageId)) return null;
         if (Date.now() < varFixPausedUntil) return null;
+        const extra = mvuExtraParseEnabled();
+        if (extra === true) {
+            if (!mvuExtraLogged) { mvuExtraLogged = true; log('mvu-extra-parse', '', T('mvuExtraOn')); }
+            return null;
+        }
         const profile = profileOf();
         const dataTags = profile.dataTags || [];
         if (!dataTags.length) return null;                       // 只对声明了变量块的卡生效
@@ -196,6 +352,9 @@ async function maybeFixVars(messageId) {
                 if (applied.ok) { stats.varFixApplied++; log('varfix-applied', '第' + messageId + '层', '已写回 MVU 变量'); }
                 else log('varfix-not-applied', '第' + messageId + '层', applied.reason);
                 varFixFailStreak = 0;
+                setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.NONE, 0);
+                updatePromptInjection();
+                setTimeout(() => { try { guardMessage(messageId); } catch (_) {} }, 600);
                 renderStats();
                 return { ok: true, ops: v.ops, applied: applied.ok };
             }
@@ -204,6 +363,7 @@ async function maybeFixVars(messageId) {
         stats.varFixFailed++;
         varFixFailStreak++;
         if (varFixFailStreak >= 2) { varFixPausedUntil = Date.now() + 10 * 60 * 1000; log('varfix-paused', '', '连续失败 2 次，暂停 10 分钟'); }
+        if (settings().toastOnFail) toast((langOf() === 'en' ? 'Auto variable fix failed twice, paused for 10 minutes' : '自动补变量连续失败 2 次，已暂停 10 分钟'), 'warning');
         renderStats();
         return { ok: false };
     } catch (e) {
@@ -214,7 +374,7 @@ async function maybeFixVars(messageId) {
 }
 
 function log(type, tag, extra) {
-    recent.unshift({ t: new Date().toLocaleTimeString(), type, tag, extra: extra || '' });
+    recent.unshift({ t: new Date().toLocaleTimeString(), type: type, tag: tag, extra: extra || '' });
     if (recent.length > 40) recent.pop();
     renderStats();
     if (settings()?.logActions) console.debug('[card-compat] ' + type + ' ' + tag + ' ' + (extra || ''));
@@ -224,10 +384,27 @@ function applyFont() {
     const css = [
         s.enabled && s.fontZoom && Number(s.fontZoom) !== 1 ? '.mes_text{zoom:' + s.fontZoom + ';}' : '',
         s.enabled && s.fontFloor ? '.mes_text :is(div,span,p,td,th,li,button,small,strong,em){font-size:max(' + s.fontFloor + 'px,1em) !important;}' : '',
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean).join(String.fromCharCode(10));
     let el = document.getElementById('cc-font-style');
     if (!el) { el = document.createElement('style'); el.id = 'cc-font-style'; document.head.appendChild(el); }
     el.textContent = css;
+}
+/** 覆盖度趋势（P2 ⑥）：把覆盖率画成方块条 */
+function coverBar(ratio) {
+    const blocks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    const i = Math.max(0, Math.min(blocks.length - 1, Math.round(ratio * (blocks.length - 1))));
+    return blocks[i];
+}
+function coverageTrendText() {
+    if (!covHistory.length) return '';
+    const tail = covHistory.slice(-16);
+    const bars = tail.map((h) => coverBar(h.total ? h.hit / h.total : 0)).join('');
+    const last10 = covHistory.slice(-10).filter((h) => h.total);
+    const prev10 = covHistory.slice(-20, -10).filter((h) => h.total);
+    const avg = (arr) => (arr.length ? Math.round(100 * arr.reduce((a, b) => a + (b.total ? b.hit / b.total : 0), 0) / arr.length) : null);
+    const a = avg(last10), b = avg(prev10);
+    const arrow = (a !== null && b !== null) ? (a > b ? ' ↑' : (a < b ? ' ↓' : ' →')) : '';
+    return bars + '  ' + (a === null ? '' : a + '%') + (b === null ? '' : ('（前 10 轮 ' + b + '%）')) + arrow;
 }
 /** 返回 true 表示文本被修改并已重渲染 */
 function guardMessage(messageId, { rerender = true } = {}) {
@@ -236,15 +413,36 @@ function guardMessage(messageId, { rerender = true } = {}) {
     const m = chat?.[messageId];
     if (!m || m.is_user || typeof m.mes !== 'string') return false;
     const profile = profileOf();
-    const res = guardText(m.mes, profile, s);
+    let base = m.mes;
     let changed = false;
+    // ① 先清理「本卡未声明、也没人渲染」的块（v0.2.7 误插进 strictCheckMessage，实际从未生效）
+    if (s.stripUndeclared) {
+        const declared = new Set([...(profile.anchors || []), ...(profile.dataTags || []), ...(profile.hideTargets || []), ...(profile.strippers || []), ...(profile.rawTags || [])]);
+        const sr = stripUndeclaredBlocks(base, { declared: declared, keep: KEEP_BLOCKS });
+        if (sr.removed.length) {
+            base = sr.text;
+            changed = true;
+            stats.blocksStripped += sr.removed.length;
+            log('undeclared-block-stripped', sr.removed.map((r) => r.tag).join(','), '共 ' + sr.removed.reduce((a, b) => a + b.chars, 0) + ' 字（本卡未声明，会以原文裸露）');
+        }
+        if (sr.unclosed.length) {
+            stats.unclosedBlocks += sr.unclosed.length;
+            log('unclosed-block', sr.unclosed.join(','), '只有开标签，未自动删（怕误伤半截 HTML）');
+        }
+    }
+    const res = guardText(base, profile, s);
     // 续写（Continue）会在同一条消息尾部追加，可能追加出第二个占位符 → 合并掉
     if (s.dedupeAnchor) {
         const dd = dedupeSelfClosingAnchors(res.text, profile.anchors || []);
         if (dd.removed.length) { res.text = dd.text; stats.duplicatesCollapsed += dd.removed.length; log('anchor-duplicate-merged', dd.removed.join(',')); changed = true; }
     }
+    // P2 ⑦ 多块记账：同一条回复里出现多个结构块（重复输出 / 正文一份结尾一份）
+    const bp = blockPresence(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])]);
+    if (bp.duplicates.length) {
+        stats.multiBlocks += bp.duplicates.length;
+        log('multi-block', bp.duplicates.map((b) => b.tag + '×' + (b.pairs + b.selfs)).join(','), '同一条回复里有多个同名结构块（只有最后一个通常生效）');
+    }
     // 结构块 YAML 预检 + 修复：见 logic.js guardBlockYaml（引号错配 / 未加引号却含「: 」「 #」的值）
-    // 实测背景：模型写 内心: "……。” → js-yaml 解析失败 → 卡前端显示「未解析到角色数据」
     const yg = guardBlockYaml(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])], {
         fixSmartQuotes: s.fixSmartQuotes !== false,
         quoteScalars: s.quoteScalars !== false,
@@ -278,7 +476,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         const s2 = settings();
         s2.runCount = (s2.runCount || 0) + 1;
         s2.lastRunAt = new Date().toISOString();
-        s2.lastRun = { id: messageId, changed, actions: res.actions.map(a => a.type + ':' + a.tag).slice(0, 8), card: (() => { try { const ctx = getContext(); return ctx?.characters?.[ctx?.characterId]?.name || ''; } catch (_) { return ''; } })() };
+        s2.lastRun = { id: messageId, changed: changed, actions: res.actions.map((a) => a.type + ':' + a.tag).slice(0, 8), card: (() => { try { const ctx = getContext(); return ctx?.characters?.[ctx?.characterId]?.name || ''; } catch (_) { return ''; } })() };
         saveSettingsDebounced();
     } catch (_) {}
     if (changed) {
@@ -291,17 +489,44 @@ function guardMessage(messageId, { rerender = true } = {}) {
             try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (e) { log('rerender-failed', '', String(e?.message || e)); }
         }
     }
-    // 变量 patch 覆盖度：模型写的 <UpdateVariable> 是否覆盖了卡的必更字段
+    // 变量 patch 覆盖度 + 路径白名单（P1 ② / P2 ⑤ / P2 ⑥）
     try {
         const req = profile.required || [];
-        if (req.length && m.mes.includes('<UpdateVariable>')) {
+        const hasBlock = m.mes.includes('<UpdateVariable>');
+        if (req.length && hasBlock) {
             const cov = patchCoverage(m.mes, req);
             lastCoverage = cov;
-            stats.coverageTotal = cov.total; stats.coverageHit = cov.covered.length;
+            stats.coverageTotal = cov.total;
+            stats.coverageHit = cov.covered.length;
+            if (settings().coverageHistory !== false) {
+                covHistory.push({ at: Date.now(), id: messageId, hit: cov.covered.length, total: cov.total, blocks: cov.blocks || 1 });
+                while (covHistory.length > 40) covHistory.shift();
+            }
+            const report = { id: messageId, required: req, covered: cov.covered, missing: cov.missing, written: cov.written || [], blocks: cov.blocks || 1, unknownPaths: [], extraPaths: [] };
+            if (s.pathWarn !== false) {
+                for (const b of extractUpdateBlocks(m.mes)) {
+                    const vp = validatePatchPaths(b.patchText || b.block, profile.allowed || {});
+                    if (vp.checked) {
+                        for (const u of vp.unknown) if (report.unknownPaths.indexOf(u.path) < 0) report.unknownPaths.push(u.path);
+                        for (const e of vp.extra) if (report.extraPaths.indexOf(e) < 0) report.extraPaths.push(e);
+                    }
+                }
+                if (report.unknownPaths.length) { stats.pathUnknown += report.unknownPaths.length; log('path-unknown', report.unknownPaths.join(','), '补丁写了本卡规则里没有的路径（可能是模型自创字段）'); }
+                if (report.extraPaths.length) { stats.extraPaths += report.extraPaths.length; log('path-extra', report.extraPaths.join(','), '组内路径但卡未逐条声明（放行，仅提示）'); }
+            }
+            lastReport = report;
             log('patch-coverage', cov.covered.length + '/' + cov.total, cov.missing.length ? ('缺: ' + cov.missing.join('、')) : '全部覆盖 ✅');
+        }
+        // P1 ③ 连续多楼缺变量块 → 一次气泡（10 分钟内不重复）
+        const declaresVars = (profile.dataTags || []).length > 0;
+        if (declaresVars && !hasBlock) hardFailStreak++; else hardFailStreak = 0;
+        if (declaresVars && !hasBlock && s.toastOnFail && hardFailStreak >= 3 && (Date.now() - lastToastAt) > 10 * 60 * 1000) {
+            lastToastAt = Date.now();
+            toast(T('toastNoVars', { n: hardFailStreak }), 'warning');
         }
     } catch (_) {}
     try { if (s.yamlStrict) strictCheckMessage(messageId); } catch (_) {}
+    try { if (s.mvuVerify) setTimeout(() => mvuVerifyMessage(messageId), 0); } catch (_) {}
     try { if (settings().autoFixVars) setTimeout(() => maybeFixVars(messageId), 0); } catch (_) {}
 
     if (s.notifyStale) {
@@ -318,7 +543,7 @@ function verifyRendered(messageId) {
         const profile = profileOf();
         const tags = [...(profile.anchors || []), ...(profile.dataTags || [])];
         const txt = el.textContent || '';
-        const leaking = tags.filter(t => txt.includes('<' + t) || txt.includes('</' + t + '>'));
+        const leaking = tags.filter((t) => txt.includes('<' + t) || txt.includes('</' + t + '>'));
         if (leaking.length) { stats.unrendered++; log('anchor-unrendered', leaking.join(','), '卡脚本未接管（可能需要酒馆助手变量或该卡未启用对应脚本）'); }
     } catch (_) {}
 }
@@ -345,13 +570,46 @@ function normalizeRecent() {
         step();
     } catch (e) { console.error('[card-compat] normalizeRecent', e); }
 }
+/** P1 ② 面板对照表：本卡要求 vs 本轮实际 */
+function renderCoverageTable() {
+    const box = document.getElementById('cc-table');
+    if (!box) return;
+    const rep = lastReport;
+    if (!rep) { box.innerHTML = '<div class="cc-muted">' + escHtml(T('noReport')) + '</div>'; return; }
+    const parts = [];
+    parts.push('<table class="cc-tab"><thead><tr><th>' + escHtml(T('colField')) + '</th><th>' + escHtml(T('colDone')) + '</th></tr></thead><tbody>');
+    for (const f of (rep.required || [])) {
+        const ok = (rep.covered || []).indexOf(f.path) >= 0;
+        parts.push('<tr><td>' + escHtml(f.path) + '</td><td>' + (ok ? '✅' : '❌') + '</td></tr>');
+    }
+    parts.push('</tbody></table>');
+    if (rep.written && rep.written.length) parts.push('<div class="cc-line"><b>' + escHtml(T('wrotePaths')) + '</b>：' + escHtml(rep.written.join('、')) + '</div>');
+    if (rep.unknownPaths && rep.unknownPaths.length) parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('unknownPaths')) + '</b>：' + escHtml(rep.unknownPaths.join('、')) + '</div>');
+    if (rep.extraPaths && rep.extraPaths.length) parts.push('<div class="cc-line cc-muted"><b>' + escHtml(T('extraPaths')) + '</b>：' + escHtml(rep.extraPaths.join('、')) + '</div>');
+    box.innerHTML = parts.join('');
+}
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
-    if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
+    if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
+    const trendBox = document.getElementById('cc-trend');
+    if (trendBox) trendBox.textContent = covHistory.length ? (T('covTrend') + '：' + coverageTrendText()) : '';
+    renderCoverageTable();
+    renderMvuBox();
+}
+/** P3 ⑨ 面板里的 MVU 状态块 */
+function renderMvuBox() {
+    const box = document.getElementById('cc-mvu');
+    if (!box) return;
+    const info = mvuInfo();
+    if (!info.api) { box.innerHTML = '<div class="cc-line cc-warn">' + escHtml(T('mvuNone')) + '</div>'; return; }
+    const extra = mvuExtraParseEnabled();
+    const lines = ['<div class="cc-line"><b>' + escHtml(T('mvuApi')) + '</b>' + (info.version ? ('：v' + escHtml(info.version)) : '') + '（parse=' + (info.parse ? '✅' : '❌') + ' read=' + (info.read ? '✅' : '❌') + ' write=' + (info.write ? '✅' : '❌') + '）</div>'];
+    lines.push('<div class="cc-line ' + (extra === true ? 'cc-warn' : 'cc-muted') + '">' + escHtml(extra === true ? T('mvuExtraOn') : T('mvuExtraOff')) + '</div>');
+    box.innerHTML = lines.join('');
 }
 function buildSettingsUi() {
     const host = document.getElementById('extensions_settings');
@@ -359,27 +617,36 @@ function buildSettingsUi() {
     const wrap = document.createElement('div');
     wrap.className = 'extension_container';
     wrap.id = 'cc-panel';
+    const cb = (id, key) => '<label class="checkbox_label"><input type="checkbox" id="' + id + '"><span>' + escHtml(T(key)) + '</span></label>';
     wrap.innerHTML = [
-        '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧩 卡兼容助手 v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
+        '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧩 ' + escHtml(T('title')) + ' v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
         '<div class="inline-drawer-content">',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-enabled"><span>启用守护</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-inject"><span>缺锚点时补一个空锚点</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-repair"><span>未闭合自动补结束标签</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-stale"><span>数据疑似未更新时提示</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-inject-prompt"><span>生成前注入结尾结构块提醒（推荐开）</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-fix-quotes"><span>修结构块里的引号错配（英文引号开头 + 中文引号结尾）</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-quote-scalars"><span>结构块里含「: 」「 #」却没加引号的值自动加引号</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-yaml-strict"><span>结构块严格 YAML 校验（用扩展自带的 js-yaml，失败报警）</span></label>',
-        '<label class="checkbox_label"><input type="checkbox" id="cc-strip-undeclared"><span>清理本卡未声明的块（模型回显世界书原文 / 自创标签）</span></label>',
-        "<label class=\"checkbox_label\"><input type=\"checkbox\" id=\"cc-autofix-vars\"><span>模型漏输出变量块时自动补一次（静默生成，只补补丁）</span></label>",
-        "<button id=\"cc-varfix-now\" class=\"menu_button\">立即补当前楼层变量块</button>",
-        '<button id="cc-yaml-check" class="menu_button">严格校验当前楼层</button>',
-        '<label>面板字号</label><select id="cc-font"><option value="1">跟随 ST（默认）</option><option value="1.15">大</option><option value="1.3">更大</option></select>',
-        '<label>消息区缩放 <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
-        '<label>字号下限 <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
-        '<button id="cc-check" class="menu_button">自检当前楼层</button>',
         '<div id="cc-stats" class="cc-stats"></div>',
-        '<details><summary>最近动作</summary><pre id="cc-log" class="cc-log"></pre></details>',
+        '<div id="cc-trend" class="cc-trend"></div>',
+        '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
+        cb('cc-enabled', 'enabled'), cb('cc-inject-prompt', 'injectPrompt'), cb('cc-inject', 'injectAnchor'), cb('cc-repair', 'repair'), cb('cc-stale', 'stale'),
+        "<button id=\"cc-check\" class=\"menu_button\">" + escHtml(T('btnCheck')) + "</button>",
+        "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
+        '</details>',
+        '<details class="cc-grp"><summary>② ' + escHtml(T('secBlocks')) + '</summary>',
+        cb('cc-fix-quotes', 'fixQuotes'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
+        cb('cc-autofix-vars', 'autoFixVars'), cb('cc-path-warn', 'pathWarn'), cb('cc-toast-fail', 'toastOnFail'),
+        "<button id=\"cc-varfix-now\" class=\"menu_button\">" + escHtml(T('btnVarfix')) + "</button>",
+        "<button id=\"cc-yaml-check\" class=\"menu_button\">" + escHtml(T('btnYaml')) + "</button>",
+        '</details>',
+        '<details class="cc-grp" open><summary>③ ' + escHtml(T('secReport')) + '</summary><div id="cc-table" class="cc-table"></div></details>',
+        '<details class="cc-grp"><summary>④ ' + escHtml(T('secMvu')) + '</summary><div id="cc-mvu" class="cc-mvu"></div>',
+        cb('cc-mvu-verify', 'mvuVerify'),
+        "<button id=\"cc-mvu-write\" class=\"menu_button\">" + escHtml(T('btnMvu')) + "</button>",
+        "<button id=\"cc-mvu-test\" class=\"menu_button\">" + escHtml(T('btnMvuTest')) + "</button>",
+        '</details>',
+        '<details class="cc-grp"><summary>⑤ ' + escHtml(T('secUi')) + '</summary>',
+        '<label>' + escHtml(T('panelFont')) + '</label><select id="cc-font"><option value="1">' + escHtml(T('fontFollow')) + '</option><option value="1.15">' + escHtml(T('fontBig')) + '</option><option value="1.3">' + escHtml(T('fontBigger')) + '</option></select>',
+        '<label>' + escHtml(T('lang')) + '</label><select id="cc-lang"><option value="auto">' + escHtml(T('langAuto')) + '</option><option value="zh">中文</option><option value="en">English</option></select>',
+        '<label>' + escHtml(T('zoom')) + ' <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
+        '<label>' + escHtml(T('floor')) + ' <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
+        '<details><summary>' + escHtml(T('log')) + '</summary><pre id="cc-log" class="cc-log"></pre></details>',
+        '</details>',
         '</div></div>',
     ].join('');
     host.appendChild(wrap);
@@ -391,7 +658,7 @@ function buildSettingsUi() {
             settings()[key] = isCheck ? el.checked : Number(el.value);
             saveSettingsDebounced(); applyFont(); renderStats();
             const zv = document.getElementById('cc-zoom-val'); if (zv) zv.textContent = Math.round(settings().fontZoom * 100) + '%';
-            const fv = document.getElementById('cc-floor-val'); if (fv) fv.textContent = settings().fontFloor ? settings().fontFloor + 'px' : '关闭';
+            const fv = document.getElementById('cc-floor-val'); if (fv) fv.textContent = settings().fontFloor ? settings().fontFloor + 'px' : T('floorOff');
         });
     };
     bind('cc-enabled', 'enabled', true);
@@ -404,17 +671,57 @@ function buildSettingsUi() {
     bind('cc-yaml-strict', 'yamlStrict', true);
     bind('cc-strip-undeclared', 'stripUndeclared', true);
     bind('cc-autofix-vars', 'autoFixVars', true);
+    bind('cc-path-warn', 'pathWarn', true);
+    bind('cc-toast-fail', 'toastOnFail', true);
+    bind('cc-mvu-verify', 'mvuVerify', true);
     document.getElementById('cc-varfix-now')?.addEventListener('click', async () => { varFixTriedIds.delete(chat.length - 1); await maybeFixVars(chat.length - 1); });
     document.getElementById('cc-yaml-check')?.addEventListener('click', async () => { await strictCheckMessage(chat.length - 1, { force: true }); });
+    document.getElementById('cc-mvu-write')?.addEventListener('click', async () => { await writeBackMvu(chat.length - 1, false); });
+    document.getElementById('cc-mvu-test')?.addEventListener('click', async () => {
+        const info = mvuInfo();
+        if (!info.api) { toast(T('mvuNone'), 'warning'); return; }
+        const ex = extractUpdateBlock(chat?.[chat.length - 1]?.mes || '');
+        if (!ex) { toast(langOf() === 'en' ? 'No variable block in current reply' : '当前楼层没有变量块', 'info'); return; }
+        const r = await mvuCanParse(ex.block);
+        if (!r.checked) toast(T('mvuNone'), 'warning');
+        else if (r.ok) toast(T('mvuParsed'), 'success');
+        else toast(T('mvuUnparsed') + r.reason, 'warning');
+        renderMvuBox();
+    });
+    document.getElementById('cc-refresh')?.addEventListener('click', () => { invalidateProfile(); updatePromptInjection(); toast(T('refreshOK'), 'success'); renderStats(); });
     const fontSel = document.getElementById('cc-font');
     if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
+    const langSel = document.getElementById('cc-lang');
+    if (langSel) {
+        langSel.value = String(settings().lang || 'auto');
+        langSel.addEventListener('change', () => { settings().lang = langSel.value || 'auto'; saveSettingsDebounced(); const w = document.getElementById('cc-panel'); if (w) { w.remove(); buildSettingsUi(); applyPanelFont(); } });
+    }
     bind('cc-zoom', 'fontZoom', false);
     bind('cc-floor', 'fontFloor', false);
     const zv = document.getElementById('cc-zoom-val'); if (zv) zv.textContent = Math.round(settings().fontZoom * 100) + '%';
-    const fv = document.getElementById('cc-floor-val'); if (fv) fv.textContent = settings().fontFloor ? settings().fontFloor + 'px' : '关闭';
+    const fv = document.getElementById('cc-floor-val'); if (fv) fv.textContent = settings().fontFloor ? settings().fontFloor + 'px' : T('floorOff');
     document.getElementById('cc-check')?.addEventListener('click', () => { guardMessage(chat.length - 1); verifyRendered(chat.length - 1); });
     applyPanelFont();
     renderStats();
+}
+/** P3 ⑨ 对外钩子：其它扩展（MVU / 酒馆助手脚本）可以直接调用 */
+function exposeApi() {
+    try {
+        if (typeof window === 'undefined') return;
+        window.CardCompat = {
+            version: VERSION,
+            profile: () => profileOf(),
+            guard: (id) => guardMessage(id),
+            coverage: (id) => patchCoverage((chat && chat[id] && chat[id].mes) || '', (profileOf().required) || []),
+            validatePaths: (block) => validatePatchPaths(block, profileOf().allowed || {}),
+            applyToMvu: (block, id) => applyPatchToMvu(block, id),
+            writeBack: (id) => writeBackMvu(id, true),
+            mvu: () => mvuInfo(),
+            invalidate: () => invalidateProfile(),
+            stats: () => Object.assign({}, stats),
+            trend: () => covHistory.slice(),
+        };
+    } catch (_) {}
 }
 (async function init() {
     extension_settings[NAME] = Object.assign({}, DEFAULTS, extension_settings[NAME] || {});
@@ -427,15 +734,16 @@ function buildSettingsUi() {
     } catch (_) {}
     buildSettingsUi();
     applyFont();
+    exposeApi();
     // ① 非流式：渲染前
     eventSource.on(event_types.MESSAGE_RECEIVED, (id) => { try { guardMessage(id, { rerender: false }); } catch (e) { console.error(e); } });
     // ② 流式：生成结束（hideStopButton 触发），此时 messageId = chat.length-1
     eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } });
     // ③ 渲染后兜底校验
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { verifyRendered(id); } catch (_) {} });
-    eventSource.on(event_types.CHAT_CHANGED, () => { try { applyFont(); lastSeen.clear(); updatePromptInjection(); setTimeout(normalizeRecent, 600); } catch (_) {} });
+    eventSource.on(event_types.CHAT_CHANGED, () => { try { invalidateProfile(); applyFont(); lastSeen.clear(); updatePromptInjection(); setTimeout(normalizeRecent, 600); } catch (_) {} });
     eventSource.on(event_types.MESSAGE_SENT, () => { try { updatePromptInjection(); } catch (_) {} });
     try { updatePromptInjection(); } catch (_) {}
     setTimeout(normalizeRecent, 900);
-    console.log('[card-compat] 已加载 v' + VERSION + '（守护 + 结尾提醒注入 + 历史规范化）');
+    try { const info = mvuInfo(); console.log('[card-compat] 已加载 v' + VERSION + '（守护 + 结尾提醒注入 + 历史规范化 + MVU 联动）MVU API=' + (info.api ? '有' : '无')); } catch (_) { console.log('[card-compat] 已加载 v' + VERSION); }
 })();

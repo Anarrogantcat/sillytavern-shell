@@ -1,12 +1,36 @@
 # SillyTavern Desktop Shell 更新日志
 
-## [未发布]
-### 新增
-- `docs/extension-delivery.md`：扩展交付与更新机制（内置安装包通道 + 在线更新通道、部署 7 条规则、**ST 本体更新/换机/重装/别人装套壳**各场景会发生什么、维护者发扩展的三步流程、故障排查表、6 条已知缺口）
-- `docs/extension-roadmap.md`：两个扩展的完善方向与优先级（card-compat P1×4 / P2×4 / P3×2；plot-pilot P1×3 / P2×2 / P3×2；版本节奏与发布流程）
-- README 增加「扩展交付与路线图」小节链接到这两份文档
+## v2.0.4 (2026-09-20) — card-compat 0.2.8（P1/P2/P3 全量）+ 扩展管理器面板
 
-> 纯文档改动，未递增版本号（下一个代码改动会并入 `2.0.4`）。
+### 修复
+- **card-compat 0.2.6 / 0.2.7 的「未声明块清理」实际从未生效**：那段代码被误插进 ~~strictCheckMessage~~，里面引用了不存在的 ~~res~~ / ~~changed~~，函数一进入就抛 ReferenceError，又被外层 try/catch 吞掉 —— 也就是**模型回显的 <world_setting> 等块其实一直没被删**（0.2.6 的修复只写进了日志期待，没真正跑）
+  - 现已放回 ~~guardMessage~~ 入口，成为守护第一步（先清理、再 guardText）
+  - ~~scripts/compat-logic-test.mjs~~ 新增 5 条「入口顺序回归」断言：直接读 ~~extensions/card-compat/index.js~~ 源码，断言 ~~stripUndeclaredBlocks(~~ 在 ~~guardMessage~~ 内、不在 ~~strictCheckMessage~~ 内 —— 这类「没报错的空操作」以后会被 CI 拦住
+
+### 新增
+- **card-compat 0.2.8**（扩展版本 0.2.7 → 0.2.8）：路线图 P1/P2/P3 全部落地
+  - P1 ① MVU 写回兜底（面板按钮 + 失败提示「可点 MVU 面板的重新处理变量」）②「本卡要求 vs 本轮实际」逐字段 ✅/❌ 对照表 ③连续 3 楼缺变量块的气泡提醒（10 分钟去重）④角色卡档案 60 秒缓存 + 手动失效
+  - P2 ⑤ 变量路径白名单（~~extractAllowedPaths~~ / ~~validatePatchPaths~~，分「声明命中 / 组内未声明 / 越界」三档，**越界只提示不改写**）⑥覆盖度历史与趋势方块条 ⑦多块记账（~~blockPresence~~ / ~~extractUpdateBlocks~~ / ~~parsePatchOps~~，支持一条回复里多个 ~~<JSONPatch>~~）⑧面板拆成五组
+  - P3 ⑨ MVU 联动（探测 API + ~~parseMessage~~ 只读试解析 + 检测 MVU「额外模型解析」开启时主动让位避免双写 + 对外钩子 ~~window.CardCompat~~）⑩面板中英双语（自动 / 中文 / English）
+- **扩展管理器面板**（工具箱 🧩 ST 扩展与插件）
+  - 新增 ~~lib/ext-manage.js~~（纯 fs，可单测）+ 主进程 IPC ~~tools:extManage~~ + preload ~~extManage~~
+  - **列出数据目录里的全部扩展**（不只内置）：版本、来源（套壳内置 / 在线安装 / 用户自装 / 内置但无部署记录）、部署时间、文件数与体积、**是否被手改过**（目录内容哈希对比部署记录，自动排除 ~~.shell-deployed.json~~）、**是否有内置新版本**
+  - 操作：更新 / 强制重装（只作用于该扩展）、打开目录、重置界面设置（先备份 ~~settings.json.shellbak-<时间戳>~~）、卸载（**默认移入 extensions/.shell-trash/ 回收站，可还原**）、彻底删除（二次确认，不可还原）、回收站还原
+  - ~~lib/ext-deploy.js~~ 的 ~~planDeploy~~ / ~~deployExtensions~~ 新增 ~~only~~ 参数（向后兼容，不影响原有调用）
+  - ~~shell.html~~ 新增管理器区块，~~shell.js~~ 新增 ~~extManageRefresh~~ / ~~extManageAct~~ 与事件委托，~~i18n.js~~ 补 38 条英文对照
+- **CI 补齐此前没在 CI 里跑的夹具**：~~compat-logic-test.mjs~~（102 项）与 ~~plot-pilot-test.mjs~~（49 项）加入发布前夹具步骤，并新增 ~~ext-manage-test.mjs~~（49 项）
+  - ~~package.json~~ 新增 ~~ext:manage:test~~ / ~~all:test~~，~~ext:test~~ 改为跑 card-compat + plot-pilot + 管理器三套
+
+### 文档
+- ~~docs/extension-delivery.md~~（扩展交付与更新机制：内置通道 + 在线通道、部署 7 条规则、换机/重装/别人装套壳各场景、维护者发扩展三步、故障排查表、已知缺口）
+- ~~docs/extension-roadmap.md~~（两个扩展的完善方向与优先级、版本节奏与发布流程）
+- ~~docs/plot-pilot-plan.md~~（**剧情推进器 v0.2 完整方案**：推进目标可指定 ~~{step}~~、按 ~~<options>~~ 选项号推进、快捷键、自动连续推进 N 轮、与 card-compat 联动、按钮位置与英文文案；分 4 个阶段，本次只出方案不实现）
+- README 增加「扩展交付与路线图」小节链接
+
+### 说明
+- 扩展版本：card-compat **0.2.7 → 0.2.8**；plot-pilot 保持 **0.1.2**（本次只出方案）
+- 夹具全绿：compat 102/102 · ext-deploy 37/37 · ext-remote 33/33 · ext-manage 49/49 · plot-pilot 49/49 · toolbox 14/14
+
 ## v2.0.3 (2026-09-20) — 插件兜底：模型漏输出变量块时自动补一次并写回 MVU（扩展 card-compat 0.2.7）
 
 ### 背景（实测数据）

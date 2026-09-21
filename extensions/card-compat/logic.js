@@ -58,6 +58,184 @@ export function stripUndeclaredBlocks(text, opts = {}) {
     return { text: out, removed, unclosed };
 }
 
+/** 正则转义（标签名里可能有 status! 这类元字符） */
+function escTag(name) {
+    return String(name ?? '').replace(/[.*+?^{}()|[\]\\$]/g, '\\$&');
+}
+
+/** 变量路径归一：点号分隔 → 斜杠开头；去掉空白与多余斜杠；保留末段通配 * */
+export function normalizePath(raw) {
+    let p = String(raw ?? '').trim().replace(/^["']|["']$/g, '');
+    p = p.split('.').join('/').split('｜').join('/');
+    p = p.replace(/\/{2,}/g, '/').replace(/\s+/g, '');
+    if (!p) return '';
+    if (p.charAt(0) !== '/') p = '/' + p;
+    return p.replace(/\/$/, '');
+}
+
+const D = String.fromCharCode(36);   // 美元符常量：拼正则用，避免源码里出现模板组起始标记
+const TPL_RE = new RegExp('\\' + D + '\\{([^}]+)\\}');
+
+/**
+ * 展开「模板组」：一条规则里可以出现多组，组名/字段名/路径段都可能带
+ *   系统.模板组(日期|时间) → 系统.日期 / 系统.时间
+ * @returns {string[]} 去重后的展开结果（保序）
+ */
+export function expandTemplateGroups(values, maxRounds = 8) {
+    let pool = (values || []).map((v) => String(v ?? ''));
+    for (let round = 0; round < (Number(maxRounds) || 8); round++) {
+        let changed = false;
+        const next = [];
+        for (const v of pool) {
+            const mm = TPL_RE.exec(v);
+            if (!mm) { next.push(v); continue; }
+            changed = true;
+            for (const alt of mm[1].split(/[|｜]/)) next.push(v.slice(0, mm.index) + alt.trim() + v.slice(mm.index + mm[0].length));
+        }
+        pool = next;
+        if (!changed) break;
+    }
+    return [...new Set(pool)];
+}
+
+/** 抽出补丁里的 JSONPatch 数组（支持一条回复里的多个 <JSONPatch> 片段） */
+export function parsePatchOps(blockOrPatch) {
+    const raw = String(blockOrPatch || '');
+    const problems = [];
+    const openTag = '<JSONPatch>', closeTag = '</JSONPatch>';
+    const frags = [];
+    let i = 0;
+    while (true) {
+        const a = raw.indexOf(openTag, i);
+        if (a < 0) break;
+        const b = raw.indexOf(closeTag, a);
+        if (b < 0) { frags.push(raw.slice(a + openTag.length)); break; }
+        frags.push(raw.slice(a + openTag.length, b));
+        i = b + closeTag.length;
+    }
+    if (!frags.length) frags.push(raw);
+    const ops = [];
+    for (const frag of frags) {
+        let t = String(frag);
+        const o = t.indexOf('['), c = t.lastIndexOf(']');
+        if (o >= 0 && c > o) t = t.slice(o, c + 1);
+        t = t.trim();
+        if (!t) continue;
+        let arr = null;
+        try { arr = JSON.parse(t); } catch (e) { problems.push('JSON 解析失败: ' + String((e && e.message) || e).slice(0, 80)); continue; }
+        if (!Array.isArray(arr)) { problems.push('不是数组'); continue; }
+        for (const el of arr) {
+            if (!el || typeof el !== 'object') { problems.push('元素不是对象'); continue; }
+            ops.push(el);
+        }
+    }
+    return { ops, problems, frags: frags.length };
+}
+
+/** 抽出一条回复里的全部变量块（多块记账用；extractUpdateBlock 仍只返回第一个） */
+export function extractUpdateBlocks(text) {
+    const s = String(text || '');
+    const out = [];
+    let i = 0;
+    while (true) {
+        const a = s.indexOf('<UpdateVariable', i);
+        if (a < 0) break;
+        const gt = s.indexOf('>', a);
+        if (gt < 0) break;
+        const b = s.indexOf('</UpdateVariable>', gt);
+        if (b < 0) { out.push({ block: s.slice(a), patchText: '' }); break; }
+        const block = s.slice(a, b + '</UpdateVariable>'.length);
+        const pa = block.indexOf('<JSONPatch>'), pb = block.indexOf('</JSONPatch>');
+        out.push({ block: block, patchText: (pa >= 0 && pb > pa) ? block.slice(pa + '<JSONPatch>'.length, pb).trim() : '' });
+        i = b + '</UpdateVariable>'.length;
+    }
+    return out;
+}
+
+/**
+ * 从角色卡世界书条目里抽出变量路径白名单
+ *   ① 缩进结构（复用 extractRequiredFields，含模板组展开）
+ *   ② 规则正文里显式写出的 /路径
+ *   ③ 示例代码：_.set('角色.好感', 1)、{"path":"/角色/好感"}、路径: /角色/好感
+ * @returns {{paths:string[], prefixes:string[], wildcards:string[], all:string[]}}
+ */
+export function extractAllowedPaths(entries, opts = {}) {
+    const limit = Number(opts.limit) || 400;
+    const list = [];
+    const seen = new Set();
+    const add = (raw) => {
+        const q = normalizePath(raw);
+        if (!q || q === '/') return;
+        if (seen.has(q)) return;
+        seen.add(q);
+        list.push(q);
+    };
+    const entryText = (entries || []).map((e) => String(e?.content || '')).join('\n');
+    try { for (const f of extractRequiredFields(entries, Math.min(limit, 200))) add(f.path); } catch (_) {}
+    for (const re of [
+        /_\s*\.\s*set\s*\(\s*['"]([^'"]{1,80})['"]/g,
+        /["']path["']\s*:\s*["']([^"']{1,80})["']/g,
+        /路径\s*[:：]\s*([^\s，。；,;]{1,80})/g,
+        /(?:^|[\s\-*（(,，])[/]([A-Za-z\u4e00-\u9fa5][^\s，。；、,;）)<>"']{0,60})/gm,
+    ]) {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(entryText))) add(m[1]);
+    }
+    const wildcards = list.filter((q) => q.indexOf('*') >= 0);
+    const prefixes = [];
+    const pset = new Set();
+    for (const q of list) {
+        const parts = q.split('/').filter(Boolean);
+        for (let k = 1; k < parts.length; k++) {
+            const pre = '/' + parts.slice(0, k).join('/');
+            if (!pset.has(pre)) { pset.add(pre); prefixes.push(pre); }
+        }
+    }
+    const capped = list.slice(0, limit);
+    return { paths: capped, prefixes, wildcards, all: capped };
+}
+
+/**
+ * 校验补丁路径是否落在角色卡声明的白名单内（模型自创字段会让状态栏数字乱跳）
+ * 允许：精确命中 / 命中通配 / 白名单路径的下级 / 白名单路径的上级
+ * 白名单为空 → checked:false（不误报）
+ */
+export function validatePatchPaths(patchOrBlock, allowed, opts = {}) {
+    const parsed = parsePatchOps(patchOrBlock);
+    const a = allowed || {};
+    const paths = (a.paths && a.paths.length ? a.paths : (a.all || [])).map(normalizePath).filter(Boolean);
+    const wildcards = (a.wildcards || paths.filter((q) => q.indexOf('*') >= 0)).map(normalizePath).filter(Boolean);
+    const prefixes = (a.prefixes || []).map(normalizePath).filter(Boolean);
+    const known = [], extra = [], unknown = [];
+    if (!paths.length && !wildcards.length) return { checked: false, ok: true, total: parsed.ops.length, known, extra, unknown, problems: parsed.problems };
+    const wRes = wildcards.map((w) => new RegExp('^' + w.split('*').map((seg) => escTag(seg)).join('[^/]*') + '(?:/.*)?$'));
+    for (const op of parsed.ops) {
+        const q = normalizePath(op.path);
+        if (!q) { unknown.push({ path: String(op.path || ''), op: op.op, reason: '缺少 path' }); continue; }
+        if (paths.indexOf(q) >= 0 || wRes.some((re) => re.test(q))) { known.push(q); continue; }
+        const inGroup = prefixes.some((pre) => q === pre || q.indexOf(pre + '/') === 0)
+            || (opts.allowAncestor !== false && paths.some((r) => r.indexOf(q + '/') === 0));
+        if (inGroup) extra.push(q); else unknown.push({ path: q, op: op.op, reason: '本卡规则里没有这个路径' });
+    }
+    return { checked: true, ok: unknown.length === 0, total: parsed.ops.length, known, extra, unknown, problems: parsed.problems };
+}
+
+/** 多块记账：同一结构块在一条回复里出现多次（重复输出 / 正文一份结尾一份） */
+export function blockPresence(text, tags) {
+    const t = String(text ?? '');
+    const blocks = [];
+    for (const tag of tags || []) {
+        const e = escTag(tag);
+        const opens = (t.match(new RegExp('<' + e + '(?:\\s[^>]*)?>', 'g')) || []).length;
+        const selfs = (t.match(new RegExp('<' + e + '\\s*/\\s*>', 'g')) || []).length;
+        const closes = (t.match(new RegExp('</' + e + '\\s*>', 'g')) || []).length;
+        const pairs = Math.min(opens, closes);
+        blocks.push({ tag: tag, opens: opens, selfs: selfs, closes: closes, pairs: pairs, extra: Math.max(0, pairs - 1) + Math.max(0, selfs - 1) });
+    }
+    return { blocks: blocks, duplicates: blocks.filter((b) => b.extra > 0), present: blocks.filter((b) => b.opens || b.selfs).map((b) => b.tag) };
+}
+
 export function tagsOf(text) {
     const out = new Set();
     let m;
@@ -310,29 +488,14 @@ export function extractUpdateBlock(text) {
 
 /** 校验补出来的 JSONPatch：抽数组 → JSON.parse → 检查 op/path */
 export function validatePatchBlock(blockOrPatch) {
-    const raw = String(blockOrPatch || '');
-    const pa = raw.indexOf('<JSONPatch>');
-    const pb = raw.indexOf('</JSONPatch>');
-    let text = (pa >= 0 && pb > pa) ? raw.slice(pa + '<JSONPatch>'.length, pb) : raw;
-    const open = text.indexOf('[');
-    const close = text.lastIndexOf(']');
-    if (open >= 0 && close > open) text = text.slice(open, close + 1);
-    text = text.trim();
-    const problems = [];
-    let arr = null;
-    try { arr = JSON.parse(text); } catch (e) { problems.push('JSON 解析失败: ' + String((e && e.message) || e).slice(0, 80)); }
-    if (arr && !Array.isArray(arr)) problems.push('不是数组');
-    let ops = 0;
-    if (Array.isArray(arr)) {
-        for (const o of arr) {
-            if (!o || typeof o !== 'object') { problems.push('元素不是对象'); continue; }
-            if (!o.op) problems.push('缺少 op');
-            if (!o.path && o.op !== 'move') problems.push('缺少 path');
-            ops++;
-        }
-        if (!ops) problems.push('空数组（没有任何操作）');
+    const parsed = parsePatchOps(blockOrPatch);
+    const problems = parsed.problems.slice();
+    for (const o of parsed.ops) {
+        if (!o.op) problems.push('缺少 op');
+        if (!o.path && o.op !== 'move') problems.push('缺少 path');
     }
-    return { ok: problems.length === 0, ops: ops, problems: problems };
+    if (!parsed.ops.length && !problems.length) problems.push('空数组（没有任何操作）');
+    return { ok: problems.length === 0, ops: parsed.ops.length, problems: problems };
 }
 
 /** 生成「只补变量块」的专注提示词（strict 时更短更硬，用于重试） */
@@ -478,21 +641,10 @@ export function extractRequiredFields(entries, limit = 10) {
     }
     push();
     // 展开全部 ${A|B} 模板组（可能同时出现在组名与字段名里），最多 8 轮
-    let pool = out.slice();
-    for (let round = 0; round < 8; round++) {
-        let changed = false;
-        const next = [];
-        for (const f of pool) {
-            const mm = f.path.match(/\$\{([^}]+)\}/);
-            if (mm) {
-                changed = true;
-                for (const alt of mm[1].split(/[|｜]/)) next.push({ path: f.path.replace(mm[0], alt.trim()), check: f.check });
-            } else next.push(f);
-        }
-        pool = next;
-        if (!changed) break;
-    }
-    return pool.slice(0, limit);
+    // 展开全部模板组（组名与字段名里都可能出现）
+    const expanded = [];
+    for (const f of out) for (const q of expandTemplateGroups([f.path])) expanded.push({ path: q, check: f.check });
+    return expanded.slice(0, limit);
 }
 /**
  * 统计模型写出的 <UpdateVariable> 块覆盖了哪些必更字段
@@ -500,14 +652,23 @@ export function extractRequiredFields(entries, limit = 10) {
  */
 export function patchCoverage(text, required) {
     const t = String(text || "");
-    const block = (t.match(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/) || [t])[0];
-    const norm = p => String(p || "").replace(/\./g, "/").replace(/^\/*/, "/");
+    const blocks = extractUpdateBlocks(t);
+    const block = blocks.length ? blocks.map((b) => b.block).join(String.fromCharCode(10)) : t;
+    const norm = (q) => normalizePath(q) || String(q || "");
     const covered = [], missing = [];
     for (const f of (required || [])) {
         const want = norm(f.path);
         if (block.indexOf(want) >= 0) covered.push(f.path); else missing.push(f.path);
     }
-    return { total: (required || []).length, covered, missing };
+    const written = [];
+    const seen = new Set();
+    for (const b of blocks) {
+        for (const op of parsePatchOps(b.patchText || b.block).ops) {
+            const q = normalizePath(op.path);
+            if (q && !seen.has(q)) { seen.add(q); written.push(q); }
+        }
+    }
+    return { total: (required || []).length, covered: covered, missing: missing, written: written, blocks: blocks.length };
 }
 
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */

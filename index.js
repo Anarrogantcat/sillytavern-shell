@@ -16,7 +16,8 @@ import { registerChatTools } from './lib/tools-chat.js';
 import { registerTunnelTools } from './lib/tools-tunnel.js';
 import { registerZtTools } from './lib/tools-zt.js';
 import { registerPluginTools } from './lib/tools-plugins.js';
-import { deployExtensions } from './lib/ext-deploy.js';
+import { deployExtensions, extensionsRoot } from './lib/ext-deploy.js';
+import { listInstalledExtensions, uninstallExtension, listTrash, restoreFromTrash, resetExtensionSettings } from './lib/ext-manage.js';
 import { fetchIndex, applyRemoteUpdates, summarizeRemote, rollbackTo } from './lib/ext-remote.js';
 
 // ── Stream safety ──────────────────────────────────────────────────
@@ -522,9 +523,11 @@ function t(zh) {
 // 这样「别的用户装了套壳」也能直接拿到这两个插件，不用手动跑 scripts/ext-install.mjs。
 // 策略见 lib/ext-deploy.js：只碰内置清单、只在缺失或内置版本更高时写、不删用户文件。
 let extDeployTries = 0, extDeployTimer = null;
+/** 内置扩展目录（打包后在 app.asar 内，开发时是仓库 extensions/） */
+function extSrcRoot() { return path.join(app.isPackaged ? app.getAppPath() : __dirname, 'extensions'); }
 function deployBundledExtensions(reason) {
     try {
-        const srcRoot = path.join(app.isPackaged ? app.getAppPath() : __dirname, 'extensions');
+        const srcRoot = extSrcRoot();
         if (!fs.existsSync(srcRoot)) {
             terminalWrite('\x1b[33m[ext] 未找到内置扩展目录：' + srcRoot + '\x1b[0m\n');
             return null;
@@ -728,6 +731,45 @@ ipcMain.handle('tools:extAutoSet', (_e, on) => {
     settings.extAutoUpdate = !!on;
     try { saveSettings(settings); } catch (_) {}
     return settings.extAutoUpdate;
+});
+// ── 扩展管理器（v2.0.4，工具箱 🧩 分区）──────────────────────────────
+// 只碰 <dataRoot>/default-user/extensions/ 下的目录；卸载默认移入 .shell-trash 回收站（可还原），
+// purge 才真删；重置界面设置会先备份 settings.json。逻辑都在 lib/ext-manage.js（纯 fs，可单测）。
+ipcMain.handle('tools:extManage', (_e, opts) => {
+    const action = String((opts && opts.action) || 'list');
+    const id = String((opts && opts.id) || '');
+    try {
+        if (action === 'list') {
+            return {
+                ok: true,
+                extRoot: extensionsRoot(dataRoot),
+                rows: listInstalledExtensions({ srcRoot: extSrcRoot(), dataRoot }),
+                trash: listTrash({ dataRoot }),
+            };
+        }
+        if (action === 'reinstall') {
+            const r = deployExtensions({ srcRoot: extSrcRoot(), dataRoot, force: true, quiet: true, only: [id], log: (s) => terminalWrite(s + '\n') });
+            if (!r.dataRootMissing && (r.deployed.length || r.failed.length)) {
+                terminalWrite('\x1b[32m[ext] 强制重装 ' + id + '：' + r.summary + '\x1b[0m\n');
+            }
+            return { ok: !(r.failed && r.failed.length), summary: r.summary, deployed: r.deployed, failed: r.failed, dataRootMissing: r.dataRootMissing };
+        }
+        if (action === 'uninstall') {
+            const r = uninstallExtension({ dataRoot, id, purge: !!(opts && opts.purge) });
+            terminalWrite((r.ok ? '\x1b[32m' : '\x1b[31m') + '[ext] 卸载 ' + id + '：' + (r.ok ? (r.mode === 'purge' ? '已彻底删除' : '已移入回收站') : r.reason) + '\x1b[0m\n');
+            return r;
+        }
+        if (action === 'trash-list') return { ok: true, rows: listTrash({ dataRoot }) };
+        if (action === 'trash-restore') return restoreFromTrash({ dataRoot, name: String((opts && opts.name) || '') });
+        if (action === 'reset-settings') return resetExtensionSettings({ dataRoot, id });
+        if (action === 'open') {
+            const dir = path.join(extensionsRoot(dataRoot), id);
+            const target = fs.existsSync(dir) ? dir : extensionsRoot(dataRoot);
+            shell.openPath(target);
+            return { ok: true, opened: target };
+        }
+        return { ok: false, reason: '未知操作: ' + action };
+    } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 });
 
 ipcMain.handle('tools:integrityCheck', async () => {

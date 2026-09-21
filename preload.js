@@ -85,6 +85,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         extCheck: (opts) => ipcRenderer.invoke('tools:extCheck', opts),
         extAutoGet: () => ipcRenderer.invoke('tools:extAutoGet'),
         extAutoSet: on => ipcRenderer.invoke('tools:extAutoSet', on),
+        // ST 扩展管理器（v2.0.4）：列表 / 强制重装 / 卸载(回收站) / 还原 / 重置界面设置 / 打开目录
+        extManage: (opts) => ipcRenderer.invoke('tools:extManage', opts),
         onMini: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('mini:state', h); return () => ipcRenderer.removeListener('mini:state', h); },
         onNight: cb => { const h = (_e, v) => cb(v); ipcRenderer.on('ui:night', h); return () => ipcRenderer.removeListener('ui:night', h); },
         // B 档

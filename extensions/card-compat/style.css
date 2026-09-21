@@ -8,3 +8,12 @@
 #cc-panel .menu_button { width: auto; min-width: 120px; white-space: nowrap; font-size: inherit; }
 #cc-panel .cc-stats { font-size: 0.95em; opacity: .9; margin: 8px 0; line-height: 1.6; }
 #cc-panel .cc-log { max-height: 150px; overflow: auto; font-size: 0.92em; white-space: pre-wrap; line-height: 1.5; }
+/* v0.2.8：面板分组 / 覆盖度对照表 / MVU 状态块 */
+#cc-panel .cc-grp { margin: 8px 0; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,.12)); border-radius: 6px; padding: 4px 8px; }
+#cc-panel .cc-grp > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+#cc-panel .cc-trend { font-size: .95em; opacity: .9; letter-spacing: 1px; margin: 2px 0 6px; }
+#cc-panel .cc-tab { width: 100%; border-collapse: collapse; font-size: .95em; }
+#cc-panel .cc-tab th, #cc-panel .cc-tab td { border-bottom: 1px solid rgba(255,255,255,.12); padding: 2px 4px; text-align: left; }
+#cc-panel .cc-line { margin: 4px 0; font-size: .95em; line-height: 1.5; }
+#cc-panel .cc-warn { color: #ffb86b; }
+#cc-panel .cc-muted { opacity: .75; }

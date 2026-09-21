@@ -1,4 +1,22 @@
 # 更新日志
+## [0.2.8] - 2026-09-20
+### 修复
+- **0.2.6 的「未声明块清理」实际从未生效**：那段代码被误插进 `strictCheckMessage`，里面引用了不存在的 `res` / `changed`，一进入就抛 ReferenceError 又被外层 try/catch 吞掉 —— 模型回显的 <world_setting> 等块其实没被删。现已放回 `guardMessage` 入口，成为守护第一步。
+### 新增
+- P1 ① **MVU 写回兜底**：`writeBackMvu()` + 面板按钮「用 MVU 解析并写回当前层」；API 缺失时日志与气泡明确提示可点 MVU 面板的「重新处理变量」
+- P1 ② **「本卡要求 vs 本轮实际」对照表**：面板第③组按卡世界书的 `变量更新规则` 逐项列出必更字段的 ✅/❌，并列出模型实际写入的路径
+- P1 ③ **连续缺块气泡提醒**：卡的变量块连续 3 楼未出现 → `toastr` 气泡一次（同一问题 10 分钟内不重复），`toastOnFail` 可关
+- P1 ④ **角色卡档案缓存**：`profileOf()` 60 秒 TTL，换聊天 / 手动「重新读取角色卡数据」即失效（世界书很大时每层都重新解析会卡界面），`profileTtlMs` 可调
+- P2 ⑤ **变量路径白名单**：`extractAllowedPaths()` 从规则条目抽路径（缩进结构 + 显式 `/路径` + 示例代码 `_.set('角色.字段')` / `"path":"/…"`，含模板组展开）；`validatePatchPaths()` 分「声明命中 / 组内未声明 / 越界」三档，越界**只提示不改写**；面板统计「越界路径」，对照表列出
+- P2 ⑥ **覆盖度历史与趋势**：面板顶部方块条（▁▂▃▄▅▆▇█）+ 最近 10 轮平均覆盖率与前 10 轮对比箭头
+- P2 ⑦ **多块记账**：`blockPresence()` 统计同一结构块在一条回复里的出现次数（重复输出 / 正文一份结尾一份）；`extractUpdateBlocks()` + `parsePatchOps()` 支持一条回复里多个 <JSONPatch> 片段，覆盖度按全部块统计
+- P2 ⑧ **面板分组**：设置面板拆成「① 守护与修复 / ② 结构块与变量块 / ③ 本卡要求 vs 本轮实际 / ④ MVU 联动 / ⑤ 界面与诊断」五组
+- P3 ⑨ **MVU 联动**：探测 `Mvu` API（版本 / parse / read / write）并显示；`mvuCanParse()` 用 `parseMessage` 只读试解析本轮变量块，失败计入「MVU 解析失败」；检测 MVU 自己的「额外模型解析」是否开启 —— 开着时本扩展的自动补变量**主动让位**避免双写；新增 `window.CardCompat` 对外钩子（profile / guard / coverage / validatePaths / applyToMvu / writeBack / mvu / invalidate / stats / trend）
+- P3 ⑩ **面板双语**：中英两套文案 + 「自动 / 中文 / English」选择器（自动跟随浏览器语言）
+### 变更
+- 夹具 `compat-logic-test.mjs` **76 → 102 项**：新增模板组展开、路径白名单抽取、三档路径校验、多块记账、多 JSONPatch 段解析共 21 条断言，外加入口顺序回归 5 条（直接读 `index.js` 源码，断言清理逻辑在 `guardMessage` 内、不再落在 `strictCheckMessage`）
+- `logic.js` 新增导出 `normalizePath` / `expandTemplateGroups` / `parsePatchOps` / `extractUpdateBlocks` / `extractAllowedPaths` / `validatePatchPaths` / `blockPresence`；`extractRequiredFields` 改为复用 `expandTemplateGroups`、`validatePatchBlock` 改为复用 `parsePatchOps`（对外行为与返回值不变）
+
 ## [0.2.7] - 2026-09-20
 ### 新增
 - **变量块兜底**（面板开关 `autoFixVars`，默认**关**）：角色卡声明了变量块（如 MVU `UpdateVariable`）而某层回复**缺失**时：
