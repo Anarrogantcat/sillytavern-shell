@@ -1238,6 +1238,28 @@ export function detectDisabledViews(ext) {
 }
 
 /**
+ * 0.9.2：本楼「前端块」自检的判定（纯函数，便于单测）。
+ * 背景：这类卡用正则把内容换成 ```html 前端块，再由酒馆助手（JS-Slash-Runner）渲染成面板；
+ * 酒馆助手自己的判定是 pre 的文本含 html> / <head / <body 之一，没被渲染的块就一直停在代码块状态。
+ * @param {{front:number, rendered:number, collapsed:number, fences:number}} o
+ *   front=符合前端特征的空 code block 数，rendered=已渲染成面板的数，collapsed=被酒馆助手折叠的按钮数，fences=消息正文里的围栏数
+ * @returns {{level:'none'|'ok'|'partial'|'collapse'|'unrendered', front:number, rendered:number, collapsed:number, fences:number}}
+ */
+export function frontBlockVerdict(o) {
+    const front = Number(o && o.front) || 0;
+    const rendered = Number(o && o.rendered) || 0;
+    const collapsed = Number(o && o.collapsed) || 0;
+    const fences = Number(o && o.fences) || 0;
+    let level = 'none';
+    if (front > 0) {
+        if (rendered >= front) level = 'ok';
+        else if (rendered > 0) level = 'partial';
+        else if (collapsed > 0) level = 'collapse';
+        else level = 'unrendered';
+    }
+    return { level: level, front: front, rendered: rendered, collapsed: collapsed, fences: fences };
+}
+/**
  * 兼容性体检（0.6.0）：对一份角色卡列表跑一遍 card-compat 的全部判定，
  * 给出「每张卡能做什么、为什么降级」。纯函数，喂 ST 的 getContext().characters 即可。
  * verdict 取值：

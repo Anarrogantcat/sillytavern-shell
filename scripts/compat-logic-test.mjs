@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -602,6 +602,16 @@ check('⑦ 行字段带 disabledUncovered', sc31.rows[0].disabledUncovered === 1
 check('⑧ 总览直方图分开计数', sc31.summary.alerts['disabled-views'] === 1 && sc31.summary.alerts['disabled-alternative'] === 1 && sc31.summary.disabledUncovered === 1 && sc31.summary.disabledViews === 2, sc31.summary);
 check('⑨ 面板接线（备选说明/未覆盖计数/预警标签）', idxSrc.indexOf('disAlt') > 0 && idxSrc.indexOf('disabledUncovered') > 0 && idxSrc.indexOf("'alert_disabled-alternative'") > 0);
 check('⑨ 行尾标记分开：❗=真缺/新方言，◇=备选', idxSrc.indexOf("' ❗'") > 0 && idxSrc.indexOf("' ◇'") > 0 && /indexOf\('disabled-alternative'\)/.test(idxSrc));
+
+console.log('— 夹具 32：本楼前端块自检（0.9.2）');
+check('① 没有前端块 → none', frontBlockVerdict({ front: 0, rendered: 0, collapsed: 0, fences: 0 }).level === 'none');
+check('② 全部渲染 → ok', frontBlockVerdict({ front: 2, rendered: 2, collapsed: 0, fences: 0 }).level === 'ok');
+check('③ 只有一部分渲染 → partial（实测病灶：刷新后才会全出来）', frontBlockVerdict({ front: 2, rendered: 1, collapsed: 0, fences: 0 }).level === 'partial');
+check('④ 一个都没渲染、但有折叠按钮 → collapse（酒馆助手折叠了）', frontBlockVerdict({ front: 2, rendered: 0, collapsed: 2, fences: 0 }).level === 'collapse');
+check('⑤ 一个都没渲染、也没折叠 → unrendered（要刷新/切聊天/重生成）', frontBlockVerdict({ front: 2, rendered: 0, collapsed: 0, fences: 0 }).level === 'unrendered');
+check('⑥ 数字原样带回，且容错 undefined', (function () { const r = frontBlockVerdict({ front: 1, rendered: 0, collapsed: 0, fences: 3 }); const z = frontBlockVerdict(undefined); return r.fences === 3 && r.level === 'unrendered' && z.level === 'none' && z.front === 0; })());
+check('⑦ 自检函数接线（判定原样用酒馆助手的 html>/<head/<body、找 TH-render 与折叠按钮）', idxSrc.indexOf('checkFrontBlocks') > 0 && idxSrc.indexOf("['html>', '<head', '<body']") > 0 && idxSrc.indexOf('div.TH-render') > 0 && idxSrc.indexOf('TH-collapse-code-block-button') > 0);
+check('⑧ 面板接线（按钮/结果行/被动自检/一键检查也跑）', idxSrc.indexOf('cc-check-front') > 0 && idxSrc.indexOf('cc-front') > 0 && /CHARACTER_MESSAGE_RENDERED[\s\S]{0,160}checkFrontBlocks/.test(idxSrc) && /verifyRendered\(chat\.length - 1\); checkFrontBlocks\(chat\.length - 1\)/.test(idxSrc));
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
