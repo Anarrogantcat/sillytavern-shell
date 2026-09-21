@@ -48,6 +48,11 @@ npm run build:portable  # 便携版
 
 构建产物输出到 `dist-electron-v3` / `dist-electron-v3-lite`（已被 .gitignore 覆盖）。发布到 GitHub Releases 后，已装用户可走套壳内自动更新。
 
+### 扩展交付与路线图
+
+- 交付机制（内置 / 在线 / ST 本体更新 / 换机 / 别人装套壳怎么拿到）：[`docs/extension-delivery.md`](docs/extension-delivery.md)
+- 两个扩展的完善方向与优先级：[`docs/extension-roadmap.md`](docs/extension-roadmap.md)
+
 ### 版本号规则
 
 - 单一来源：`package.json` 的 `version`（界面版本号、安装包文件名、Release 名全从它派生）
