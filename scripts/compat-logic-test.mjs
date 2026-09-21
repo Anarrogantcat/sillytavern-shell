@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -549,6 +549,30 @@ const halfOpen = '<konatan_planning~>半截块';
 check('⑥ 未声明但没闭合 → 只报告不删', (function () { const r = st29(halfOpen); return r.text === halfOpen && r.unclosed.join(',') === 'konatan_planning~'; })());
 check('⑦ KEEP_BLOCKS 已含协议内部标签', ['jsonpatch', 'updatevariable'].every((t) => KEEP_BLOCKS.has(t)));
 check('⑧ 保护区逻辑在位', /insideProtected/.test(readFileSync(new URL('../extensions/card-compat/logic.js', import.meta.url), 'utf8')));
+
+console.log('— 夹具 30：新卡哨兵（0.9.0）——禁用渲染正则 + 疑似新方言');
+const imgScript = { scriptName: '0.[NSFW插图]电脑适配', disabled: true, findRegex: '/<NSFW_IMG>(.*?)<\\/NSFW_IMG>/gi', replaceString: '<center><img src="https://x/$1" style="width:100%"></center>' };
+const barScript = { scriptName: '[界面]状态栏', disabled: true, findRegex: '/<StatusPlaceHolderImpl\\s*\\/>/g', replaceString: '<div>' + 'x'.repeat(600) + '</div>' };
+const panelScript = { scriptName: '[界面]开局面板', disabled: true, findRegex: '/【开局】/', replaceString: '<!DOCTYPE html><html><body>' + 'x'.repeat(2500) + '<script>1</script></body></html>' };
+const onScript = { scriptName: '状态栏', findRegex: '/<StatusPlaceHolderImpl\\/>/', replaceString: '<div>' + 'x'.repeat(600) + '</div>' };
+const dv1 = detectDisabledViews({ regex_scripts: [imgScript, barScript, panelScript, onScript] });
+check('① 插图正则被认出（本体只有 100 多字节也不漏）', dv1.images.length === 1 && dv1.images[0].name.indexOf('NSFW插图') > 0, dv1.images);
+check('② 状态栏 / 面板分别归位', dv1.bars.length === 1 && dv1.panels.length === 1, dv1);
+check('③ 启用的脚本不算', dv1.others.length === 0 && dv1.images.length === 1);
+check('④ 没有自动开启脚本时不标记 autoEnable', dv1.autoEnable === false && dv1.total === 3, dv1);
+const dv2 = detectDisabledViews({ regex_scripts: [imgScript], tavern_helper: { scripts: [{ name: '自动开启角色卡局部正则', content: "import 'https://x/y.js'" }] } });
+check('⑤ 卡自带自动开启脚本 → autoEnable=true（不误报）', dv2.autoEnable === true && dv2.total === 1, dv2);
+const autoExt = { regex_scripts: [barScript], tavern_helper: { scripts: [{ name: '自动开启角色卡局部正则', content: 'x' }] } };
+const sc30 = scanCardCompatibility([
+    { name: '关着渲染正则的卡', data: { extensions: { regex_scripts: [barScript] } } },
+    { name: '卡自带开启脚本', data: { extensions: autoExt } },
+    { name: '疑似新方言', data: { extensions: Object.assign({}, scanDataNoRule.extensions), character_book: { entries: [{ comment: '[mvu_update]变量更新规则', content: 'check: 没有归属字段的条件' }] } } },
+]);
+check('⑥ 关着又不自动开启 → 预警 disabled-views', (sc30.rows[0].alerts || []).indexOf('disabled-views') >= 0 && sc30.rows[0].disabledViews === 1 && sc30.rows[0].autoEnable === false, sc30.rows[0]);
+check('⑦ 卡自带开启脚本 → 不预警，但仍报告条数', (sc30.rows[1].alerts || []).indexOf('disabled-views') < 0 && sc30.rows[1].disabledViews === 1 && sc30.rows[1].autoEnable === true, sc30.rows[1]);
+check('⑧ 有 check 却抽不出 → 预警 new-dialect（给我看的信号）', (sc30.rows[2].alerts || []).indexOf('new-dialect') >= 0 && sc30.rows[2].ruleStyle === 'check-unparsed', sc30.rows[2]);
+check('⑨ 总览带预警直方图与禁用渲染正则计数', sc30.summary.alerts['disabled-views'] === 1 && sc30.summary.alerts['new-dialect'] === 1 && sc30.summary.disabledViews === 2 && sc30.summary.autoEnableCards === 1, sc30.summary);
+check('⑩ 面板接线（预警标签/协议行/每行 ❗/复制报告）', idxSrc.indexOf('alertLabel') > 0 && idxSrc.indexOf('scanAlerts') > 0 && idxSrc.indexOf('disViews') > 0 && idxSrc.indexOf('disabledViews') > 0 && idxSrc.indexOf("((r.alerts || []).length ? ' ❗' : '')") > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

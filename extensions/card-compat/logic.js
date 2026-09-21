@@ -370,6 +370,8 @@ export function buildProfile(ext) {
         injectableAnchors: [...anchors],
         // 0.6.0：卡自带的前端界面（动态状态栏 / 开局配置面板）
         views: detectFrontEndViews(ext),
+        // 0.9.0：被禁用的大块渲染正则（状态栏/插图/面板），以及卡自带脚本会不会运行时开启
+        disabledViews: detectDisabledViews(ext),
     };
 }
 
@@ -1154,6 +1156,36 @@ export function detectFrontEndViews(ext) {
     return { bars: bars, panels: panels, dynamic: bars.some((b) => b.dynamic) };
 }
 
+// 卡自带的「自动开启角色卡局部正则」这类 helper（StageDog 系脚本），能把本体 disabled 的渲染正则运行时打开
+const AUTO_ENABLE_RE = /自动开启.{0,8}正则|开启角色卡局部正则|auto.?enable/i;
+
+/**
+ * 0.9.0 新卡哨兵：卡里「被禁用的大块渲染正则」—— 它们关着的时候，状态栏 / 插图 / 面板都不会渲染。
+ * 实测有卡就是这么设计的（本体 disabled，靠自带 helper 在运行时打开），所以必须区分出这种情况，否则会误报。
+ * @returns {{total:number, images:Array, bars:Array, panels:Array, others:Array, autoEnable:boolean}}
+ */
+export function detectDisabledViews(ext) {
+    const images = [], bars = [], panels = [], others = [];
+    for (const s of (ext?.regex_scripts || [])) {
+        if (!s.disabled) continue;
+        const rep = typeof s.replaceString === 'string' ? s.replaceString : '';
+        if (!rep || rep.trim() === '' || rep.indexOf('<') < 0) continue;
+        const hasImg = /<img/i.test(rep);
+        // 插图正则本体很短（实测 305 字节），门槛要单独放宽，否则「图片不显示」这类卡漏报
+        if (rep.length < (hasImg ? 40 : 400)) continue;   // 含 <img> 的替换内容本身就是渲染器，门槛要低
+        const name = String(s.scriptName || '');
+        const find = normalizeRegexForTags(s.findRegex);
+        const rec = { name: name, len: rep.length };
+        if (hasImg || /插图|图片|image/i.test(rep + ' ' + name) || /NSFW_IMG|SFW_IMG/i.test(find)) { rec.kind = 'image'; images.push(rec); }
+        else if (VIEW_BAR_RE.test(name) || /StatusPlaceHolder|状态栏/i.test(find)) { rec.kind = 'bar'; bars.push(rec); }
+        else if (VIEW_PANEL_RE.test(rep) || rep.length > 20000) { rec.kind = 'panel'; panels.push(rec); }
+        else { rec.kind = 'other'; others.push(rec); }
+    }
+    const helpers = (ext?.tavern_helper?.scripts) || [];
+    const autoEnable = helpers.some((h) => AUTO_ENABLE_RE.test(String(h.name || '') + ' ' + String(h.content || '')));
+    return { total: images.length + bars.length + panels.length + others.length, images: images, bars: bars, panels: panels, others: others, autoEnable: autoEnable };
+}
+
 /**
  * 兼容性体检（0.6.0）：对一份角色卡列表跑一遍 card-compat 的全部判定，
  * 给出「每张卡能做什么、为什么降级」。纯函数，喂 ST 的 getContext().characters 即可。
@@ -1184,6 +1216,9 @@ export function scanCardCompatibility(cards) {
             const hasAnchor = (prof.anchors || []).length > 0;
             const hasData = (prof.dataTags || []).length > 0;
             const views = prof.views || { bars: [], panels: [], dynamic: false };
+            const dis = prof.disabledViews || detectDisabledViews(ext);
+            // 0.9.0：没抽到规则时的原因（含「有 check 却抽不出」= 我没见过的新方言）
+            const ruleStyle = (!required.length && hasData) ? classifyNoRules(entries, ext) : '';
             const hasBar = (views.bars || []).length > 0;
             let verdict = 'ok';
             if (!hasAnchor && !hasData) {
@@ -1206,7 +1241,16 @@ export function scanCardCompatibility(cards) {
                 book: entries.length,
                 required: required.length,
                 // 0.7.0：没抽到规则时标出「为什么」——是没写规则，还是写法没认出来
-                ruleStyle: (!required.length && hasData) ? classifyNoRules(entries, ext) : "",
+                ruleStyle: ruleStyle,
+                disabledViews: dis.total,
+                autoEnable: dis.autoEnable,
+                // 0.9.0 新卡哨兵：需要人注意的两件事 —— 没见过的新方言 / 渲染正则是关着的
+                alerts: (function () {
+                    const list = [];
+                    if (ruleStyle === 'check-unparsed' || ruleStyle === 'other') list.push('new-dialect');
+                    if (dis.total > 0 && !dis.autoEnable) list.push('disabled-views');
+                    return list;
+                })(),
                 allowedPaths: allowed.paths.length,
                 varSpec: String(varSpec || '').length > 40,
                 bars: (views.bars || []).length,
@@ -1240,6 +1284,9 @@ export function scanCardCompatibility(cards) {
         dynBars: by((r) => r.bars > 0),
         dynBarsDynamic: by((r) => r.bars > 0 && r.dynBar),
         panels: by((r) => r.panels > 0),
+        disabledViews: by((r) => r.disabledViews > 0),
+        autoEnableCards: by((r) => r.autoEnable),
+        alerts: (function () { const m = {}; for (const r of rows) for (const a of (r.alerts || [])) m[a] = (m[a] || 0) + 1; return m; })(),
         noRulesStyles: rows.reduce((m, r) => { if (r.ruleStyle) m[r.ruleStyle] = (m[r.ruleStyle] || 0) + 1; return m; }, {}),
     };
     return { summary: summary, rows: rows };
