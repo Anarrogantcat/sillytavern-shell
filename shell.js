@@ -932,25 +932,24 @@ async function renderTools() {
     if (pg) setNote($('#t-pin-status'), pg.hasPin ? '已设置' : '');
     const s = await window.electronAPI?.settings?.get?.();
     if (s) tEl.notify.value = s.notifyGenerated === false ? '0' : '1';
-    // 回滚列表（正式版起点 v2.1.1；未署名旧版默认隐藏，可展开）
-    async function renderRollbackPackages(showAll) {
-        const r = (await TL().rollbackList({ all: !!showAll })) || { rows: [], hidden: 0 };
+    // 回滚列表：只列正式版（v2.1.1 起带署名）。更早的未署名旧版既不显示、也不再提供展开入口 ——
+    // 那些 Release 已经在 GitHub 转成 draft，公众本来就下不到；本地若还存着旧包，直接在 lib/tools-app.js 的过滤器里忽略
+    async function renderRollbackPackages() {
+        const r = (await TL().rollbackList({})) || { rows: [], hidden: 0 };
         const rows = r.rows || [];
         const hid = r.hidden || 0;
         setNote(tEl.rollbackInfo, rows.length
-            ? ('可用 ' + rows.length + ' 个正式版回滚包' + (hid ? '（已隐藏 ' + hid + ' 个未署名旧版）' : ''))
-            : (hid ? ('没有正式版回滚包（已隐藏 ' + hid + ' 个未署名旧版）') : '无回滚包'));
+            ? ('可用 ' + rows.length + ' 个正式版回滚包' + (hid ? '（已忽略 ' + hid + ' 个未署名旧版）' : ''))
+            : (hid ? ('没有正式版回滚包（已忽略 ' + hid + ' 个未署名旧版）') : '无回滚包'));
         let html = rows.map((x) => '<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback="' + escapeHtml(x.version) + '">回滚到 v' + escapeHtml(x.version) + '</button>').join('');
         if (!html) html = '<span class="tool-note">无</span>';
-        if (hid && !showAll) html += '<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin:2px" data-rollback-showall="1">显示未署名旧版 (' + hid + ')</button>';
         setDetailHtml(tEl.rollbackList, html);
         tEl.rollbackList.querySelectorAll('[data-rollback]').forEach((b) => b.addEventListener('click', async () => {
             const ok = await showConfirm({ title: '版本回滚', message: '确定回滚到 v' + b.dataset.rollback + '？应用将退出并安装旧版。', confirmText: '回滚', danger: true });
             if (ok) await TL().rollbackInstall(b.dataset.rollback);
         }));
-        tEl.rollbackList.querySelector('[data-rollback-showall]')?.addEventListener('click', () => renderRollbackPackages(true));
     }
-    await renderRollbackPackages(false);
+    await renderRollbackPackages();
 }
 // ── 迷你状态窗（可隐藏：设置/×按钮/托盘三处联动）──────────────────
 const miniEl = { box: $('#mini-status'), dot: $('#mini-dot'), text: $('#mini-text'), close: $('#mini-close') };

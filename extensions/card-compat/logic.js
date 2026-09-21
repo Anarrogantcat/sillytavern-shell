@@ -4,7 +4,10 @@
 
 const TAG_RE = /<\/?([A-Za-z][A-Za-z0-9_!-]*)\s*\/?>/g;
 const HIDE_RE = /隐藏|删除|去除|hide|remove|strip/i;
-const DATA_RE = /UpdateVariable|变量/i;
+// 数据块标签族（0.6.0：锚定 + 忽略大小写，并认下 <update> / <JSONPatch> 这类现代写法）
+const DATA_RE = /^(?:update(?:variable)?|jsonpatch|变量)/i;
+// 通用 HTML 标签：宽松抽取时排除，免得把界面代码里的 <div>/<script> 当成角色卡的锚点
+const HTML_TAGS = new Set(['a', 'area', 'audio', 'b', 'base', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption', 'center', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'font', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'menu', 'meta', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'param', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'svg', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'defs', 'use', 'text', 'tspan', 'stop', 'clippath', 'mask', 'pattern', 'symbol', 'marker', 'filter']);
 
 /** 宽松标签抽取：允许中文标签名（卡的格式标签常见形如 <正文>、<女主A_名字>），用于「本卡声明了哪些标签」 */
 export function broadTagsOf(text) {
@@ -14,7 +17,9 @@ export function broadTagsOf(text) {
     while ((m = re.exec(String(text || '')))) {
         const name = m[2];
         // 允许 ~ ! - 等杂字符（实测模型会写出 <konatan_planning~> 这种），只要不是纯符号即可
-        if (/^[A-Za-z\u4e00-\u9fa5][^\s<>\/]{0,39}$/.test(name)) out.add(name);
+        // 0.6.0：名字收紧为「字母/数字/_/-/~/!/./中文」—— 旧写法会把 JS 片段当成标签名
+        // （实测病灶：StatusPlaceHolderImpl\ g,'&lt;').replace( 被当成一个「格式标签」，于是每轮都误报「格式标签缺」）
+        if (/^[A-Za-z\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5.~!-]{0,39}$/.test(name)) out.add(name);
     }
     return [...out];
 }
@@ -250,6 +255,37 @@ export function tagsOf(text) {
 }
 
 /**
+ * 0.6.0：把 ST 正则脚本的 findRegex 归一化，便于抽标签 ——
+ *   ① 去掉 /…/flags 定界符；② 反转义 \/ \< \>；③ 把 \s \s* \s+ \s{1,3} 折成一个空格。
+ * 为什么必须做：现代卡普遍写 /<StatusPlaceHolderImpl\s*\/>/g，旧实现一个标签都抽不出来 ——
+ * 锚点「看不见」→ 体检把它判成「只有格式标签」，而且 AI 忘写占位符时补不上，状态栏直接消失。
+ */
+export function normalizeRegexForTags(src) {
+    let t = String(src ?? '');
+    const m = t.match(/^\/([\s\S]*)\/([a-z]*)$/);
+    if (m) t = m[1];
+    t = t.split('\\/').join('/').split('\\<').join('<').split('\\>').join('>');
+    t = t.replace(/\\s(?:\{[^}]*\}|[*+?])?/g, ' ');
+    return t;
+}
+
+/**
+ * 0.6.0：宽松标签抽取（严格抽取为空时的兜底）——
+ * 认得 <(update(?:variable)?)>、<Tag\s*> 这类「标签名后面还跟了正则结构」的写法；排除通用 HTML 标签。
+ */
+export function tagsOfLoose(text) {
+    const out = new Set();
+    // 允许 <( 开头：卡里常见 <(update(?:variable)?)> 这种把标签名包进捕获组的写法
+    const re = /<\(?([A-Za-z][A-Za-z0-9_!-]*)/g;
+    let m;
+    while ((m = re.exec(String(text || '')))) {
+        const t = m[1];
+        if (!HTML_TAGS.has(t.toLowerCase())) out.add(t);
+    }
+    return [...out];
+}
+
+/**
  * 由角色卡的 extensions 推导守护档案
  * @param {object} ext 角色卡 data.extensions
  */
@@ -263,8 +299,13 @@ export function buildProfile(ext) {
         const named = HIDE_RE.test(String(s.scriptName || ''));
         // 有明确替换内容 → 渲染脚本；明确空串 → 剥除脚本；未提供 → 退回按名字判断
         const isStripper = typeof s.replaceString === 'string' ? s.replaceString.trim() === '' : named;
-        const rx = String(s.findRegex || '').split('\\/').join('/');
-        for (const tag of tagsOf(rx)) {
+        // 0.6.0：先把 findRegex 归一化（去 /…/flags 定界符 + 反转义 \/ \< \> \s*）再抽标签 ——
+        // 旧实现遇到 /<StatusPlaceHolderImpl\s*\/>/g 一个标签都抽不出来，锚点因此「隐形」
+        const rx = normalizeRegexForTags(s.findRegex);
+        let scriptTags = tagsOf(rx);
+        // 严格抽不到时退回宽松抽取（认得 <(update(?:variable)?)> 这类带正则结构的写法）；已排除通用 HTML
+        if (!scriptTags.length) scriptTags = tagsOfLoose(rx);
+        for (const tag of scriptTags) {
             const selfRe = new RegExp('<' + tag + '\\s*/>');
             const pairRe = new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?</' + tag + '>');
             if (selfRe.test(rx)) forms[tag] = 'self';
@@ -290,11 +331,13 @@ export function buildProfile(ext) {
         helperRenders: helpers.length > 0 && /状态栏|StatusPlaceHolder|StatusBar/i.test(helperText),
         // 卡自己声明的「格式标签」（含中文，如 <正文>/<女主A_名字>）：来自正则的 findRegex/replaceString 与酒馆助手脚本
         rawTags: [...new Set([
-            ...broadTagsOf((ext?.regex_scripts || []).map((s) => String(s.findRegex || '') + ' ' + String(s.replaceString || '')).join('\n')),
+            ...broadTagsOf((ext?.regex_scripts || []).map((s) => normalizeRegexForTags(s.findRegex) + ' ' + String(s.replaceString || '')).join('\n')),
             ...broadTagsOf(helperText),
         ])],
         // 只有剥除脚本盯着、没有任何渲染脚本的标签 → 不补（补了反而多出裸标签）
         injectableAnchors: [...anchors],
+        // 0.6.0：卡自带的前端界面（动态状态栏 / 开局配置面板）
+        views: detectFrontEndViews(ext),
     };
 }
 
@@ -925,8 +968,39 @@ export function cardTextOf(card, max = 200000) {
     } catch (_) { return ''; }
 }
 
+const VIEW_BAR_RE = /StatusPlaceHolder|StatusBar|状态栏/i;
+const VIEW_PANEL_RE = /<!DOCTYPE html|<script|onclick=|addEventListener/i;
+const VIEW_DYN_RE = /stat_data|format_message_variable|\{\{|getVariables|getvar/i;
+
 /**
- * 兼容性体检（0.5.0）：对一份角色卡列表跑一遍 card-compat 的全部判定，
+ * 0.6.0：识别卡自带的「前端界面」脚本 —— 动态状态栏 / 开局配置面板。
+ * 这类卡的状态栏是**动态**的：AI 只输出一个占位符，真正的 HTML 由前端正则按当前变量算出来，
+ * 所以 card-compat 能帮的不是渲染，而是「占位符缺了就补上、别去动那块 HTML」。
+ * 判定：替换内容非空、够长、含 HTML，且脚本没被禁用。
+ * @param {object} ext 角色卡 data.extensions
+ * @returns {{bars:Array, panels:Array, dynamic:boolean}}
+ */
+export function detectFrontEndViews(ext) {
+    const bars = [];
+    const panels = [];
+    for (const s of (ext?.regex_scripts || [])) {
+        if (s.disabled) continue;
+        const rep = typeof s.replaceString === 'string' ? s.replaceString : '';
+        if (!rep || rep.trim() === '' || rep.length < 400 || rep.indexOf('<') < 0) continue;
+        const name = String(s.scriptName || '');
+        const find = normalizeRegexForTags(s.findRegex);
+        const rec = { name: name, len: rep.length, markdownOnly: s.markdownOnly !== false, placement: s.placement };
+        if (VIEW_BAR_RE.test(name) || /StatusPlaceHolder|状态栏/i.test(find)) {
+            rec.dynamic = VIEW_DYN_RE.test(rep) || /<\s*script/i.test(rep);
+            bars.push(rec);
+        } else if (VIEW_PANEL_RE.test(rep) && rep.length > 2000) panels.push(rec);
+        else if (rep.length > 20000) panels.push(rec);
+    }
+    return { bars: bars, panels: panels, dynamic: bars.some((b) => b.dynamic) };
+}
+
+/**
+ * 兼容性体检（0.6.0）：对一份角色卡列表跑一遍 card-compat 的全部判定，
  * 给出「每张卡能做什么、为什么降级」。纯函数，喂 ST 的 getContext().characters 即可。
  * verdict 取值：
  *   ok           有锚点/数据块，且规则或协议可用
@@ -935,6 +1009,7 @@ export function cardTextOf(card, max = 200000) {
  *   read-only    变量协议不可写回（YAML 结构块等）
  *   format-only  无锚点无数据块，但声明了格式标签（只能提醒）
  *   helper-only  无锚点无数据块，但卡自带酒馆助手脚本（状态栏由它负责）
+ *   dyn-bar      无锚点无数据块，但卡自带前端状态栏正则（动态状态栏；只能提醒 + 不碰那块 HTML）
  *   plain        纯正文卡（不需要 card-compat 做任何事）
  *   error        解析异常
  * @returns {{summary:object, rows:Array}}
@@ -953,8 +1028,13 @@ export function scanCardCompatibility(cards) {
             const proto = detectVariableProtocol({ text: cardTextOf(ch), varSpec: varSpec, dataTags: prof.dataTags, blockTags: [...prof.dataTags, ...prof.anchors] });
             const hasAnchor = (prof.anchors || []).length > 0;
             const hasData = (prof.dataTags || []).length > 0;
+            const views = prof.views || { bars: [], panels: [], dynamic: false };
+            const hasBar = (views.bars || []).length > 0;
             let verdict = 'ok';
-            if (!hasAnchor && !hasData) verdict = (prof.rawTags || []).length ? 'format-only' : (prof.helperCount > 0 ? 'helper-only' : 'plain');
+            if (!hasAnchor && !hasData) {
+                if (hasBar) verdict = 'dyn-bar';
+                else verdict = (prof.rawTags || []).length ? 'format-only' : (prof.helperCount > 0 ? 'helper-only' : 'plain');
+            }
             else if (!hasData) verdict = 'guard-only';
             else if (!required.length) verdict = 'no-rules';
             else if (!proto.canWriteBack && proto.id !== 'none') verdict = 'read-only';
@@ -972,6 +1052,9 @@ export function scanCardCompatibility(cards) {
                 required: required.length,
                 allowedPaths: allowed.paths.length,
                 varSpec: String(varSpec || '').length > 40,
+                bars: (views.bars || []).length,
+                panels: (views.panels || []).length,
+                dynBar: !!views.dynamic,
             });
         } catch (e) {
             rows.push({ name: '（解析失败）', verdict: 'error', reason: String((e && e.message) || e) });
@@ -997,6 +1080,9 @@ export function scanCardCompatibility(cards) {
         hides: by((r) => r.hides > 0),
         writable: by((r) => r.canWriteBack),
         guardable: by((r) => r.anchors > 0 || r.dataTags > 0),
+        dynBars: by((r) => r.bars > 0),
+        dynBarsDynamic: by((r) => r.bars > 0 && r.dynBar),
+        panels: by((r) => r.panels > 0),
     };
     return { summary: summary, rows: rows };
 }

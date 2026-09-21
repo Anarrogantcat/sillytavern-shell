@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -57,7 +57,7 @@ const STRINGS = {
     zh: {
         title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
         secMvu: 'MVU 联动', secDep: '依赖与联动', secUi: '界面与诊断', enabled: '启用守护',
-        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，90 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_error': '解析异常',
+        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', 'v_error': '解析异常',
         protocol: '变量协议', capWrite: '可写回变量', capReadonly: '只读守护（不改宿主变量）', depLoading: '读取依赖版本…', depOff: '依赖检测已关（面板开关）',
         compatNote: '兼容模式：关掉补发事件 / MVU 写回 / 自动补变量，只留纯文本守护 —— 酒馆助手或 MVU 大更新出问题时打开它',
         injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
@@ -90,7 +90,7 @@ const STRINGS = {
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
         secMvu: 'MVU integration', secDep: 'Dependencies and linkage', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
-        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)',
+        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic',
         protocol: 'Variable protocol', capWrite: 'can write variables back', capReadonly: 'read-only guard (does not touch host variables)', depLoading: 'Reading dependency versions...', depOff: 'Dependency check is off (panel switch)',
         compatNote: 'Compat mode: disables the event nudge / MVU write-back / auto var fix, leaving pure text guarding - turn it on when TavernHelper or MVU updates break things',
         injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
@@ -767,7 +767,12 @@ function renderProtocolLine() {
     if (!box) return;
     try {
         const pr = (profileOf().protocol) || { id: 'none', label: '（未识别）', canWriteBack: false };
-        box.innerHTML = '<b>' + escHtml(T('protocol')) + '</b>：' + escHtml(pr.label) + ' ｜ ' + escHtml(pr.canWriteBack ? T('capWrite') : T('capReadonly'));
+        // 0.6.0：本卡自带的前端界面（动态状态栏 / 交互面板），让用户一眼看到「状态栏是这张卡自己渲染的」
+        const vw = (profileOf().views) || { bars: [], panels: [] };
+        let extra = '';
+        if ((vw.bars || []).length) extra += ' ｜ ' + escHtml(T('scanDyn')) + ' ' + vw.bars.length + (vw.dynamic ? '✦' : '');
+        if ((vw.panels || []).length) extra += ' ｜ ' + escHtml(T('scanPanel')) + ' ' + vw.panels.length;
+        box.innerHTML = '<b>' + escHtml(T('protocol')) + '</b>：' + escHtml(pr.label) + ' ｜ ' + escHtml(pr.canWriteBack ? T('capWrite') : T('capReadonly')) + extra;
         const cfg = document.getElementById('cc-var-cfg');
         if (cfg) cfg.style.display = (pr.id === 'none') ? 'none' : '';
     } catch (_) {}
@@ -786,15 +791,20 @@ function renderScan() {
     const at = scanResult.at ? new Date(scanResult.at).toLocaleString() : '';
     sum.innerHTML = '<b>' + escHtml(T('scanSum')) + '</b>：' + s.total + escHtml(T('scanOf')) + ' ｜ ' + escHtml(T('scanGuard')) + ' ' + s.guardable +
         ' ｜ ' + escHtml(T('scanWrite')) + ' ' + s.writable + ' ｜ ' + escHtml(T('scanRules')) + ' ' + s.rules +
+        // 0.6.0：卡自带的前端界面（动态状态栏 / 交互面板）也计入总览 —— 括号里是「引用了变量或带脚本」的真动态数
+        ' ｜ ' + escHtml(T('scanDyn')) + ' ' + (s.dynBars || 0) + ((s.dynBarsDynamic || 0) ? ('（' + s.dynBarsDynamic + ' ' + escHtml(T('scanDynYes')) + '）') : '') +
+        ' ｜ ' + escHtml(T('scanPanel')) + ' ' + (s.panels || 0) +
         ' ｜ ' + Object.keys(s.protocol).map((k) => escHtml(k) + '×' + s.protocol[k]).join(' ') + (at ? ' ｜ ' + escHtml(at) + ' ｜ ' + scanResult.ms + 'ms' : '');
     if (filt) {
-        const keys = ['', 'ok', 'guard-only', 'no-rules', 'read-only', 'format-only', 'helper-only', 'plain'];
+        const keys = ['', 'ok', 'guard-only', 'dyn-bar', 'no-rules', 'read-only', 'format-only', 'helper-only', 'plain'];
         filt.innerHTML = keys.map((v) => '<button class="btn-secondary btn-xs cc-chip" data-scan-filter="' + v + '" style="margin:2px;' + (scanFilter === v ? 'outline:1px solid currentColor;' : '') + '">' +
             escHtml(v ? (verdictLabel(v) + ' (' + (s.verdicts[v] || 0) + ')') : (T('v_all') + ' (' + s.total + ')')) + '</button>').join('');
     }
     const list = scanFilter ? scanResult.rows.filter((r) => r.verdict === scanFilter) : scanResult.rows;
+    // 每行末尾标出「卡自带的前端界面」：✦ = 真动态（HTML 里引用了变量或有脚本）
+    const marks = (r) => (r.bars ? (' ｜ ' + T('scanDyn') + (r.dynBar ? '✦' : '')) : '') + (r.panels ? (' ｜ ' + T('scanPanel')) : '');
     rowsBox.innerHTML = '<table class="cc-tab"><thead><tr><th>' + escHtml(T('colCard')) + '</th><th>' + escHtml(T('colProto')) + '</th><th>' + escHtml(T('colCap')) + '</th><th>' + escHtml(T('colVerdict')) + '</th></tr></thead><tbody>' +
-        list.slice(0, 200).map((r) => '<tr><td>' + escHtml(String(r.name || '').slice(0, 22)) + '</td><td>' + escHtml(r.protocol || '-') + '</td><td>' + (r.anchors || 0) + '/' + (r.dataTags || 0) + '/' + (r.required || 0) + '</td><td>' + escHtml(verdictLabel(r.verdict)) + '</td></tr>').join('') +
+        list.slice(0, 200).map((r) => '<tr><td>' + escHtml(String(r.name || '').slice(0, 22)) + '</td><td>' + escHtml(r.protocol || '-') + '</td><td>' + (r.anchors || 0) + '/' + (r.dataTags || 0) + '/' + (r.required || 0) + '</td><td>' + escHtml(verdictLabel(r.verdict) + marks(r)) + '</td></tr>').join('') +
         '</tbody></table>' + (list.length > 200 ? '<div class="cc-muted">' + escHtml(T('scanMore')) + '</div>' : '');
 }
 async function runCompatScan() {
@@ -815,8 +825,9 @@ async function copyScanReport() {
     if (!scanResult) { toast(T('scanIdle'), 'info'); return; }
     const s = scanResult.summary;
     const lines = [T('scanSum') + ': ' + s.total + ' 张', '结论: ' + JSON.stringify(s.verdicts), '协议: ' + JSON.stringify(s.protocol),
-        '可守护 ' + s.guardable + ' / 可写回 ' + s.writable + ' / 有规则 ' + s.rules, '', T('colCard') + ' | ' + T('colProto') + ' | ' + T('colVerdict')];
-    for (const r of scanResult.rows) lines.push(r.name + ' | ' + (r.protocol || '-') + ' | ' + r.verdict + ' | 锚点' + r.anchors + ' 数据块' + r.dataTags + ' 规则' + r.required);
+        '可守护 ' + s.guardable + ' / 可写回 ' + s.writable + ' / 有规则 ' + s.rules + ' / 动态状态栏 ' + (s.dynBars || 0) + '（真动态 ' + (s.dynBarsDynamic || 0) + '） / 交互面板 ' + (s.panels || 0),
+        '', T('colCard') + ' | ' + T('colProto') + ' | ' + T('colVerdict')];
+    for (const r of scanResult.rows) lines.push(r.name + ' | ' + (r.protocol || '-') + ' | ' + r.verdict + ' | 锚点' + r.anchors + ' 数据块' + r.dataTags + ' 规则' + r.required + (r.bars ? (' | 状态栏' + r.bars) : '') + (r.panels ? (' | 面板' + r.panels) : ''));
     try { await navigator.clipboard.writeText(lines.join(String.fromCharCode(10))); toast(T('scanCopied'), 'success'); } catch (_) { toast(T('scanCopyFail'), 'warning'); }
 }
 function renderMvuBox() {

@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -395,6 +395,58 @@ check('每行带名字/协议/锚点/规则字段', scan24.rows.every((r) => typ
 check('空列表不炸', scanCardCompatibility([]).summary.total === 0 && scanCardCompatibility(null).summary.total === 0);
 check('体检面板接线（按钮/表格/筛选/钩子）', idxSrc.indexOf('id="cc-scan-run"') > 0 && idxSrc.indexOf('id="cc-scan-rows"') > 0 && idxSrc.indexOf('data-scan-filter') > 0 && idxSrc.indexOf('scan: (cards) => scanCardCompatibility') > 0);
 check('格式标签缺失只提示不改写', idxSrc.indexOf("'format-tag-missing'") > 0 && /formatMissing/.test(idxSrc));
+
+console.log('— 夹具 25：正则转义锚点 + 动态状态栏（0.6.0）');
+// ① findRegex 归一化：/<Tag\s*\/>/g 这种写法必须也能把标签抽出来
+const nz1 = normalizeRegexForTags('/<StatusPlaceHolderImpl\\s*\\/>/g');
+check('归一化：去定界符 + 反转义 + \\s* 折成空格', nz1 === '<StatusPlaceHolderImpl />', nz1);
+check('归一化：裸标签原样保留', normalizeRegexForTags('<UpdateVariable>') === '<UpdateVariable>', normalizeRegexForTags('<UpdateVariable>'));
+check('归一化：成对标签里的转义斜杠', normalizeRegexForTags('/<\\/Tag>/g') === '</Tag>', normalizeRegexForTags('/<\\/Tag>/g'));
+// ② 宽松抽取：认得 <(update(?:variable)?)> 这类带正则结构的写法，排除通用 HTML
+check('宽松抽取：分组写法认出 update', tagsOfLoose('<(update(?:variable)?)>').join(',') === 'update', tagsOfLoose('<(update(?:variable)?)>'));
+check('宽松抽取：排除 div/script 等通用 HTML', tagsOfLoose('<div><script>').length === 0, tagsOfLoose('<div><script>'));
+// ③ 实测病灶（归真纪元那张卡）：转义状态栏锚点 —— 旧实现 anchors=0，被判「只有格式标签」，AI 忘写占位符时也补不上
+const escExt = { regex_scripts: [
+    { scriptName: '对AI隐藏状态栏', findRegex: '/<StatusPlaceHolderImpl\\s*\\/>/g', replaceString: '', placement: [2] },
+    { scriptName: '状态栏', findRegex: '/<StatusPlaceHolderImpl\\s*\\/>/g', replaceString: '<!DOCTYPE html><html><body><div>{{stat_data}}</div>' + 'x'.repeat(500) + '</body></html>', markdownOnly: true, placement: [2] },
+    { scriptName: '变量更新美化', findRegex: '/<(update(?:variable)?)>[\\s\\S]*?<\\/\\1>/gsi', replaceString: '<div class="thinking-description">…</div>', markdownOnly: true, placement: [1, 2] },
+] };
+const escProf = buildProfile(escExt);
+check('转义锚点被认出（0.5.0 这里一个都没有）', escProf.anchors.indexOf('StatusPlaceHolderImpl') >= 0, escProf.anchors);
+check('锚点形态记成自闭合 self', escProf.anchorForms['StatusPlaceHolderImpl'] === 'self', escProf.anchorForms);
+check('另外：<(update(?:variable)?)> 记成数据块（旧实现也漏）', escProf.dataTags.indexOf('update') >= 0, escProf.dataTags);
+check('rawTags 不再混进正则/JS 片段', !(escProf.rawTags || []).some((t) => /[\\*?+(){}\[\]|]/.test(t)), escProf.rawTags);
+// ③b 真正的功能后果：模型这一轮忘写占位符，card-compat 必须能把锚点补回去（0.5.0 因为锚点隐形，补不了 → 状态栏整块消失）
+const g25 = guardText('这一轮模型忘了写占位符。', escProf, { injectAnchor: true, anchorStyle: 'self' });
+check('模型忘写占位符 → 自动补上', g25.actions.some((a) => a.type === 'anchor-injected') && g25.text.indexOf('<StatusPlaceHolderImpl/>') >= 0, g25);
+check('补出来的形态是卡要的自闭合', /\n<StatusPlaceHolderImpl\/>$/.test(g25.text), g25.text.slice(-40));
+// ④ 前端界面识别：动态状态栏 / 交互面板
+const views25 = detectFrontEndViews(escExt);
+check('认出 1 个前端状态栏，且判定为真动态', views25.bars.length === 1 && views25.dynamic === true, views25);
+check('短替换 / 空替换 / 被禁用的脚本都不算界面', detectFrontEndViews({ regex_scripts: [
+    { scriptName: '状态栏', findRegex: '/<X\\/>/', replaceString: '<b>x</b>' },
+    { scriptName: '剥除', findRegex: '/<X\\/>/', replaceString: '' },
+    { scriptName: '状态栏（已禁用）', findRegex: '/<X\\/>/', replaceString: '<div>' + 'x'.repeat(600), disabled: true },
+] }).bars.length === 0);
+check('开局面板被认出（巨型 HTML + script）', detectFrontEndViews({ regex_scripts: [
+    { scriptName: '[界面]自定义开局', findRegex: '/^【开局】$/', replaceString: '<!DOCTYPE html><html><body>' + 'x'.repeat(3000) + '<script>1</script></body></html>', markdownOnly: true },
+] }).panels.length === 1);
+// ⑤ 体检：转义锚点卡应当能守护（旧实现判 format-only）；只靠前端正则渲染状态栏、又没有锚点的卡判 dyn-bar
+const rule25 = { comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  系统:' + NL + '    日期:' + NL + '      check:' + NL + '        - 场景跳转后更新' };
+const scan25 = scanCardCompatibility([
+    { name: '转义锚点卡', data: { first_mes: '开场' + NL + '<UpdateVariable>' + NL + '<JSONPatch>[{"op":"replace","path":"/系统/日期","value":2}]</JSONPatch>' + NL + '</UpdateVariable>', extensions: { regex_scripts: escExt.regex_scripts }, character_book: { entries: [rule25] } } },
+    { name: '只有动态状态栏', data: { extensions: { regex_scripts: [
+        { scriptName: '对AI隐藏状态栏', findRegex: '/<StatusPlaceHolderImpl\\s*\\/>/g', replaceString: '', placement: [2] },
+        { scriptName: '状态栏渲染', findRegex: '/【状态栏】/g', replaceString: '<div class="bar">{{stat_data}}</div>' + 'x'.repeat(500), markdownOnly: true },
+    ] } } },
+]);
+check('转义锚点卡判 ok（不再是 format-only）', scan25.rows[0].verdict === 'ok' && scan25.rows[0].anchors >= 1, scan25.rows[0]);
+check('只有动态状态栏的卡判 dyn-bar', scan25.rows[1].verdict === 'dyn-bar' && scan25.rows[1].bars >= 1, scan25.rows[1]);
+check('总览计入动态状态栏（含真动态数）与面板', scan25.summary.dynBars === 2 && scan25.summary.dynBarsDynamic === 2 && typeof scan25.summary.panels === 'number', scan25.summary);
+check('每行带 bars / panels / dynBar 字段', scan25.rows.every((r) => typeof r.bars === 'number' && typeof r.panels === 'number' && typeof r.dynBar === 'boolean'), scan25.rows);
+// ⑥ 面板接线
+check('面板显示动态状态栏/交互面板，且筛选项含 dyn-bar', idxSrc.indexOf('scanDyn') > 0 && idxSrc.indexOf('scanPanel') > 0 && idxSrc.indexOf("'dyn-bar'") > 0 && idxSrc.indexOf('marks(r)') > 0);
+
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
