@@ -1,4 +1,15 @@
 # 更新日志
+## [0.2.7] - 2026-09-20
+### 新增
+- **变量块兜底**（面板开关 `autoFixVars`，默认**关**）：角色卡声明了变量块（如 MVU `UpdateVariable`）而某层回复**缺失**时：
+  - 用「只输出补丁」的**专注短提示词**（带卡的 `变量输出格式`、必更字段、本轮正文、玩家上一条输入）静默生成一次（`generateQuietPrompt`，不产生楼层）；失败用**严格版**短提示词重试一次
+  - 校验：抽 `<UpdateVariable>` 或裸 JSONPatch 数组 → `JSON.parse` → 检查 op/path 合法且非空，**校验通过才写盘**
+  - 落地：变量块追加到该层消息（卡的正则会隐藏它）→ 重渲染 → 再尝试用 **MVU 公开 API**（`parseMessage` + `replaceCurrentMvuData`/`replaceMvuData`）**真正写回变量**；API 不可用时只追加文本并在面板说明
+  - 安全阀：同一层只试一次；**连续失败 2 次暂停 10 分钟**；日志 `varfix-request/ok/invalid/applied/not-applied/error/paused`；面板统计「补变量 成功/尝试」
+  - 面板另有「立即补当前楼层变量块」按钮（手动触发）
+### 变更
+- 夹具 `compat-logic-test.mjs` **65 → 76 项**：抽取/校验/提示词 12 条断言（坏 JSON、空数组、缺 path、严格版更短、正文截断等）
+
 
 ## [0.2.6] - 2026-09-20
 ### 新增

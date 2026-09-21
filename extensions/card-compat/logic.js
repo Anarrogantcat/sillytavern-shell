@@ -294,7 +294,69 @@ export function strictYamlCheck(text, tags, yamlLib) {
     return { checked: true, blocks, issues };
 }
 
-/** 修复畸形的结束标签：</Tag（缺 >）→ </Tag>，仅对给定标签族生效 */
+/** 从一个回复里抽出变量更新块（<UpdateVariable>…</UpdateVariable>）；不用正则，避免多层转义 */
+export function extractUpdateBlock(text) {
+    const s = String(text || '');
+    const a = s.indexOf('<UpdateVariable');
+    if (a < 0) return null;
+    const b = s.indexOf('</UpdateVariable>', a);
+    if (b < 0) return null;
+    const block = s.slice(a, b + '</UpdateVariable>'.length);
+    const pa = block.indexOf('<JSONPatch>');
+    const pb = block.indexOf('</JSONPatch>');
+    const patchText = (pa >= 0 && pb > pa) ? block.slice(pa + '<JSONPatch>'.length, pb).trim() : '';
+    return { block: block, patchText: patchText };
+}
+
+/** 校验补出来的 JSONPatch：抽数组 → JSON.parse → 检查 op/path */
+export function validatePatchBlock(blockOrPatch) {
+    const raw = String(blockOrPatch || '');
+    const pa = raw.indexOf('<JSONPatch>');
+    const pb = raw.indexOf('</JSONPatch>');
+    let text = (pa >= 0 && pb > pa) ? raw.slice(pa + '<JSONPatch>'.length, pb) : raw;
+    const open = text.indexOf('[');
+    const close = text.lastIndexOf(']');
+    if (open >= 0 && close > open) text = text.slice(open, close + 1);
+    text = text.trim();
+    const problems = [];
+    let arr = null;
+    try { arr = JSON.parse(text); } catch (e) { problems.push('JSON 解析失败: ' + String((e && e.message) || e).slice(0, 80)); }
+    if (arr && !Array.isArray(arr)) problems.push('不是数组');
+    let ops = 0;
+    if (Array.isArray(arr)) {
+        for (const o of arr) {
+            if (!o || typeof o !== 'object') { problems.push('元素不是对象'); continue; }
+            if (!o.op) problems.push('缺少 op');
+            if (!o.path && o.op !== 'move') problems.push('缺少 path');
+            ops++;
+        }
+        if (!ops) problems.push('空数组（没有任何操作）');
+    }
+    return { ok: problems.length === 0, ops: ops, problems: problems };
+}
+
+/** 生成「只补变量块」的专注提示词（strict 时更短更硬，用于重试） */
+export function buildVarFixPrompt(opts) {
+    const o = opts || {};
+    const varSpec = String(o.varSpec || '').trim();
+    const required = (o.required || []).map(function (r) { return r && r.path ? r.path : ''; }).filter(Boolean);
+    const body = String(o.messageText || '').slice(-(o.maxChars || 6000));
+    const userText = String(o.lastUserText || '').slice(-800);
+    const lines = [];
+    if (o.strict) {
+        lines.push('只输出一个 JSONPatch 数组，不要解释、不要代码围栏、不要其它标签。');
+        lines.push('元素形如 [{"op":"replace","path":"/角色/字段","value":"新值"}]。');
+    } else {
+        lines.push('你是变量提取器：根据下方「本轮回复」，输出这张角色卡要求的变量更新块。不要写故事、不要解释。');
+        if (varSpec) lines.push('', '本卡要求的输出格式：', varSpec);
+        lines.push('', '必须覆盖的字段（缺一项都算失败）：' + (required.length ? required.join('、') : '（按卡的规则）'));
+    }
+    if (userText) lines.push('', '【玩家上一条输入】', userText);
+    lines.push('', '【本轮回复】', body);
+    lines.push('', '现在只输出' + (o.strict ? ' JSONPatch 数组' : '变量更新块（<UpdateVariable> 包裹的 JSONPatch）') + '。');
+    return lines.join(String.fromCharCode(10));
+}
+
 export function normalizeMalformedClosings(text, tags) {
     let out = String(text ?? '');
     const fixed = [];

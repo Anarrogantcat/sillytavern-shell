@@ -1,5 +1,5 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
-import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS } from '../extensions/card-compat/logic.js';
+import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {
@@ -207,6 +207,22 @@ check('不成对的块只报告不删', s14b.removed.length === 0 && s14b.unclos
 const decAll = new Set([...dec14, 'world_setting', 'status_block', 'konatan_planning~']);
 check('卡声明过的块不会被误删', stripUndeclaredBlocks(real14, { declared: decAll }).removed.length === 0);
 check('清理后卡的正则仍能匹配', /<正文>([\s\S]*?)<\/正文>/.test(s14.text), s14.text.slice(0, 60));
+console.log('— 夹具 15：变量块兜底（抽取 / 校验 / 提示词）');
+const uvOne = '<UpdateVariable><Analysis>x</Analysis><JSONPatch>[{"op":"replace","path":"/系统/时间","value":"15:30"}]</JSONPatch></UpdateVariable>';
+const ex15 = extractUpdateBlock('正文内容' + String.fromCharCode(10) + uvOne);
+check('抽出变量块与补丁正文', !!ex15 && ex15.patchText.indexOf('/系统/时间') >= 0, ex15 && ex15.patchText.slice(0, 40));
+check('没有变量块 → null', extractUpdateBlock('纯正文') === null);
+check('缺结束标签 → null', extractUpdateBlock('<UpdateVariable><JSONPatch>[]</JSONPatch>') === null);
+check('合法补丁通过且操作数正确', (() => { const v = validatePatchBlock(ex15.block); return v.ok && v.ops === 1; })(), validatePatchBlock(ex15.block));
+check('裸数组也认', validatePatchBlock('[{"op":"delta","path":"/a","value":1}]').ok === true);
+check('坏 JSON 报问题', validatePatchBlock('<JSONPatch>not json</JSONPatch>').problems.length > 0);
+check('空数组算失败', validatePatchBlock('<JSONPatch>[]</JSONPatch>').ok === false);
+check('缺 path 算失败', validatePatchBlock('[{"op":"replace"}]').ok === false);
+const pOK = buildVarFixPrompt({ varSpec: 'FORMAT-HERE', required: [{ path: '系统.时间' }], messageText: '他把门推开了。', lastUserText: '我推门' });
+check('提示词带格式/字段/回复/玩家输入', pOK.indexOf('FORMAT-HERE') >= 0 && pOK.indexOf('系统.时间') >= 0 && pOK.indexOf('他把门推开了') >= 0 && pOK.indexOf('我推门') >= 0, pOK.length);
+const pStrict = buildVarFixPrompt({ strict: true, messageText: 'x' });
+check('严格版更短且只要 JSONPatch', pStrict.length < pOK.length && pStrict.indexOf('只输出') >= 0, [pOK.length, pStrict.length]);
+check('超长正文被截断', buildVarFixPrompt({ messageText: 'x'.repeat(9000), maxChars: 1000 }).length < 1400);
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

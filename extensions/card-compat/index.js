@@ -3,11 +3,11 @@
 // v0.1.1 修复：流式模式下 MESSAGE_RECEIVED 不会触发（ST 用 fromStreaming 跳过），
 //             因此补挂 GENERATION_ENDED + CHARACTER_MESSAGE_RENDERED，并在修正后触发重渲染。
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles } from '../../../../script.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS } from './logic.js';
+import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.6';
+const VERSION = '0.2.7';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -25,8 +25,10 @@ const DEFAULTS = {
     quoteScalars: true,   // 结构块内未加引号、但含「: 」或「 #」的值自动加英文引号（YAML 会截断/当嵌套键）
     yamlStrict: true,      // 结构块严格 YAML 校验（用扩展自带的 assets/js-yaml.min.js，失败会报警）
     stripUndeclared: true, // 清理「本卡没声明也没人渲染」的结构块（实测：模型把世界书原文回显成 <world_setting>）
+    autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
+    autoFixVarsMaxChars: 6000,
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, coverageTotal: 0, coverageHit: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0 };
 let lastCoverage = null;
 const recent = [];
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
@@ -127,6 +129,90 @@ async function strictCheckMessage(messageId, opts = {}) {
     } catch (e) { console.warn('[card-compat] strictCheckMessage: ' + ((e && e.message) || e)); return null; }
 }
 
+/* ── 变量块兜底（v0.2.7）：模型没输出 <UpdateVariable> 时，用一次「只补补丁」的静默生成补上 ── */
+const varFixTriedIds = new Set();
+let varFixFailStreak = 0;
+let varFixPausedUntil = 0;
+
+/** MVU 的公开 API 在宿主窗口上（楼层 iframe 是通过 parent 找的，同理） */
+function mvuApi() {
+    try { if (typeof window !== 'undefined' && window.Mvu) return window.Mvu; } catch (_) {}
+    try { if (typeof window !== 'undefined' && window.parent && window.parent.Mvu) return window.parent.Mvu; } catch (_) {}
+    return null;
+}
+
+/** 把补出来的补丁真正写回 MVU（否则只追加文本，状态栏不会更新） */
+async function applyPatchToMvu(blockText, messageId) {
+    const M = mvuApi();
+    if (!M || typeof M.parseMessage !== 'function') return { ok: false, reason: '找不到 Mvu API（可点 MVU 面板的「重新处理变量」应用）' };
+    try {
+        let cur = null;
+        try { cur = (typeof M.getCurrentMvuData === 'function') ? M.getCurrentMvuData() : null; } catch (_) {}
+        const next = await M.parseMessage(blockText, cur || {});
+        if (typeof M.replaceCurrentMvuData === 'function') await M.replaceCurrentMvuData(next);
+        else if (typeof M.replaceMvuData === 'function') await M.replaceMvuData(next, { type: 'message', message_id: messageId });
+        else return { ok: false, reason: 'Mvu 没有写入接口' };
+        return { ok: true };
+    } catch (e) { return { ok: false, reason: '写入 MVU 失败: ' + String((e && e.message) || e) }; }
+}
+
+/**
+ * 兜底主流程：卡声明了变量块 + 该层缺块 + 开关打开 → 用一段「只输出补丁」的短提示词静默生成一次，
+ * 校验通过才写盘；连续失败 2 次自动暂停 10 分钟，避免刷 API。
+ */
+async function maybeFixVars(messageId) {
+    try {
+        const s = settings();
+        if (!s || !s.enabled || !s.autoFixVars) return null;
+        if (messageId == null || varFixTriedIds.has(messageId)) return null;
+        if (Date.now() < varFixPausedUntil) return null;
+        const profile = profileOf();
+        const dataTags = profile.dataTags || [];
+        if (!dataTags.length) return null;                       // 只对声明了变量块的卡生效
+        const m = chat && chat[messageId];
+        if (!m || m.is_user || typeof m.mes !== 'string') return null;
+        if (extractUpdateBlock(m.mes)) return null;              // 已经有了
+        varFixTriedIds.add(messageId);
+        stats.varFixTried++;
+        renderStats();
+        const prevUser = (() => { try { for (let k = messageId - 1; k >= 0; k--) { const x = chat[k]; if (x && x.is_user && x.mes) return x.mes; } } catch (_) {} return ''; })();
+        const base = { varSpec: profile.varSpec || '', required: profile.required || [], messageText: m.mes, lastUserText: prevUser, maxChars: s.autoFixVarsMaxChars || 6000 };
+        let out = '';
+        for (const strict of [false, true]) {
+            const prompt = buildVarFixPrompt(Object.assign({}, base, { strict: strict }));
+            log('varfix-request', '第' + messageId + '层' + (strict ? '(重试)' : ''), prompt.length + ' 字符提示词');
+            out = await generateQuietPrompt({ quietPrompt: prompt, responseLength: 900, removeReasoning: true });
+            const ex = extractUpdateBlock(out);
+            const patch = ex ? ex.patchText : out;
+            const v = validatePatchBlock(patch);
+            if (v.ok) {
+                const blockText = ex ? ex.block : ('<UpdateVariable>' + String.fromCharCode(10) + '<JSONPatch>' + String.fromCharCode(10) + patch + String.fromCharCode(10) + '</JSONPatch>' + String.fromCharCode(10) + '</UpdateVariable>');
+                m.mes = m.mes.replace(/\s+$/, '') + String.fromCharCode(10) + blockText;
+                stats.varFixOk++;
+                log('varfix-ok', '第' + messageId + '层', v.ops + ' 条操作，已追加到消息');
+                try { saveChatDebounced(); } catch (_) {}
+                try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (_) {}
+                const applied = await applyPatchToMvu(blockText, messageId);
+                if (applied.ok) { stats.varFixApplied++; log('varfix-applied', '第' + messageId + '层', '已写回 MVU 变量'); }
+                else log('varfix-not-applied', '第' + messageId + '层', applied.reason);
+                varFixFailStreak = 0;
+                renderStats();
+                return { ok: true, ops: v.ops, applied: applied.ok };
+            }
+            log('varfix-invalid', '第' + messageId + '层' + (strict ? '(重试)' : ''), v.problems.join('；'));
+        }
+        stats.varFixFailed++;
+        varFixFailStreak++;
+        if (varFixFailStreak >= 2) { varFixPausedUntil = Date.now() + 10 * 60 * 1000; log('varfix-paused', '', '连续失败 2 次，暂停 10 分钟'); }
+        renderStats();
+        return { ok: false };
+    } catch (e) {
+        stats.varFixFailed++;
+        log('varfix-error', '', String((e && e.message) || e));
+        return null;
+    }
+}
+
 function log(type, tag, extra) {
     recent.unshift({ t: new Date().toLocaleTimeString(), type, tag, extra: extra || '' });
     if (recent.length > 40) recent.pop();
@@ -216,6 +302,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         }
     } catch (_) {}
     try { if (s.yamlStrict) strictCheckMessage(messageId); } catch (_) {}
+    try { if (settings().autoFixVars) setTimeout(() => maybeFixVars(messageId), 0); } catch (_) {}
 
     if (s.notifyStale) {
         const st = isStale(chat[messageId - 1]?.mes, m.mes);
@@ -261,7 +348,7 @@ function normalizeRecent() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map(r => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join('\n');
@@ -284,6 +371,8 @@ function buildSettingsUi() {
         '<label class="checkbox_label"><input type="checkbox" id="cc-quote-scalars"><span>结构块里含「: 」「 #」却没加引号的值自动加引号</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-yaml-strict"><span>结构块严格 YAML 校验（用扩展自带的 js-yaml，失败报警）</span></label>',
         '<label class="checkbox_label"><input type="checkbox" id="cc-strip-undeclared"><span>清理本卡未声明的块（模型回显世界书原文 / 自创标签）</span></label>',
+        "<label class=\"checkbox_label\"><input type=\"checkbox\" id=\"cc-autofix-vars\"><span>模型漏输出变量块时自动补一次（静默生成，只补补丁）</span></label>",
+        "<button id=\"cc-varfix-now\" class=\"menu_button\">立即补当前楼层变量块</button>",
         '<button id="cc-yaml-check" class="menu_button">严格校验当前楼层</button>',
         '<label>面板字号</label><select id="cc-font"><option value="1">跟随 ST（默认）</option><option value="1.15">大</option><option value="1.3">更大</option></select>',
         '<label>消息区缩放 <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
@@ -314,6 +403,8 @@ function buildSettingsUi() {
     bind('cc-quote-scalars', 'quoteScalars', true);
     bind('cc-yaml-strict', 'yamlStrict', true);
     bind('cc-strip-undeclared', 'stripUndeclared', true);
+    bind('cc-autofix-vars', 'autoFixVars', true);
+    document.getElementById('cc-varfix-now')?.addEventListener('click', async () => { varFixTriedIds.delete(chat.length - 1); await maybeFixVars(chat.length - 1); });
     document.getElementById('cc-yaml-check')?.addEventListener('click', async () => { await strictCheckMessage(chat.length - 1, { force: true }); });
     const fontSel = document.getElementById('cc-font');
     if (fontSel) { fontSel.value = String(settings().panelFont || 1); fontSel.addEventListener('change', () => { settings().panelFont = Number(fontSel.value) || 1; saveSettingsDebounced(); applyPanelFont(); }); }
