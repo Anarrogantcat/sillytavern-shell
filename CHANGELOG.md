@@ -1,5 +1,23 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.1.4 (2026-09-21) — 工具箱精简 + cloudflared 改为按需下载（修掉自建检测出的 P0/P1）
+
+### 修复（来自「项目自建」检测）
+- **安装包不再夹带 `vendor/cloudflared.exe`（52 MB）**：`package.json` 与 `electron-builder-lite.json` 的 `extraResources` 都已移除
+  - 旧问题链：`vendor/` 被 `.gitignore` 忽略 → **全新 clone 无法构建**；而 CI 又没有 st-prep 步骤 → **线上安装包缺这个文件，公网隧道对用户是坏的**
+    （实测：已装的 2.1.3 里 `resources/` 只有 4 个文件、没有它；本地带它的构建包比线上大约 13 MB）
+  - 现在改为**首次开启隧道时按需下载**到 `%APPDATA%/sillytavern-electron/packs/cloudflared/`：带进度推送、PE 头与体积健全性检查、sha256 记录（下次启动比对，检测损坏/被替换）
+- 本地 `npm run *` 在 PowerShell 会被执行策略挡住（`npm.ps1`）→ 文档改注 `npm.cmd`
+- `.gitignore` 补 `dist-verify-*`；清掉 506 MB 的旧 `dist-electron-v3-lite/` 与 `compat-profile.json`
+
+### 新增 / 变更
+- **工具箱分组按需显示**（设置 → 通用 → 「工具箱显示」）：逐个分组勾选，取消勾选即在工具箱里隐藏；状态存 `toolboxHiddenGroups`，另有「全部显示」
+- **「🧩 插件工具」并入「🧩 ST 扩展与插件」**：用户自定义插件不再单独占一个分组，合并成一个区块
+- **移除「🧪 兼容与检测」分组**（诊断 / 清理占位符 / 渲染通用状态栏 / 记住新类型）：这些是早年给状态栏打的补丁，现由扩展 **card-compat** 接管；`shell.js` 里对应的 149 行实现一并删除
+- 隧道状态栏支持进度显示（如 `⏬ 42%（22/52 MB）`）
+- 夹具：toolbox **14 → 16**（新增「兼容与检测已移除」「插件分组已合并」两条）；其余不变（compat 135 · plot-pilot 57 · deploy 37 · remote 33 · manage 49）
+- 下载/校验逻辑抽到 `lib/cf-download.js`（纯 node，fetch 由调用方注入）→ 新增夹具 `scripts/cf-download-test.mjs` **13 项**：非 PE 内容拒绝且不留半截文件、进度回调、哈希一致时复用且不再请求、被篡改后自动重下、meta 校验；已加进 CI 与 `all:test`
+
 ## v2.1.3 (2026-09-20) — 设置新增「关于」页：更新与更新日志都收进去
 
 ### 变更
@@ -359,13 +377,3 @@
   - 运行时机：`MESSAGE_RECEIVED`（早于渲染与卡正则），只补标签、不动正文与数据
 - 新增 `scripts/compat-install.mjs`：把扩展同步到 ST 数据目录（支持 `--dry-run`、哈希比对、manifest 校验）
 - 新增 `scripts/compat-logic-test.mjs`：逻辑层夹具断言 12 项（锚点注入/闭合修复/隐藏白名单/数据块保护/新鲜度），实测 12/12 通过
-- 说明：本阶段只做基础能力；工具箱合并（P1）与「兼容与检测」页签在后续提交中完成
-## v1.32.1 (2026-09-20) — 修复 webview 增强全部失效（右键菜单等）
-- 修复 v1.28.0 引入的回归：`<webview>` 的 preload 由 Electron 按 **CommonJS** 加载，写成 ESM `import` 会整份不加载
-  （实测报错：`Unable to load preload script` / `SyntaxError: Cannot use import statement outside a module`）
-- 受影响的全部功能：**ST 页面内右键菜单**、Ctrl+滚轮缩放上报、Ctrl+Shift+T/R/L 快捷键、alert/confirm/prompt 原生弹窗桥
-- 做法：`webview-preload.js` → `webview-preload.cjs`（改回 `require('electron')`），`shell.html` 的 preload 属性、
-  `package.json` 与 `electron-builder-lite.json` 两套打包文件列表同步更新，旧文件删除
-- 实测验证：用真实 preload 在 webview 内派发 contextmenu，宿主收到 `ctxmenu` 消息；旧 ESM 版本同场景报错不加载
-## v1.32.0 (2026-09-19) — 英文模式动态文案补全
-- 新增 i18n-runtime.js：中英替换引擎（精确字典 → 片段规则多轮替换），取代 shell.js 里的内联实现

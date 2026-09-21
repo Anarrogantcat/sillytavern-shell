@@ -27,10 +27,10 @@ const groups = blocks.map((b) => ({
     items: [...b.matchAll(/id="([^"]+)"/g)].map((m) => m[1]),
 }));
 
-eq('工具箱分组数 = 8', groups.length, 8);
+eq('工具箱分组数 = 7（兼容与检测已并入 card-compat，v2.1.4 移除）', groups.length, 7);
 eq('分组名称', groups.map((g) => g.name), [
     '🗂 数据与导出', '🔎 检索与统计', '👁 角色卡与世界书', '🤖 模型与本地服务',
-    '🧩 ST 扩展与插件', '🧪 兼容与检测', '💬 对话与界面', '🌐 网络与远程访问',
+    '🧩 ST 扩展与插件', '💬 对话与界面', '🌐 网络与远程访问',
 ]);
 ok('每组都有控件', groups.every((g) => g.items.length > 0), groups.map((g) => g.name + ':' + g.items.length));
 
@@ -40,8 +40,7 @@ eq('没有重复 id', dup, []);
 const must = ['t-backup-now', 't-backup-restore', 't-search-kw', 't-stats', 't-export-cards', 't-summarize', 't-export-html',
     't-portable', 't-card-list', 't-card-view', 't-worlds', 't-model-service', 't-env', 't-health', 't-ollama', 't-gpu',
     't-clash', 'llama-bin', 'llama-start', 'llama-stop', 't-rag', 't-draft', 't-chat', 't-immerse', 't-tunnel', 't-lan',
-    't-lan-qr', 'zt-netid', 'zt-join', 'zt-leave', 't-mini', 't-diag-statusbar', 't-fix-statusbar', 't-render-statusbar',
-    't-remember-statusbar', 't-ext-deploy', 't-ext-check', 't-ext-auto', 't-ext-res'];
+    't-lan-qr', 'zt-netid', 'zt-join', 'zt-leave', 't-mini', 't-ext-deploy', 't-ext-check', 't-ext-auto', 't-ext-res'];
 const missing = must.filter((id) => !allIds.includes(id));
 eq('原有/新增控件一个不少', missing, []);
 
@@ -50,6 +49,8 @@ for (const [label, id, file] of [['shell.js 绑定部署按钮', 't-ext-deploy',
     ok(label, file.includes("getElementById('" + id + "')"), id);
 }
 ok('shell.js 里没有残留旧分组名（📁 数据备份）', !js.includes('📁 数据备份'), '旧名还在');
+ok('兼容与检测已彻底移除（HTML + JS 都不再有）', !html.includes('🧪 兼容与检测') && !js.includes('t-diag-statusbar') && !js.includes('renderGenericStatusBar'), '仍有残留');
+ok('用户插件已并入「ST 扩展与插件」组，不再单独分组', !js.includes('🧩 插件工具') && js.includes('t-plugins-block'), '插件分组未合并');
 ok('preload 暴露 extDeploy/extCheck/extAutoGet/extAutoSet', ['extDeploy', 'extCheck', 'extAutoGet', 'extAutoSet'].every((k) => preload.includes(k + ':')), 1);
 ok('主进程注册四个 IPC', ['tools:extDeploy', 'tools:extCheck', 'tools:extAutoGet', 'tools:extAutoSet'].every((c) => main.includes("ipcMain.handle('" + c + "'")), 1);
 ok('主进程有启动时在线检查', main.includes('checkExtensionUpdates()'), 1);

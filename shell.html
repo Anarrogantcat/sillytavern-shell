@@ -96,9 +96,6 @@
 <div id="t-extm-trash" class="tool-detail" style="display:none"></div>
 <div class="tool-note">「卸载」默认移入回收站 extensions/.shell-trash/，可随时还原；「彻底删除」才会真正删除磁盘文件。「重置设置」会先备份 settings.json（settings.json.shellbak-时间戳）再删该扩展的设置项，ST 正在运行时可能被覆写回去，建议先关闭 ST。</div>
 
-<div class="tool-sec">🧪 兼容与检测</div>
-<div class="tool-actions"><button id="t-diag-statusbar" class="btn-secondary btn-sm">诊断</button><button id="t-fix-statusbar" class="btn-secondary btn-sm">清理占位符</button><button id="t-render-statusbar" class="btn-secondary btn-sm">渲染通用状态栏</button><button id="t-remember-statusbar" class="btn-secondary btn-sm">记住新类型</button></div>
-<div id="t-diag-res" class="tool-detail"></div>
 
 <div class="tool-sec">💬 对话与界面</div>
 <div class="tool-actions"><button id="t-chat" class="btn-primary btn-sm">打开独立对话窗口</button></div>
@@ -195,6 +192,8 @@
 <div class="setting-row"><label>崩溃提醒</label><select id="t-crash" class="tool-input"><option value="1">开</option><option value="0">关</option></select></div>
 <div class="setting-row"><label>版本回滚</label><span id="t-rollback-info" class="tool-note">-</span></div>
 <div id="t-rollback-list" class="tool-detail"></div>
+<div class="setting-row"><label>工具箱显示</label><span class="tool-note">取消勾选的分组会在工具箱里隐藏（随时可再打开）</span></div>
+<div id="t-group-visibility" class="tool-detail"></div>
 <div class="setting-actions">
 <button id="btn-export-settings" class="btn-secondary btn-sm">导出设置</button>
 <button id="btn-import-settings" class="btn-secondary btn-sm">导入设置</button>

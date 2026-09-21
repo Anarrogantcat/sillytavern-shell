@@ -479,5 +479,10 @@ window.SHELL_I18N_EXTRA = [
     ["展开后加载…", "Expand to load…"],
     ["加载中…", "Loading…"],
     ["读取更新日志失败：", "Failed to read the changelog: "],
+    // —— 工具箱分组可见性 ——
+    ["工具箱显示", "Toolbox groups"],
+    ["取消勾选的分组会在工具箱里隐藏（随时可再打开）", "Unchecked groups are hidden in the toolbox (you can re-enable them anytime)"],
+    ["全部显示", "Show all"],
+    ["（工具箱还没初始化，先打开一次工具箱）", "(toolbox not initialized yet - open the toolbox once)"],
 ];
 

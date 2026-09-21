@@ -58,6 +58,7 @@ jobs:
           node scripts/ext-deploy-test.mjs
           node scripts/ext-remote-test.mjs
           node scripts/ext-manage-test.mjs
+          node scripts/cf-download-test.mjs
           node scripts/compat-logic-test.mjs
           node scripts/plot-pilot-test.mjs
 

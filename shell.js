@@ -46,7 +46,7 @@ function initToolboxGroups() {
     // v1.36.2：分组做过合并（15 → 8），清掉 localStorage 里已不存在的旧组键，再重新读取顺序/折叠/收藏
     try {
         const known = new Set(wraps.map((w) => w.dataset.key));
-        for (const key of ['toolboxGroupOrder', 'toolboxGroupCollapsed', 'toolboxFavoriteGroups']) {
+        for (const key of ['toolboxGroupOrder', 'toolboxGroupCollapsed', 'toolboxFavoriteGroups', 'toolboxHiddenGroups']) {
             let arr = [];
             try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (_) { continue; }
             if (!Array.isArray(arr)) continue;
@@ -65,7 +65,9 @@ function initToolboxGroups() {
     const getFavorites = () => {
         try { return JSON.parse(localStorage.getItem(favKey) || '[]'); } catch (_) { return []; }
     };
+    const hiddenGroups = getHiddenGroups();
     for (const w of wraps) {
+        if (hiddenGroups.includes(w.dataset.key)) w.style.display = 'none';
         if (collapsed.includes(w.dataset.key)) w.classList.add('collapsed');
         const header = w.querySelector('.tool-group-header');
         // 收藏星标
@@ -230,25 +232,19 @@ async function renderPluginTools() {
     try { data = await PT.pluginsList(); } catch (_) { return; }
     const body = document.querySelector('.bench-body');
     if (!body || !data) return;
-    if (!pluginGroupEl || !pluginGroupEl.isConnected) {
+    // v2.1.4：插件工具不再单独占一个分组，直接挂进「🧩 ST 扩展与插件」组
+    const hostBody = document.querySelector('.bench-body .tool-group[data-key="🧩 ST 扩展与插件"] .tool-group-body');
+    if (!hostBody) return;                     // 工具箱还没初始化好，下次打开再挂
+    pluginGroupEl = hostBody.querySelector('#t-plugins-block');
+    if (!pluginGroupEl) {
         pluginGroupEl = document.createElement('div');
-        pluginGroupEl.className = 'tool-group plugin-group';
-        pluginGroupEl.dataset.key = '🧩 插件工具';
-        pluginGroupEl.dataset.plugin = '1';
+        pluginGroupEl.id = 't-plugins-block';
+        pluginGroupEl.className = 'plugin-block';
+        hostBody.appendChild(pluginGroupEl);
     }
     pluginGroupEl.innerHTML = '';
-    const header = document.createElement('div');
-    header.className = 'tool-group-header';
-    const name = document.createElement('span');
-    name.textContent = '🧩 插件工具';
-    const toggle = document.createElement('span');
-    toggle.className = 'tool-group-toggle';
-    toggle.textContent = '▾';
-    header.appendChild(name);
-    header.appendChild(toggle);
-    header.addEventListener('click', () => pluginGroupEl.classList.toggle('collapsed'));
     const content = document.createElement('div');
-    content.className = 'tool-group-body';
+    content.className = 'plugin-block-body';
     const actions = document.createElement('div');
     actions.className = 'tool-actions';
     const openBtn = document.createElement('button');
@@ -290,9 +286,7 @@ async function renderPluginTools() {
         content.appendChild(err);
     }
     content.appendChild(detail);
-    pluginGroupEl.appendChild(header);
     pluginGroupEl.appendChild(content);
-    body.insertBefore(pluginGroupEl, body.firstChild);
     try { applyI18n(); } catch (_) {}
 }
 
@@ -751,8 +745,53 @@ function normalizeSettingRows() {
         row.dataset.normalized = '1';
     });
 }
+/* ── v2.1.4：工具箱分组显示/隐藏（localStorage: toolboxHiddenGroups）── */
+function getHiddenGroups() {
+    try { const a = JSON.parse(localStorage.getItem('toolboxHiddenGroups') || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+}
+function setHiddenGroups(list) { try { localStorage.setItem('toolboxHiddenGroups', JSON.stringify(list)); } catch (_) {} }
+/** 设置面板里列出所有工具箱分组，勾选=显示；取消勾选即隐藏（随时可再打开） */
+function renderGroupVisibility() {
+    const box = document.getElementById('t-group-visibility');
+    if (!box) return;
+    const body = document.querySelector('.bench-body');
+    const wraps = body ? [...body.querySelectorAll('.tool-group')] : [];
+    if (!wraps.length) { box.textContent = '（工具箱还没初始化，先打开一次工具箱）'; return; }
+    const hidden = getHiddenGroups();
+    box.textContent = '';
+    for (const w of wraps) {
+        const key = w.dataset.key;
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;cursor:pointer;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !hidden.includes(key);
+        cb.addEventListener('change', () => {
+            let arr = getHiddenGroups();
+            if (cb.checked) arr = arr.filter((k) => k !== key);
+            else if (!arr.includes(key)) arr.push(key);
+            setHiddenGroups(arr);
+            w.style.display = cb.checked ? '' : 'none';
+        });
+        const label = document.createElement('span');
+        label.textContent = key;
+        row.appendChild(cb);
+        row.appendChild(label);
+        box.appendChild(row);
+    }
+    const all = document.createElement('button');
+    all.className = 'btn-secondary btn-xs';
+    all.textContent = '全部显示';
+    all.style.marginTop = '4px';
+    all.addEventListener('click', () => {
+        setHiddenGroups([]);
+        for (const w of wraps) w.style.display = '';
+        renderGroupVisibility();
+    });
+    box.appendChild(all);
+}
 normalizeSettingRows();
-async function openSettings(){settingsOverlay.classList.remove('hidden');setSettingsDirty(false);settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();}
+async function openSettings(){settingsOverlay.classList.remove('hidden');setSettingsDirty(false);settingsData=(await ST?.get())||{};const v=await A?.getVersion();$('#setting-server-path').value=settingsData.serverPath||'';$('#setting-data-root').value=(await ST?.getDataRoot())||'';$('#setting-width').value=settingsData.windowWidth||1280;$('#setting-height').value=settingsData.windowHeight||800;const cs=$('#setting-close-behavior');if(cs)cs.value=settingsData.closeBehavior||'ask';if($('#version-display'))$('#version-display').textContent=v||'unknown';if($('#shell-version-display'))$('#shell-version-display').textContent='v'+(await A?.getShellVersion()||'?');const sc=$('#server-ctl-status');if(sc)sc.textContent=sc.className='';const s=$('#update-status');if(s)s.textContent=s.className='';$('#btn-do-update')?.remove();$('#btn-view-update')?.remove();const p=$('#update-progress');if(p)p.classList.add('hidden');const ss=$('#shell-update-status');if(ss)ss.textContent=ss.className='';$('#btn-dl-shell')?.remove();checkShellUpdate();if(typeof renderTools==='function')renderTools();if(typeof renderUiSettings==='function')renderUiSettings();try{if(typeof ensureToolboxInit==='function')ensureToolboxInit();renderGroupVisibility();}catch(_){}}
 function closeSettings(){settingsOverlay.classList.add('hidden');}
 btnSettings?.addEventListener('click',openSettings);
 $('#btn-settings-close')?.addEventListener('click',confirmCloseSettings);
@@ -1287,6 +1326,7 @@ function startTunnelWatchdog() {
 function tunnelRender(v) {
     if (!tunnelStatus || !v) return;
     if (v.url) { clearTunnelWatchdog(); tunnelUrl = v.url; setNote(tunnelStatus, `✅ ${v.url}`); tunnelStatus.className = 'update-status success'; if (tunnelCopy) tunnelCopy.style.display = ''; if (tunnelSel && tunnelSel.value !== '1') tunnelSel.value = '1'; }
+    else if (v.progress || v.downloading) { setNote(tunnelStatus, '⏬ ' + (v.progress || '正在准备下载…')); tunnelStatus.className = 'update-status info'; }
     else if (v.error) { setNote(tunnelStatus, '❌ ' + v.error); tunnelStatus.className = 'update-status error'; if (tunnelCopy) tunnelCopy.style.display = 'none'; if (tunnelSel) tunnelSel.value = '0'; }
     else if (!v.running) { if (tunnelSel && tunnelSel.value === '1') { setNote(tunnelStatus, '已停止'); tunnelStatus.className = 'update-status info'; } }
 }
@@ -1308,113 +1348,6 @@ tunnelCopy?.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(tunnelUrl); setNote(tunnelStatus, `✅ ${tunnelUrl}（已复制）`); } catch (_) { window.prompt('公网地址:', tunnelUrl); }
 });
 TL()?.tunnelOnState?.(tunnelRender);
-
-// ── 状态栏诊断（运行时注入，不修改 ST 本体）──
-function setDiag(text, isError) { const el = document.getElementById('t-diag-res'); if (el) { el.textContent = text; el.style.color = isError ? '#e0556a' : ''; } }
-let lastDiagUnknown = [];
-async function diagStatusBar() {
-    setDiag('诊断中…');
-    try {
-        const saved = await window.electronAPI?.settings?.get?.() || {};
-        const savedSelectors = Array.isArray(saved.knownStatusBarSelectors) ? saved.knownStatusBarSelectors : [];
-        const r = await webview.executeJavaScript(`((savedSelectors) => {
-            const out = { readyState: document.readyState, placeholder: false, markers: {}, runtime: false, context: null, statKeys: [], foundSelectors: [], unknownSelectors: [] };
-            const html = document.body ? document.body.innerHTML : '';
-            out.placeholder = /<\\s*StatusPlaceHolderImpl\\s*\\/\\s*>/i.test(html);
-            const builtin = { typeA: ['.status-wrapper', '.status-card'], typeB: ['#swj-orb', '#swj-panel'], typeC: ['.qp-app', '.qp-title', '#qp-list'] };
-            function pushFound(type, sel) {
-                out.markers[type] = out.markers[type] || [];
-                if (!out.markers[type].includes(sel)) out.markers[type].push(sel);
-                if (!out.foundSelectors.includes(sel)) out.foundSelectors.push(sel);
-            }
-            function scan(root) {
-                const doc = root.document || root;
-                for (const [type, sels] of Object.entries(builtin)) {
-                    for (const sel of sels) {
-                        try { if (doc.querySelector(sel)) pushFound(type, sel); } catch (_) {}
-                    }
-                }
-                for (const sel of savedSelectors) {
-                    try { if (doc.querySelector(sel)) pushFound('saved', sel); } catch (_) {}
-                }
-                try {
-                    const all = doc.querySelectorAll('*');
-                    for (const el of all) {
-                        if (!el || typeof el.getAttribute !== 'function') continue;
-                        const cls = String(el.className || el.id || '');
-                        if (!/status|orb|panel|card|hud|statusbar/i.test(cls)) continue;
-                        const cs = getComputedStyle(el);
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > 50 && rect.height > 20 && (cs.position === 'fixed' || parseInt(cs.zIndex || 0, 10) > 100 || /status|orb|panel|card|hud/i.test(cls))) {
-                            const id = el.id ? '#' + el.id : '';
-                            const className = String(el.className || '').trim().split(/\\s+/)[0];
-                            const sel = id || (className ? '.' + className : el.tagName.toLowerCase());
-                            if (!out.foundSelectors.includes(sel)) { out.foundSelectors.push(sel); out.unknownSelectors.push(sel); }
-                        }
-                    }
-                } catch (_) {}
-                try { for (const f of doc.querySelectorAll('iframe')) { try { if (f.contentDocument) scan(f.contentDocument); } catch (_) {} } } catch (_) {}
-                try { for (const el of doc.querySelectorAll('*')) { if (el.shadowRoot) scan(el.shadowRoot); } } catch (_) {}
-            }
-            scan(document);
-            try { out.runtime = !!window.__SWJ_STATUSBAR_RUNTIME__; } catch (_) {}
-            try {
-                const ctx = window.SillyTavern?.getContext?.();
-                if (ctx) out.context = { characterId: ctx.characterId, chatId: ctx.chatId, groupId: ctx.groupId, preset: ctx.preset || ctx.chatCompletionSettings?.preset || null, source: ctx.chatCompletionSettings?.chat_completion_source || null };
-            } catch (_) {}
-            try {
-                const vars = typeof getAllVariables === 'function' ? getAllVariables() : (window.Mvu?.getMvuData ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null);
-                if (vars && vars.stat_data) out.statKeys = Object.keys(vars.stat_data).slice(0, 50);
-            } catch (_) {}
-            return out;
-        })(${JSON.stringify(savedSelectors)})`);
-        const lines = [];
-        lines.push('页面状态: ' + (r.readyState || 'unknown'));
-        lines.push('占位符残留: ' + (r.placeholder ? '是' : '否'));
-        lines.push('脚本运行时: ' + (r.runtime ? '存在' : '无'));
-        if (r.context) lines.push('角色/聊天: ' + r.context.characterId + ' / ' + r.context.chatId + (r.context.groupId ? ' (群聊)' : '') + ' | 预设: ' + (r.context.preset || '未知'));
-        lines.push('状态栏标记: ' + (r.foundSelectors && r.foundSelectors.length ? r.foundSelectors.join(', ') : '未发现'));
-        lines.push('stat_data 字段数: ' + (r.statKeys ? r.statKeys.length : 0));
-        if (r.statKeys && r.statKeys.length) lines.push('字段前10: ' + r.statKeys.slice(0, 10).join(', '));
-        if (r.placeholder && !r.foundSelectors.length) lines.push('结论: 占位符残留且状态栏 DOM 未注入，很可能为模板/预设替换失败');
-        else if (r.foundSelectors && r.foundSelectors.length) lines.push('结论: 检测到状态栏相关元素' + (r.unknownSelectors && r.unknownSelectors.length ? '，包含未识别的新类型（可点“记住新类型”）' : ''));
-        else lines.push('结论: 未检测到已知状态栏实现');
-        lastDiagUnknown = r.unknownSelectors || [];
-        setDiag(lines.join('\n'));
-    } catch (e) { setDiag('诊断失败: ' + e.message, true); }
-}
-document.getElementById('t-remember-statusbar')?.addEventListener('click', async () => {
-    if (!lastDiagUnknown.length) { setDiag('没有可记住的新类型，请先运行诊断', true); return; }
-    const s = await window.electronAPI?.settings?.get?.() || {};
-    const known = Array.isArray(s.knownStatusBarSelectors) ? s.knownStatusBarSelectors.slice() : [];
-    for (const sel of lastDiagUnknown) if (!known.includes(sel)) known.push(sel);
-    await window.electronAPI?.settings?.save?.({ knownStatusBarSelectors: known });
-    setDiag('✅ 已记住 ' + lastDiagUnknown.length + ' 个状态栏选择器：\n' + lastDiagUnknown.join('\n'));
-});
-async function fixStatusBar() {
-    setDiag('清理中…');
-    try {
-        const r = await webview.executeJavaScript(`(() => {
-            let replaced = 0;
-            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-            const nodes = [];
-            while (walker.nextNode()) nodes.push(walker.currentNode);
-            for (const node of nodes) {
-                if (node.nodeValue && /<\\s*StatusPlaceHolderImpl\\s*\\/\\s*>/i.test(node.nodeValue)) {
-                    const div = document.createElement('div');
-                    div.id = 'shell-statusbar-fallback';
-                    node.parentNode.replaceChild(div, node);
-                    replaced++;
-                }
-            }
-            return { replaced };
-        })()`);
-        setDiag(r.replaced ? '已清理 ' + r.replaced + ' 处占位符残留' : '未发现占位符残留');
-    } catch (e) { setDiag('清理失败: ' + e.message, true); }
-}
-document.getElementById('t-diag-statusbar')?.addEventListener('click', diagStatusBar);
-document.getElementById('t-fix-statusbar')?.addEventListener('click', fixStatusBar);
-
 // ── ST 扩展：内置部署 / 在线更新（v1.36.2）────────────────────────────
 function extLines(list, fmt) { return (list || []).map(fmt).join('\n'); }
 async function extDeployBuiltin() {
@@ -1582,48 +1515,6 @@ document.getElementById('t-extm-refresh')?.addEventListener('click', extManageRe
     document.getElementById('t-extm-list')?.addEventListener('click', onClick);
     document.getElementById('t-extm-trash')?.addEventListener('click', onClick);
 })();
-async function renderGenericStatusBar() {
-    setDiag('渲染中…');
-    try {
-        const r = await webview.executeJavaScript(`(() => {
-            const out = { rendered: false, reason: '' };
-            try {
-                let vars = typeof getAllVariables === 'function' ? getAllVariables() : (window.Mvu?.getMvuData ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null);
-                const stat = (vars && vars.stat_data) || {};
-                const charName = (window.SillyTavern?.getContext?.()?.characters?.[window.SillyTavern?.getContext?.()?.characterId]?.name) || stat.角色 || '角色';
-                const d = stat['角色'] && stat['角色'][charName] ? stat['角色'][charName] : stat[charName] || {};
-                const progress = stat.progress || stat['进度'] || '—';
-                const place = stat['所在地'] || stat['当前地点'] || stat['世界']?.['当前地点'] || '—';
-                const love = d['好感度'] || d['好感'] || '—';
-                const state = d['身体状态'] || d['状态'] || '—';
-                const inner = d['内心'] || d['inner'] || '—';
-                const clothes = d['衣着'] || d['clothes'] || '—';
-                const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                const html = '<div style="position:fixed;bottom:8px;right:8px;z-index:2147483000;max-width:340px;background:#1c1c1e;color:#f0ede6;border:1px solid #c9a227;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.6;box-shadow:0 8px 30px rgba(0,0,0,.6);font-family:Microsoft YaHei,sans-serif;">' +
-                    '<div style="font-weight:700;color:#c9a227;margin-bottom:6px;">' + esc(charName) + '</div>' +
-                    '<div>进度：' + esc(progress) + '</div>' +
-                    '<div>所在地：' + esc(place) + '</div>' +
-                    '<div>好感度：' + esc(love) + '</div>' +
-                    '<div>状态：' + esc(state) + '</div>' +
-                    '<div>内心：' + esc(inner) + '</div>' +
-                    '<div>衣着：' + esc(clothes) + '</div>' +
-                    '</div>';
-                let target = document.getElementById('shell-statusbar-fallback');
-                if (!target) {
-                    target = document.createElement('div');
-                    target.id = 'shell-statusbar-fallback';
-                    document.body.appendChild(target);
-                }
-                target.innerHTML = html;
-                out.rendered = true;
-            } catch (e) { out.reason = e.message; }
-            return out;
-        })()`);
-        setDiag(r.rendered ? '✅ 已渲染通用状态栏' : '渲染失败: ' + r.reason, !r.rendered);
-    } catch (e) { setDiag('渲染失败: ' + e.message, true); }
-}
-document.getElementById('t-render-statusbar')?.addEventListener('click', renderGenericStatusBar);
-
 // ── ZeroTier 助手（虚拟局域网，不影响 Clash 代理）──
 const ztEl = { status: $('#zt-status'), netid: $('#zt-netid'), netlist: $('#zt-netlist'), join: $('#zt-join'), leave: $('#zt-leave'), copy: $('#zt-copy'), allow: $('#zt-allow'), info: $('#zt-info') };
 function ztSetNote(text, cls) { if (ztEl.status) { ztEl.status.textContent = text; ztEl.status.className = cls || ''; } }

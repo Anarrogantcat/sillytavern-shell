@@ -46,6 +46,10 @@ npm run build:lite  # 轻量版（首启下载 ST）
 npm run build:portable  # 便携版
 ```
 
+**Windows / PowerShell 注意**：执行策略会禁掉 `npm.ps1`，本地构建请用 `npm.cmd run build:lite`（或在当前会话 `Set-ExecutionPolicy -Scope Process Bypass`）。
+
+**cloudflared（公网隧道）**：v2.1.4 起**不再打进安装包** —— 首次在工具箱开启隧道时自动下载（约 52 MB）到 `%APPDATA%\sillytavern-electron\packs\cloudflared\`，带进度与 sha256 记录；需要离线分发时先跑 `npm run st-prep` 把文件放进 `vendor/`，构建时会重新夹带。
+
 构建产物输出到 `dist-electron-v3` / `dist-electron-v3-lite`（已被 .gitignore 覆盖）。发布到 GitHub Releases 后，已装用户可走套壳内自动更新。
 
 ### 扩展交付与路线图

@@ -321,3 +321,6 @@ body[data-theme="light"] .btn-primary.has-changes{box-shadow:0 0 0 2px rgba(106,
 .about-changelog-body h3 { margin: 8px 0 4px; font-size: 13px; color: var(--accent); }
 .about-changelog-body h4 { margin: 8px 0 3px; font-size: 12px; }
 .about-changelog-body ul { margin: 3px 0 8px 16px; }
+/* v2.1.4：用户插件区块（并入 ST 扩展与插件 组） */
+.plugin-block { margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,.12); }
+.plugin-block-body { display: flex; flex-direction: column; gap: 4px; }

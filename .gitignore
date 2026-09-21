@@ -1,6 +1,7 @@
 node_modules/
 staging/
 dist-electron*
+dist-verify-*
 *.exe
 *.blockmap
 latest.yml
