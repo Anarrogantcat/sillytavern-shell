@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -506,6 +506,30 @@ const many27 = '变量更新规则:' + NL + Array.from({ length: 25 }).map((z, i
 const manyOut = extractRequiredFields([{ comment: '变量更新规则', content: many27 }], 200);
 check('⑧ 25 条规则全部抽出（上限已放开到 200）', manyOut.length === 25, manyOut.length);
 check('⑨ 面板显示无规则原因', idxSrc.indexOf('scanNoRules') > 0 && idxSrc.indexOf('rs_prose') > 0 && idxSrc.indexOf('noRulesStyles') > 0 && idxSrc.indexOf('rsLabel(r.ruleStyle)') > 0);
+
+console.log('— 夹具 28：标签括号错乱修复（0.8.0；实测「图片丢失」那条消息）');
+const TAGS28 = ['NSFW_IMG', 'StatusBar', 'options'];
+// ① 实测病灶：模型把开标签的 < 写成了全角【
+const b1 = repairBracketTags('【NSFW_IMG>她压在我身上/美咲_5.jpg</NSFW_IMG>', TAGS28);
+check('① 【Tag> 开标签改回 <Tag>（图片丢失的直接原因）', b1.text === '<NSFW_IMG>她压在我身上/美咲_5.jpg</NSFW_IMG>' && b1.fixed.join(',') === 'NSFW_IMG', b1);
+// ② 其它三种错乱形态
+check('② [Tag> 也能修', repairBracketTags('[NSFW_IMG>a.jpg</NSFW_IMG]', TAGS28).text === '<NSFW_IMG>a.jpg</NSFW_IMG>');
+check('③ 【Tag】…【/Tag】 两边都修（因为存在方括号闭标签）', repairBracketTags('【NSFW_IMG】a.jpg【/NSFW_IMG】', TAGS28).text === '<NSFW_IMG>a.jpg</NSFW_IMG>');
+check('④ </Tag】 闭标签改回 </Tag>', repairBracketTags('<NSFW_IMG>a.jpg</NSFW_IMG】', TAGS28).text === '<NSFW_IMG>a.jpg</NSFW_IMG>');
+// ⑤ 不能误伤：裸方括号、未声明标签、普通正文
+check('⑤ 裸 [Tag] 不动（怕误伤正文方括号）', repairBracketTags('[NSFW_IMG] a.jpg', TAGS28).text === '[NSFW_IMG] a.jpg' && repairBracketTags('[NSFW_IMG] a.jpg', TAGS28).fixed.length === 0);
+check('⑤ 未声明的标签不动', repairBracketTags('【XX_YY>abc</XX_YY>', TAGS28).text === '【XX_YY>abc</XX_YY>');
+check('⑤ 普通正文原样返回', (function () { const r = repairBracketTags('他按下 [选项] 按钮，然后【说道】。', TAGS28); return r.text === '他按下 [选项] 按钮，然后【说道】。' && r.fixed.length === 0; })());
+// ⑥ 接进 guardText：卡的插图正则（本卡是 disabled、靠 helper 运行时开启）也要能匹配上
+const imgExt28 = { regex_scripts: [{ scriptName: '插图', findRegex: '/<NSFW_IMG>/', replaceString: '<img src=x>', disabled: true }] };
+const imgProf28 = buildProfile(imgExt28);
+check('⑥ 关着的渲染脚本也进 rawTags（所以不会被当未声明块删掉）', (imgProf28.rawTags || []).indexOf('NSFW_IMG') >= 0 && (imgProf28.anchors || []).length === 0, imgProf28.rawTags);
+const g28 = guardText('【NSFW_IMG>p.jpg</NSFW_IMG>', imgProf28, { injectAnchor: false });
+check('⑥ guardText 顺手修好括号并记账', g28.text === '<NSFW_IMG>p.jpg</NSFW_IMG>' && g28.actions.some((a) => a.type === 'bracket-tag-fixed'), g28);
+check('⑥ 关掉开关就不动（fixBracketTags=false）', guardText('【NSFW_IMG>p.jpg</NSFW_IMG>', imgProf28, { injectAnchor: false, fixBracketTags: false }).text === '【NSFW_IMG>p.jpg</NSFW_IMG>');
+// ⑦ 面板接线
+check('⑦ 面板有开关、统计与日志接线', idxSrc.indexOf('fixBracketTags') > 0 && idxSrc.indexOf("'bracket-tag-fixed'") > 0 && idxSrc.indexOf('cc-bracket-tags') > 0 && idxSrc.indexOf('括号修复') > 0);
+check('⑦ 括号修好会强制重渲染该楼（否则图片/面板出不来）', /forceRerender = true/.test(idxSrc) && /if \(rerender \|\| forceRerender\)/.test(idxSrc), 'forceRerender 接线');
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

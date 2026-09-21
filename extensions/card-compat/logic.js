@@ -383,6 +383,42 @@ export function anchoredViewConsuming(views, text) {
 }
 
 /**
+ * 0.8.0：修「标签括号错乱」—— 模型把尖括号写成全角方括号，卡的渲染正则一个都匹配不上。
+ * 实测病灶：「与继母的丝袜与日常」里模型输出
+ *     【NSFW_IMG>她压在我身上/美咲_5.jpg</NSFW_IMG>
+ * 而卡的插图正则要的是 <NSFW_IMG>…</NSFW_IMG> —— 一个字符之差，图片不显示、正文里只剩一串原文标签。
+ * 只认**本卡声明过**的标签，且都要求括号旁边有 > 或 / 这种「本来就不该出现在方括号里」的字符：
+ *   【Tag> / [Tag>        → <Tag>      （开标签）
+ *   </Tag】 / 【/Tag>     → </Tag>     （闭标签）
+ * 不做裸 [Tag] → <Tag>，避免把正文里的方括号误当成标签。
+ * @returns {{text:string, fixed:string[]}}
+ */
+export function repairBracketTags(text, tags) {
+    let out = String(text ?? '');
+    const fixed = [];
+    const OPEN_BR = '[\u3010\uff3b\\[]';
+    const CLOSE_BR = '[\u3011\uff3d\\]]';
+    for (const tag of (tags || [])) {
+        if (!tag || !/^[A-Za-z\u4e00-\u9fa5][\w\u4e00-\u9fa5.!-]{0,39}$/.test(tag)) continue;
+        const e = escTag(tag);
+        const open = new RegExp(OPEN_BR + '\\s*(' + e + ')\\s*>', 'g');
+        const closeA = new RegExp('<\\/\\s*(' + e + ')\\s*' + CLOSE_BR, 'g');
+        const closeB = new RegExp(OPEN_BR + '\\s*\\/\\s*(' + e + ')\\s*[>' + CLOSE_BR.slice(1), 'g');
+        // 两边都是方括号的开标签（【Tag】）只在能确证它是标签时才改：
+        // 正文里已经有正规的 </Tag>，或者有方括号形式的闭标签 —— 否则宁可不动（可能是普通方括号文本）
+        const bareOpen = new RegExp(OPEN_BR + '\\s*(' + e + ')\\s*' + CLOSE_BR, 'g');
+        const hasClose = new RegExp('<\\/\\s*' + e + '\\s*>').test(out) || new RegExp(OPEN_BR + '\\s*\\/\\s*' + e + '\\s*' + CLOSE_BR).test(out);
+        const before = out;
+        out = out.replace(open, (m, t1) => '<' + t1 + '>');
+        out = out.replace(closeA, (m, t1) => '</' + t1 + '>');
+        out = out.replace(closeB, (m, t1) => '</' + t1 + '>');
+        if (hasClose) out = out.replace(bareOpen, (m, t1) => '<' + t1 + '>');
+        if (out !== before) fixed.push(tag);
+    }
+    return { text: out, fixed: fixed };
+}
+
+/**
  * 守护主函数（纯函数，便于单测）
  * @returns {{text:string, actions:Array<{type:string,tag:string,detail?:string}>}}
  */
@@ -396,6 +432,15 @@ export function guardText(text, profile, opts = {}) {
     if (consumedView) {
         actions.push({ type: 'anchored-view-skip', tag: consumedView.name });
         return { text: out, actions: actions };
+    }
+
+    // 0) 0.8.0：先把「括号错乱」的标签改回来（【NSFW_IMG> → <NSFW_IMG>），否则卡的插图/面板正则匹配不上
+    if (opts.fixBracketTags !== false) {
+        const br = repairBracketTags(out, [...(profile.rawTags || []), ...(profile.anchors || []), ...(profile.dataTags || []), ...(profile.hideTargets || []), ...(profile.strippers || [])]);
+        if (br.fixed.length) {
+            out = br.text;
+            for (const t of br.fixed) actions.push({ type: 'bracket-tag-fixed', tag: t });
+        }
     }
 
     // 1) 数据块：绝不改动内容，只在「开标签存在但未闭合」时补结束标签

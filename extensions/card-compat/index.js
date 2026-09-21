@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -30,6 +30,7 @@ const DEFAULTS = {
     fixYamlStructure: true, // 结构级修复：列表项行内映射+更深兄弟键、引号后跟「, 文字」（实测会让整块解析失败）
     yamlStrict: true,      // 结构块严格 YAML 校验（用扩展自带的 assets/js-yaml.min.js，失败会报警）
     stripUndeclared: true, // 清理「本卡没声明也没人渲染」的结构块（实测：模型把世界书原文回显成 <world_setting>）
+    fixBracketTags: true,  // 0.8.0：模型把尖括号写成全角方括号时改回 <Tag>（实测【NSFW_IMG> 会让插图整块不显示）
     autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
     autoFixVarsMaxChars: 6000,
     pathWarn: true,        // 补丁路径白名单校验（只提示，不改写）
@@ -42,7 +43,7 @@ const DEFAULTS = {
     compatMode: false,     // 0.4.0 兼容模式：关掉所有跨扩展联动（补发事件 / MVU 写回 / 自动补变量），只留纯文本守护
     depCheck: true,        // 0.4.0 面板显示 ST / 酒馆助手 / MVU 的版本与可用性
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, bracketFixed: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
 let lastCoverage = null;
 let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
@@ -67,6 +68,7 @@ const STRINGS = {
         fixYamlStructure: '结构级修复 YAML：列表项写成「- 键: 值」后面兄弟键缩进更深、引号后多写了「, 文字」（会让整块解析失败）',
         yamlStrict: '结构块严格 YAML 校验（用扩展自带的 js-yaml，失败报警）',
         stripUndeclared: '清理本卡未声明的块（模型回显世界书原文 / 自创标签）',
+        fixBracketTags: '把误写成全角方括号的标签改回 <Tag>（实测【NSFW_IMG> 会让插图不显示）',
         autoFixVars: '模型漏输出变量块时自动补一次（静默生成，只补补丁）',
         mvuVerify: '校验 MVU 能否解析本轮变量块', pathWarn: '校验补丁路径是否在本卡规则内（只提示，不改写）',
         toastOnFail: '连续多楼缺变量块时弹气泡提醒', btnVarfix: '立即补当前楼层变量块',
@@ -100,6 +102,7 @@ const STRINGS = {
         fixYamlStructure: 'Structural YAML repair: list item written as "- key: value" with deeper sibling keys, or extra text after a closing quote',
         yamlStrict: 'Strict YAML check of blocks (bundled js-yaml)',
         stripUndeclared: 'Strip blocks this card never declared (lorebook echo / invented tags)',
+        fixBracketTags: 'Turn tags written with full-width brackets back into <Tag> (fixes missing images/panels)',
         autoFixVars: 'Silently regenerate a missing variable block once',
         mvuVerify: 'Check MVU can parse this reply variable block', pathWarn: 'Check patch paths against this card rules (report only)',
         toastOnFail: 'Toast when several replies in a row miss the variable block', btnVarfix: 'Fix variable block for current reply',
@@ -507,6 +510,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
     const profile = profileOf();
     let base = m.mes;
     let changed = false;
+    let forceRerender = false;   // 0.8.0：括号刚修好的楼层必须重渲染，否则卡的正则没机会产出图片/面板
     // ⓪ 0.6.1：消息被卡的「整条接管」型前端界面认领（如「归真纪元」的 <开局面板> 正则 /^\s*【…】\s*$/）——
     //    这类消息一个字符都不能动：补个锚点就会让 $ 失配，那整块前端面板会直接不渲染（实测「开始新聊天后开局面板消失」）
     const anchoredView = anchoredViewConsuming(profile.views, base);
@@ -578,6 +582,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         if (a.type === 'anchor-injected') { stats.anchorInjected++; log('anchor-injected', a.tag); changed = true; }
         else if (a.type === 'anchor-close-repaired') { stats.closeRepaired++; log('anchor-close-repaired', a.tag); changed = true; }
         else if (a.type === 'data-close-repaired') { stats.closeRepaired++; log('data-close-repaired', a.tag); changed = true; }
+        else if (a.type === 'bracket-tag-fixed') { stats.bracketFixed++; log('bracket-tag-fixed', a.tag, '模型把尖括号写成了全角方括号，已改回 <Tag>，卡的渲染正则现在匹配得上'); changed = true; forceRerender = true; }
         else if (a.type === 'data-missing') { stats.dataMissing++; log('data-missing', a.tag, '本轮面板数据不会更新'); }
         else if (a.type === 'anchor-missing') { log('anchor-missing', a.tag, '未补（关闭了补锚点或该标签在隐藏白名单）'); }
     }
@@ -593,7 +598,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         stats.guarded++;
         lastSeen.set(messageId, m.mes);
         try { saveChatDebounced(); } catch (_) {}
-        if (rerender) {
+        if (rerender || forceRerender) {
             stats.rerendered++;
             try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (e) { log('rerender-failed', '', String(e?.message || e)); }
             nudgeRender(messageId);
@@ -718,7 +723,7 @@ function renderCoverageTable() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ 格式标签缺 ' + stats.formatMissing + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ 格式标签缺 ' + stats.formatMissing + ' ｜ 括号修复 ' + stats.bracketFixed + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
@@ -883,7 +888,7 @@ function buildSettingsUi() {
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         '</details>',
         '<details class="cc-grp"><summary>② ' + escHtml(T('secBlocks')) + '</summary>',
-        cb('cc-fix-quotes', 'fixQuotes'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-structure', 'fixYamlStructure'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
+        cb('cc-fix-quotes', 'fixQuotes'), cb('cc-bracket-tags', 'fixBracketTags'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-structure', 'fixYamlStructure'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
         cb('cc-autofix-vars', 'autoFixVars'), cb('cc-path-warn', 'pathWarn'), cb('cc-toast-fail', 'toastOnFail'),
         "<button id=\"cc-varfix-now\" class=\"menu_button\">" + escHtml(T('btnVarfix')) + "</button>",
         "<button id=\"cc-yaml-check\" class=\"menu_button\">" + escHtml(T('btnYaml')) + "</button>",
@@ -944,6 +949,7 @@ function buildSettingsUi() {
     bind('cc-stale', 'notifyStale', true);
     bind('cc-inject-prompt', 'injectPrompt', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
+    bind('cc-bracket-tags', 'fixBracketTags', true);
     bind('cc-quote-scalars', 'quoteScalars', true);
     bind('cc-yaml-structure', 'fixYamlStructure', true);
     bind('cc-yaml-strict', 'yamlStrict', true);
