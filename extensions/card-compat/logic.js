@@ -165,7 +165,10 @@ export function extractAllowedPaths(entries, opts = {}) {
     const list = [];
     const seen = new Set();
     const add = (raw) => {
-        const q = normalizePath(raw);
+        const s = String(raw || '');
+        if (/[(),?$*]/.test(s)) return;            // 反引号里的代码/参数不算路径
+        if (!/[.\/]/.test(s)) return;
+        const q = normalizePath(s);
         if (!q || q === '/') return;
         if (seen.has(q)) return;
         seen.add(q);
@@ -178,6 +181,7 @@ export function extractAllowedPaths(entries, opts = {}) {
         /["']path["']\s*:\s*["']([^"']{1,80})["']/g,
         /路径\s*[:：]\s*([^\s，。；,;]{1,80})/g,
         /(?:^|[\s\-*（(,，])[/]([A-Za-z\u4e00-\u9fa5][^\s，。；、,;）)<>"']{0,60})/gm,
+        /[\x60]([A-Za-z\u4e00-\u9fa5][A-Za-z0-9_.\u4e00-\u9fa5-]{1,60})[\x60]/g,
     ]) {
         re.lastIndex = 0;
         let m;
@@ -673,44 +677,73 @@ export function extractVarSpec(entries, maxLen = 600) {
 }
 
 /**
- * 从角色卡世界书条目里抽出「本轮必须更新的字段清单」
- * 解析 [mvu_update]变量更新规则 这类条的缩进结构：组(缩进2) / 字段(缩进4) + check 条件
+ * 从角色卡世界书条目里抽出「本轮必须更新的字段清单」。
+ * v0.5.0：不再写死「组(缩进2) / 字段(缩进4)」—— 实测 90 张卡里有 12 张因为规则层级不固定而抽不出来。
+ * 真实写法（都已进夹具）：
+ *   系统: / 日期:                        ← 组 + 字段
+ *   世界信息.历法: / type: / check:      ← 键本身就是点分路径
+ *   炼丹_熟练度: / type / check          ← 键可能带 $ 前缀
+ *   变量结构: / 世界: / 日期: string      ← 多层包装（变量结构/工作流程 这类包装层不进路径）
+ * 规则：按缩进栈推导路径；遇到 check: 就把上方最近的键认作**必更字段**，其后的缩进行是条件文本。
  * @returns {Array<{path:string, check:string}>}
  */
 export function extractRequiredFields(entries, limit = 10) {
-    const text = (entries || []).map(e => String(e?.content || "")).join("\n");
-    if (!text) return [];
-    const lines = text.split("\n");
+    const META = /^(type|range|format|rule|output|outputs|paths|commands|example|examples|default|desc|description|说明|示例|备注|note|可选项|枚举)$/i;
+    const WRAP = /^(变量更新规则|变量规则|更新规则|变量结构|结构|变量列表|variables?|工作流程|flow|当前变量信息|变量系统)$/i;
     const out = [];
-    let group = "", field = null, inCheck = false;
-    const push = () => {
-        if (field && field.check) out.push({ path: group + "." + field.name, check: field.check.trim() });
-        field = null; inCheck = false;
+    const seen = new Set();
+    const ancestors = (rows, j) => {
+        const parts = [rows[j].key];          // 字段自身的键
+        let indent = rows[j].indent;
+        for (let k = j - 1; k >= 0; k--) {
+            const p = rows[k];
+            if (!p.isKey || p.indent >= indent) continue;
+            indent = p.indent;
+            if (META.test(p.key) || WRAP.test(p.key)) continue;
+            parts.unshift(p.key);
+        }
+        return parts;
     };
-    for (const rawLine of lines) {
-        const line = String(rawLine).replace(/\t/g, "    ").replace(/\s+$/, "");
-        const body = line.trim();
-        if (!body || body.indexOf("---") === 0 || body.indexOf("#") === 0) continue;
-        const indent = line.length - line.replace(/^\s+/, "").length;
-        if (indent <= 2) {
-            if (indent === 2) { push(); group = body.replace(/:.*$/, "").trim(); }
-            continue;
+    for (const entry of (entries || [])) {
+        const text = String(entry?.content || '');
+        const comment = String(entry?.comment || '');
+        if (!/变量更新规则|变量规则|更新规则|变量结构|\[mvu_update\]/i.test(text + ' ' + comment)) continue;
+        const rows = [];
+        for (const rawLine of text.replace(/\t/g, '    ').split(/\r?\n/)) {
+            const body = String(rawLine).trim();
+            if (!body) continue;
+            if (/^(---|\.\.\.)/.test(body) || /^#/.test(body) || /^\/\//.test(body)) continue;
+            const indent = String(rawLine).length - String(rawLine).replace(/^\s+/, '').length;
+            const m = body.match(/^(\$?[^\s:：#>\x60]{1,60})\s*[：:]\s*(.*)$/);
+            rows.push({ indent: indent, key: m ? m[1].replace(/^\$/, '').trim() : '', rest: m ? String(m[2] || '').trim() : '', isKey: !!m, raw: body });
         }
-        if (indent === 4) {
-            push();
-            field = { name: body.replace(/:.*$/, "").trim(), check: "" };
-            continue;
-        }
-        if (!field) continue;
-        if (/^check\s*:/i.test(body)) { inCheck = true; continue; }
-        if (inCheck) {
-            const item = body.replace(/^[-*]\s*/, "").trim();
-            if (item) field.check += (field.check ? " / " : "") + item;
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r.isKey || !/^check$/i.test(r.key)) continue;
+            let ownIdx = -1;
+            for (let j = i - 1; j >= 0; j--) {
+                const p = rows[j];
+                if (!p.isKey || p.indent >= r.indent) continue;
+                if (META.test(p.key) || WRAP.test(p.key)) continue;
+                ownIdx = j; break;
+            }
+            if (ownIdx < 0) continue;
+            const cond = [];
+            for (let k = i + 1; k < rows.length; k++) {
+                const p = rows[k];
+                if (p.indent <= r.indent) break;
+                if (p.isKey && !/^[-*]/.test(p.raw)) break;
+                const item = p.raw.replace(/^[-*]\s*/, '').replace(/^[：:]\s*/, '').trim();
+                if (item) cond.push(item);
+            }
+            const path = ancestors(rows, ownIdx).join('.');
+            if (!path || !cond.length) continue;
+            const dedup = path + '|' + cond.join(' / ');
+            if (seen.has(dedup)) continue;
+            seen.add(dedup);
+            out.push({ path: path, check: cond.join(' / ') });
         }
     }
-    push();
-    // 展开全部 ${A|B} 模板组（可能同时出现在组名与字段名里），最多 8 轮
-    // 展开全部模板组（组名与字段名里都可能出现）
     const expanded = [];
     for (const f of out) for (const q of expandTemplateGroups([f.path])) expanded.push({ path: q, check: f.check });
     return expanded.slice(0, limit);
@@ -871,6 +904,101 @@ export function coverageByProtocol(text, required, protocol) {
         if (hit) covered.push(f.path); else missing.push(f.path);
     }
     return { total: (required || []).length, covered, missing, written, kind };
+}
+
+/** 把一张卡的文本汇总起来（协议识别 / 体检用）：主字段 + 正则脚本 + 酒馆助手脚本 + 世界书 */
+export function cardTextOf(card, max = 200000) {
+    try {
+        const d = card && card.data ? card.data : (card || {});
+        const parts = [];
+        for (const k of ['description', 'personality', 'scenario', 'system_prompt', 'post_history_instructions', 'first_mes', 'mes_example']) {
+            const v = d[k];
+            if (typeof v === 'string' && v) parts.push(v.slice(0, 20000));
+        }
+        const ext = d.extensions || {};
+        for (const s of (ext.regex_scripts || [])) parts.push(String(s.findRegex || '') + ' ' + String(s.replaceString || ''));
+        const th = ext.tavern_helper || {};
+        for (const s of (th.scripts || [])) parts.push(String(s.content || '').slice(0, 40000));
+        const entries = (d.character_book && d.character_book.entries) || [];
+        for (const e of entries) parts.push(String(e.content || '').slice(0, 20000));
+        return parts.join(String.fromCharCode(10)).slice(0, max);
+    } catch (_) { return ''; }
+}
+
+/**
+ * 兼容性体检（0.5.0）：对一份角色卡列表跑一遍 card-compat 的全部判定，
+ * 给出「每张卡能做什么、为什么降级」。纯函数，喂 ST 的 getContext().characters 即可。
+ * verdict 取值：
+ *   ok           有锚点/数据块，且规则或协议可用
+ *   guard-only   只有锚点（能补/修占位符，没有变量块）
+ *   no-rules     有变量块但世界书里抽不到「+ check」规则（覆盖度/白名单不可用）
+ *   read-only    变量协议不可写回（YAML 结构块等）
+ *   format-only  无锚点无数据块，但声明了格式标签（只能提醒）
+ *   helper-only  无锚点无数据块，但卡自带酒馆助手脚本（状态栏由它负责）
+ *   plain        纯正文卡（不需要 card-compat 做任何事）
+ *   error        解析异常
+ * @returns {{summary:object, rows:Array}}
+ */
+export function scanCardCompatibility(cards) {
+    const rows = [];
+    for (const ch of (cards || [])) {
+        try {
+            const d = ch && ch.data ? ch.data : (ch || {});
+            const ext = d.extensions || {};
+            const prof = buildProfile(ext);
+            const entries = (d.character_book && d.character_book.entries) || [];
+            const required = extractRequiredFields(entries);
+            const varSpec = extractVarSpec(entries);
+            const allowed = extractAllowedPaths(entries, { limit: 400 });
+            const proto = detectVariableProtocol({ text: cardTextOf(ch), varSpec: varSpec, dataTags: prof.dataTags, blockTags: [...prof.dataTags, ...prof.anchors] });
+            const hasAnchor = (prof.anchors || []).length > 0;
+            const hasData = (prof.dataTags || []).length > 0;
+            let verdict = 'ok';
+            if (!hasAnchor && !hasData) verdict = (prof.rawTags || []).length ? 'format-only' : (prof.helperCount > 0 ? 'helper-only' : 'plain');
+            else if (!hasData) verdict = 'guard-only';
+            else if (!required.length) verdict = 'no-rules';
+            else if (!proto.canWriteBack && proto.id !== 'none') verdict = 'read-only';
+            rows.push({
+                name: String(d.name || ch?.name || '（无名）'),
+                verdict: verdict,
+                protocol: proto.id,
+                canWriteBack: !!proto.canWriteBack,
+                anchors: (prof.anchors || []).length,
+                dataTags: (prof.dataTags || []).length,
+                hides: (prof.hideTargets || []).length,
+                rawTags: (prof.rawTags || []).length,
+                helper: prof.helperCount || 0,
+                book: entries.length,
+                required: required.length,
+                allowedPaths: allowed.paths.length,
+                varSpec: String(varSpec || '').length > 40,
+            });
+        } catch (e) {
+            rows.push({ name: '（解析失败）', verdict: 'error', reason: String((e && e.message) || e) });
+        }
+    }
+    const by = (fn) => rows.filter(fn).length;
+    const protoHist = {};
+    const verdictHist = {};
+    for (const r of rows) {
+        protoHist[r.protocol] = (protoHist[r.protocol] || 0) + 1;
+        verdictHist[r.verdict] = (verdictHist[r.verdict] || 0) + 1;
+    }
+    const total = rows.length;
+    const summary = {
+        total: total,
+        protocol: protoHist,
+        verdicts: verdictHist,
+        anchors: by((r) => r.anchors > 0),
+        dataBlocks: by((r) => r.dataTags > 0),
+        rules: by((r) => r.required > 0),
+        varSpec: by((r) => r.varSpec),
+        helper: by((r) => r.helper > 0),
+        hides: by((r) => r.hides > 0),
+        writable: by((r) => r.canWriteBack),
+        guardable: by((r) => r.anchors > 0 || r.dataTags > 0),
+    };
+    return { summary: summary, rows: rows };
 }
 
 export function isStale(prevText, curText) {

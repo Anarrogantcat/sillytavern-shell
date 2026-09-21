@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -42,7 +42,7 @@ const DEFAULTS = {
     compatMode: false,     // 0.4.0 兼容模式：关掉所有跨扩展联动（补发事件 / MVU 写回 / 自动补变量），只留纯文本守护
     depCheck: true,        // 0.4.0 面板显示 ST / 酒馆助手 / MVU 的版本与可用性
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
 let lastCoverage = null;
 let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
@@ -57,6 +57,7 @@ const STRINGS = {
     zh: {
         title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
         secMvu: 'MVU 联动', secDep: '依赖与联动', secUi: '界面与诊断', enabled: '启用守护',
+        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，90 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_error': '解析异常',
         protocol: '变量协议', capWrite: '可写回变量', capReadonly: '只读守护（不改宿主变量）', depLoading: '读取依赖版本…', depOff: '依赖检测已关（面板开关）',
         compatNote: '兼容模式：关掉补发事件 / MVU 写回 / 自动补变量，只留纯文本守护 —— 酒馆助手或 MVU 大更新出问题时打开它',
         injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
@@ -89,6 +90,7 @@ const STRINGS = {
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
         secMvu: 'MVU integration', secDep: 'Dependencies and linkage', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
+        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)',
         protocol: 'Variable protocol', capWrite: 'can write variables back', capReadonly: 'read-only guard (does not touch host variables)', depLoading: 'Reading dependency versions...', depOff: 'Dependency check is off (panel switch)',
         compatNote: 'Compat mode: disables the event nudge / MVU write-back / auto var fix, leaving pure text guarding - turn it on when TavernHelper or MVU updates break things',
         injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
@@ -626,6 +628,18 @@ function guardMessage(messageId, { rerender = true } = {}) {
             toast(T('toastNoVars', { n: hardFailStreak }), 'warning');
         }
     } catch (_) {}
+    // 0.5.0：本卡声明的「格式标签」本轮有没有出现（只报告，不自动补内容 —— 实测 10 张卡只有格式标签可管）
+    try {
+        if (s.reportFormatTags !== false) {
+            const used = new Set([...(profile.dataTags || []), ...(profile.anchors || [])]);
+            const want = (profile.rawTags || []).filter((t) => !KEEP_BLOCKS.has(t) && !KEEP_BLOCKS.has(String(t).toLowerCase()) && !used.has(t));
+            const miss = want.filter((t) => !m.mes.includes('<' + t));
+            if (want.length && miss.length) {
+                stats.formatMissing += miss.length;
+                log('format-tag-missing', miss.join(','), '本卡声明的格式标签本轮没出现（只提示，不自动补）');
+            }
+        }
+    } catch (_) {}
     try { if (s.yamlStrict) strictCheckMessage(messageId); } catch (_) {}
     try { if (s.mvuVerify) setTimeout(() => mvuVerifyMessage(messageId), 0); } catch (_) {}
     try { if (settings().autoFixVars) setTimeout(() => maybeFixVars(messageId), 0); } catch (_) {}
@@ -695,7 +709,7 @@ function renderCoverageTable() {
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
+        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ 格式标签缺 ' + stats.formatMissing + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
@@ -705,6 +719,7 @@ function renderStats() {
     renderMvuBox();
     renderProtocolLine();
     refreshDepBox(false);
+    renderScan();
 }
 /** P3 ⑨ 面板里的 MVU 状态块 */
 /* ── 0.4.0：依赖状态 / 变量协议 / 兼容模式 ─────────────────────── */
@@ -756,6 +771,53 @@ function renderProtocolLine() {
         const cfg = document.getElementById('cc-var-cfg');
         if (cfg) cfg.style.display = (pr.id === 'none') ? 'none' : '';
     } catch (_) {}
+}
+/* ── 0.5.0：兼容性体检（对全部角色卡跑一遍判定）────────────────── */
+let scanResult = null;
+let scanFilter = '';
+function verdictLabel(v) { return T('v_' + v) || v; }
+function renderScan() {
+    const sum = document.getElementById('cc-scan-sum');
+    const rowsBox = document.getElementById('cc-scan-rows');
+    const filt = document.getElementById('cc-scan-filter');
+    if (!sum || !rowsBox) return;
+    if (!scanResult) { sum.textContent = T('scanIdle'); rowsBox.innerHTML = ''; if (filt) filt.innerHTML = ''; return; }
+    const s = scanResult.summary;
+    const at = scanResult.at ? new Date(scanResult.at).toLocaleString() : '';
+    sum.innerHTML = '<b>' + escHtml(T('scanSum')) + '</b>：' + s.total + escHtml(T('scanOf')) + ' ｜ ' + escHtml(T('scanGuard')) + ' ' + s.guardable +
+        ' ｜ ' + escHtml(T('scanWrite')) + ' ' + s.writable + ' ｜ ' + escHtml(T('scanRules')) + ' ' + s.rules +
+        ' ｜ ' + Object.keys(s.protocol).map((k) => escHtml(k) + '×' + s.protocol[k]).join(' ') + (at ? ' ｜ ' + escHtml(at) + ' ｜ ' + scanResult.ms + 'ms' : '');
+    if (filt) {
+        const keys = ['', 'ok', 'guard-only', 'no-rules', 'read-only', 'format-only', 'helper-only', 'plain'];
+        filt.innerHTML = keys.map((v) => '<button class="btn-secondary btn-xs cc-chip" data-scan-filter="' + v + '" style="margin:2px;' + (scanFilter === v ? 'outline:1px solid currentColor;' : '') + '">' +
+            escHtml(v ? (verdictLabel(v) + ' (' + (s.verdicts[v] || 0) + ')') : (T('v_all') + ' (' + s.total + ')')) + '</button>').join('');
+    }
+    const list = scanFilter ? scanResult.rows.filter((r) => r.verdict === scanFilter) : scanResult.rows;
+    rowsBox.innerHTML = '<table class="cc-tab"><thead><tr><th>' + escHtml(T('colCard')) + '</th><th>' + escHtml(T('colProto')) + '</th><th>' + escHtml(T('colCap')) + '</th><th>' + escHtml(T('colVerdict')) + '</th></tr></thead><tbody>' +
+        list.slice(0, 200).map((r) => '<tr><td>' + escHtml(String(r.name || '').slice(0, 22)) + '</td><td>' + escHtml(r.protocol || '-') + '</td><td>' + (r.anchors || 0) + '/' + (r.dataTags || 0) + '/' + (r.required || 0) + '</td><td>' + escHtml(verdictLabel(r.verdict)) + '</td></tr>').join('') +
+        '</tbody></table>' + (list.length > 200 ? '<div class="cc-muted">' + escHtml(T('scanMore')) + '</div>' : '');
+}
+async function runCompatScan() {
+    const sum = document.getElementById('cc-scan-sum');
+    if (sum) sum.textContent = T('scanRunning');
+    try {
+        const ctx = getContext();
+        const cards = (ctx && ctx.characters) || [];
+        const t0 = Date.now();
+        const r = scanCardCompatibility(cards);
+        scanResult = { at: Date.now(), summary: r.summary, rows: r.rows, ms: Date.now() - t0 };
+        try { const s = settings(); s.compatScan = { at: scanResult.at, summary: r.summary }; saveSettingsDebounced(); } catch (_) {}
+        log('compat-scan', r.summary.total + ' 张 / ' + scanResult.ms + 'ms', JSON.stringify(r.summary.verdicts));
+        renderScan();
+    } catch (e) { if (sum) sum.textContent = escHtml(String((e && e.message) || e)); }
+}
+async function copyScanReport() {
+    if (!scanResult) { toast(T('scanIdle'), 'info'); return; }
+    const s = scanResult.summary;
+    const lines = [T('scanSum') + ': ' + s.total + ' 张', '结论: ' + JSON.stringify(s.verdicts), '协议: ' + JSON.stringify(s.protocol),
+        '可守护 ' + s.guardable + ' / 可写回 ' + s.writable + ' / 有规则 ' + s.rules, '', T('colCard') + ' | ' + T('colProto') + ' | ' + T('colVerdict')];
+    for (const r of scanResult.rows) lines.push(r.name + ' | ' + (r.protocol || '-') + ' | ' + r.verdict + ' | 锚点' + r.anchors + ' 数据块' + r.dataTags + ' 规则' + r.required);
+    try { await navigator.clipboard.writeText(lines.join(String.fromCharCode(10))); toast(T('scanCopied'), 'success'); } catch (_) { toast(T('scanCopyFail'), 'warning'); }
 }
 function renderMvuBox() {
     const box = document.getElementById('cc-mvu');
@@ -821,6 +883,13 @@ function buildSettingsUi() {
         '<label>' + escHtml(T('floor')) + ' <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
         '<details><summary>' + escHtml(T('log')) + '</summary><pre id="cc-log" class="cc-log"></pre></details>',
         '</details>',
+'<details class="cc-grp"><summary>⑥ ' + escHtml(T('secScan')) + '</summary>',
+        '<div class="cc-line cc-muted">' + escHtml(T('scanNote')) + '</div>',
+        '<div class="cc-info-actions"><button id="cc-scan-run" class="menu_button">' + escHtml(T('scanRun')) + '</button><button id="cc-scan-copy" class="menu_button">' + escHtml(T('scanCopy')) + '</button></div>',
+        '<div id="cc-scan-sum" class="cc-line"></div>',
+        '<div id="cc-scan-filter" class="cc-line"></div>',
+        '<div id="cc-scan-rows" class="cc-scan-rows"></div>',
+        '</details>',
         '<div id="cc-info" class="cc-info">',
         '<div id="cc-info-toggle" class="cc-info-toggle" role="button" tabindex="0">ⓘ ' + escHtml(T('infoTitle')) + '</div>',
         '<div id="cc-info-body" class="cc-info-body" style="display:none">',
@@ -875,6 +944,9 @@ function buildSettingsUi() {
         else toast(T('mvuUnparsed') + r.reason, 'warning');
         renderMvuBox();
     });
+    document.getElementById('cc-scan-run')?.addEventListener('click', () => { runCompatScan(); });
+    document.getElementById('cc-scan-copy')?.addEventListener('click', () => { copyScanReport(); });
+    document.getElementById('cc-scan-filter')?.addEventListener('click', (e) => { const b = e.target && e.target.closest ? e.target.closest('[data-scan-filter]') : null; if (!b) return; scanFilter = b.getAttribute('data-scan-filter') || ''; renderScan(); });
     document.getElementById('cc-info-toggle')?.addEventListener('click', () => { const st2 = settings(); st2.infoOpen = !(st2.infoOpen === true); saveSettingsDebounced(); applyInfoOpen(); });
     document.getElementById('cc-info-log')?.addEventListener('click', () => { showChangelog(); });
     applyInfoOpen();
@@ -931,6 +1003,7 @@ function exposeApi() {
             protocol: () => profileOf().protocol,
             compatMode: () => settings()?.compatMode === true,
             deps: (f) => depStatus(!!f),
+            scan: (cards) => scanCardCompatibility(cards || (getContext()?.characters || [])),
             invalidate: () => invalidateProfile(),
             changelog: () => showChangelog(),
             stats: () => Object.assign({}, stats),

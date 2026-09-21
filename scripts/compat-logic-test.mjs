@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -273,7 +273,9 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.4.0"') > 0 && idxSrc.indexOf("const VERSION = '0.4.0'") > 0);
+const ccManifestVer = JSON.parse(readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8')).version;
+const ccIdxVer = (idxSrc.match(/const VERSION = '([^']+)'/) || [])[1];
+check('版本号与 manifest 一致（动态比对，不再写死）', String(ccManifestVer) === String(ccIdxVer) && idxSrc.indexOf("const VERSION = '" + ccManifestVer + "'") > 0, 'manifest=' + ccManifestVer + ' index.js=' + ccIdxVer);
 function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
 console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
 const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
@@ -367,6 +369,32 @@ check('兼容模式跳过补发事件 / MVU 试解析 / 自动补变量', /s.nud
 check('补发事件后有自检（未渲染记 nudge-missed）', idxSrc.indexOf('checkNudgeApplied(messageId)') > 0 && idxSrc.indexOf("'nudge-missed'") > 0);
 check('依赖探测读酒馆助手 manifest', idxSrc.indexOf("/scripts/extensions/third-party/") > 0);
 check('对外钩子暴露 protocol/compatMode/deps', idxSrc.indexOf('protocol: () => profileOf().protocol') > 0 && idxSrc.indexOf('compatMode: () => settings()?.compatMode === true') > 0 && idxSrc.indexOf('deps: (f) => depStatus(!!f)') > 0);
+console.log('— 夹具 24：兼容性体检（0.5.0）');
+const mk24 = (name, data) => ({ name: name, data: data });
+const scanAnchor = { extensions: { regex_scripts: [{ scriptName: '状态栏', findRegex: '<StatusPlaceHolderImpl/>', replaceString: '<div>x</div>' }] } };
+const scanMvuRule = { character_book: { entries: [{ comment: '[mvu_update]变量更新规则', content: '变量更新规则:' + NL + '  系统:' + NL + '    日期:' + NL + '      check:' + NL + '        - 场景跳转后更新' }] } };
+const scanDataNoRule = { extensions: { regex_scripts: [{ scriptName: '去变量更新', findRegex: '/<UpdateVariable>.*?<\\/UpdateVariable>/gms', replaceString: '' }] } };
+const scanFmtOnly = { extensions: { regex_scripts: [{ scriptName: '美化', findRegex: '/AAA(.*?)AAA/s', replaceString: '<正文>$1</正文>' }] } };
+const scanHelper = { extensions: { tavern_helper: { scripts: [{ name: '状态栏', content: 'render()' }] } } };
+const scanPlain = { name: '纯正文卡' };
+const cards24 = [
+  mk24('MVU卡', Object.assign({}, scanAnchor, scanDataNoRule, scanMvuRule)),
+  mk24('只有锚点', scanAnchor),
+  mk24('有变量块无规则', scanDataNoRule),
+  mk24('只有格式标签', scanFmtOnly),
+  mk24('靠助手脚本', scanHelper),
+  mk24('纯正文', scanPlain),
+];
+const scan24 = scanCardCompatibility(cards24);
+check('体检总数正确', scan24.summary.total === 6, scan24.summary.total);
+check('逐卡结论：MVU卡=ok / 只有锚点=guard-only / 无规则=no-rules', scan24.rows[0].verdict === 'ok' && scan24.rows[1].verdict === 'guard-only' && scan24.rows[2].verdict === 'no-rules', scan24.rows.map((r) => r.verdict));
+check('格式标签卡=format-only / 助手卡=helper-only / 纯正文=plain', scan24.rows[3].verdict === 'format-only' && scan24.rows[4].verdict === 'helper-only' && scan24.rows[5].verdict === 'plain', scan24.rows.slice(3).map((r) => r.verdict));
+check('协议直方图含 mvu/none', (scan24.summary.protocol.mvu || 0) >= 1 && (scan24.summary.protocol.none || 0) >= 1, scan24.summary.protocol);
+check('能力计数：可守护 3 / 可写回 2 / 有规则 1', scan24.summary.guardable === 3 && scan24.summary.writable === 2 && scan24.summary.rules === 1, scan24.summary);
+check('每行带名字/协议/锚点/规则字段', scan24.rows.every((r) => typeof r.name === 'string' && typeof r.protocol === 'string' && typeof r.anchors === 'number' && typeof r.required === 'number'));
+check('空列表不炸', scanCardCompatibility([]).summary.total === 0 && scanCardCompatibility(null).summary.total === 0);
+check('体检面板接线（按钮/表格/筛选/钩子）', idxSrc.indexOf('id="cc-scan-run"') > 0 && idxSrc.indexOf('id="cc-scan-rows"') > 0 && idxSrc.indexOf('data-scan-filter') > 0 && idxSrc.indexOf('scan: (cards) => scanCardCompatibility') > 0);
+check('格式标签缺失只提示不改写', idxSrc.indexOf("'format-tag-missing'") > 0 && /formatMissing/.test(idxSrc));
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
