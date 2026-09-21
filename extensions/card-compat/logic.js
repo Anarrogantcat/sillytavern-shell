@@ -354,6 +354,34 @@ export function findUnclosed(text, tags) {
     return out;
 }
 
+/** 把存的 findRegex（可能带 /…/flags）编译成 RegExp；去掉 g 免得 lastIndex 有副作用 */
+export function regexFromFindRegex(src) {
+    const t = String(src ?? '');
+    const m = t.match(/^\/([\s\S]*)\/([a-z]*)$/);
+    try {
+        if (m) return new RegExp(m[1], m[2].split('').filter((c) => c !== 'g').join(''));
+        return new RegExp(t.replace(/^\/|\/$/g, ''));
+    } catch (_) { return null; }
+}
+
+/**
+ * 0.6.1：这条消息是否被卡自带的「整条消息」型前端界面认领了？
+ * 实测病灶：「归真纪元」的开局面板正则写成 /^\s*【归真纪元·自定义开局】\s*$/，
+ * 用 $ 锁死了整条消息 —— 只要往里补一个锚点就失配，那块 3.9MB 面板直接不渲染（面板「消失」）。
+ * @returns {object|null} 命中的视图记录
+ */
+export function anchoredViewConsuming(views, text) {
+    const t = String(text ?? '');
+    if (!t) return null;
+    for (const v of [...((views && views.panels) || []), ...((views && views.bars) || [])]) {
+        if (!v || !v.raw || !v.anchored) continue;
+        const rx = regexFromFindRegex(v.raw);
+        if (!rx) continue;
+        try { if (rx.test(t)) return v; } catch (_) {}
+    }
+    return null;
+}
+
 /**
  * 守护主函数（纯函数，便于单测）
  * @returns {{text:string, actions:Array<{type:string,tag:string,detail?:string}>}}
@@ -362,6 +390,13 @@ export function guardText(text, profile, opts = {}) {
     const actions = [];
     let out = String(text ?? '');
     if (!out) return { text: out, actions };
+
+    // 0) 0.6.1：消息被卡的「整条接管」型前端界面认领（开局配置面板等）→ 原样返回，绝不补锚点/补闭合
+    const consumedView = anchoredViewConsuming(profile && profile.views, out);
+    if (consumedView) {
+        actions.push({ type: 'anchored-view-skip', tag: consumedView.name });
+        return { text: out, actions: actions };
+    }
 
     // 1) 数据块：绝不改动内容，只在「开标签存在但未闭合」时补结束标签
     for (const tag of profile.dataTags || []) {
@@ -989,7 +1024,8 @@ export function detectFrontEndViews(ext) {
         if (!rep || rep.trim() === '' || rep.length < 400 || rep.indexOf('<') < 0) continue;
         const name = String(s.scriptName || '');
         const find = normalizeRegexForTags(s.findRegex);
-        const rec = { name: name, len: rep.length, markdownOnly: s.markdownOnly !== false, placement: s.placement };
+        // raw 留着给「这条消息是不是被它整条接管」判断用；anchored=正则用 ^ 或 $ 锁住了整条消息
+        const rec = { name: name, len: rep.length, raw: String(s.findRegex || ''), anchored: /^\^/.test(find) || /\$$/.test(find), markdownOnly: s.markdownOnly !== false, placement: s.placement };
         if (VIEW_BAR_RE.test(name) || /StatusPlaceHolder|状态栏/i.test(find)) {
             rec.dynamic = VIEW_DYN_RE.test(rep) || /<\s*script/i.test(rep);
             bars.push(rec);

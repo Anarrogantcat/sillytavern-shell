@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -446,6 +446,26 @@ check('总览计入动态状态栏（含真动态数）与面板', scan25.summar
 check('每行带 bars / panels / dynBar 字段', scan25.rows.every((r) => typeof r.bars === 'number' && typeof r.panels === 'number' && typeof r.dynBar === 'boolean'), scan25.rows);
 // ⑥ 面板接线
 check('面板显示动态状态栏/交互面板，且筛选项含 dyn-bar', idxSrc.indexOf('scanDyn') > 0 && idxSrc.indexOf('scanPanel') > 0 && idxSrc.indexOf("'dyn-bar'") > 0 && idxSrc.indexOf('marks(r)') > 0);
+
+console.log('— 夹具 26：整条消息被前端界面接管时不许改写（0.6.1；实测「开始新聊天后开局面板消失」）');
+const anchoredExt = { regex_scripts: [
+    { scriptName: '[界面]终端', findRegex: '/^\\s*【自定义开局】\\s*$/', replaceString: '<!DOCTYPE html><html><body>' + 'x'.repeat(3000) + '<script>1</script></body></html>', markdownOnly: true, placement: [2] },
+    { scriptName: '[界面]状态栏', findRegex: '/<StatusPlaceHolderImpl\\s*\\/>/g', replaceString: '<div>{{stat_data}}</div>' + 'x'.repeat(500), markdownOnly: true, placement: [2] },
+    { scriptName: '变量更新美化', findRegex: '/<(update(?:variable)?)>[\\s\\S]*?<\\/\\1>/gsi', replaceString: '<div>ok</div>', markdownOnly: true, placement: [2] },
+] };
+const anchoredProf = buildProfile(anchoredExt);
+check('锚定面板被标成 anchored', anchoredProf.views.panels.length === 1 && anchoredProf.views.panels[0].anchored === true, anchoredProf.views.panels);
+check('非锚定的状态栏不算 anchored', anchoredProf.views.bars[0].anchored === false, anchoredProf.views.bars);
+const greeting26 = '【自定义开局】';
+check('认出「整条消息被接管」', !!anchoredViewConsuming(anchoredProf.views, greeting26));
+check('普通正文不误判（同样含这几个字）', anchoredViewConsuming(anchoredProf.views, '正文里提到【自定义开局】但后面还有别的内容') === null);
+const g26 = guardText(greeting26, anchoredProf, { injectAnchor: true, anchorStyle: 'self' });
+check('问候语原样返回，不再补锚点', g26.text === greeting26 && g26.actions.some((a) => a.type === 'anchored-view-skip'), g26);
+check('面板正则仍能匹配（这就是面板消失的根因）', regexFromFindRegex(anchoredExt.regex_scripts[0].findRegex).test(g26.text));
+const g26b = guardText('这是模型的一轮正常回复。', anchoredProf, { injectAnchor: true, anchorStyle: 'self' });
+check('普通回复照样补锚点（没回退）', g26b.text.indexOf('<StatusPlaceHolderImpl/>') >= 0 && g26b.actions.some((a) => a.type === 'anchor-injected'), g26b);
+check('regexFromFindRegex：保留 i/s 但去掉 g', (function () { const rx = regexFromFindRegex('/abc/gsi'); return rx && rx.flags.indexOf('g') < 0 && rx.flags.indexOf('i') >= 0 && rx.flags.indexOf('s') >= 0; })());
+check('对话入口接线：guardMessage 先判整条接管', idxSrc.indexOf('anchoredViewConsuming(profile.views, base)') > 0 && idxSrc.indexOf("'anchored-view-skip'") > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
