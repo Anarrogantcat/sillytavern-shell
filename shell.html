@@ -156,7 +156,7 @@
 <button class="settings-tab active" data-tab="general">通用</button>
 <button class="settings-tab" data-tab="tools">工具</button>
 <button class="settings-tab" data-tab="server">服务器</button>
-<button class="settings-tab" data-tab="update">更新</button>
+<button class="settings-tab" data-tab="about">关于</button>
 <button class="settings-tab" data-tab="integrity">完整性</button>
 </nav>
 <div class="settings-content">
@@ -166,9 +166,6 @@
 <div class="setting-row"><label>窗口宽度</label><input type="number" id="setting-width" min="640" max="3840"></div>
 <div class="setting-row"><label>窗口高度</label><input type="number" id="setting-height" min="480" max="2160"></div>
 <div class="setting-row"><label>关闭窗口行为</label><select id="setting-close-behavior"><option value="ask">首次询问</option><option value="tray">最小化到托盘</option><option value="quit">直接退出</option></select></div>
-<div class="setting-row version-row"><label>SillyTavern 版本</label><span id="version-display">检测中...</span></div>
-<div class="setting-row version-row"><label>套壳版本</label><span id="shell-version-display" class="shell-version">检测中...</span> <button id="btn-shell-changelog" class="btn-secondary btn-sm">查看更新日志</button></div>
-<div class="setting-row version-row"><label>作者</label><span>小肥鱼（AI）· 染喵</span></div>
 <div class="update-section section-spaced">
 <label class="section-title">🧰 工具设置</label>
 <div class="setting-row"><label>备份目录</label><input type="text" id="t-backup-dir" class="tool-input" placeholder="E:\SillyTavernBackup"><button id="t-backup-dir-browse" class="btn-secondary btn-xs">浏览…</button></div>
@@ -218,6 +215,13 @@
 <button id="btn-open-data-dir" class="btn-secondary">打开数据目录</button>
 </div>
 <div id="server-ctl-status" class="update-status"></div>
+</div>
+<div class="update-section section-spaced" id="about-section">
+<label class="section-title">ℹ 关于</label>
+<div class="setting-row version-row"><label>SillyTavern 版本</label><span id="version-display">检测中...</span></div>
+<div class="setting-row version-row"><label>套壳版本</label><span id="shell-version-display" class="shell-version">检测中...</span> <button id="btn-shell-changelog" class="btn-secondary btn-sm">查看更新日志</button></div>
+<div class="setting-row version-row"><label>作者</label><span>小肥鱼（AI）· 染喵</span></div>
+<details id="about-changelog-wrap" class="about-changelog"><summary>更新日志</summary><div id="about-changelog" class="about-changelog-body">展开后加载…</div></details>
 </div>
 <div class="update-section" id="update-section-st">
 <label class="section-title">SillyTavern 更新</label>

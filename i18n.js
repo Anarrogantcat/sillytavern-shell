@@ -471,5 +471,12 @@ window.SHELL_I18N_EXTRA = [
     ["小肥鱼（AI）· 染喵", "小肥鱼 (AI) & 染喵"],
     ["小肥鱼（AI）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：", "Author: 小肥鱼 (AI) & 染喵 | License: AGPL-3.0 | Homepage: "],
     ["作者", "Author"],
+    // —— 设置「关于」页 ——
+    ["关于", "About"],
+    ["ℹ 关于", "ℹ About"],
+    ["更新日志", "Changelog"],
+    ["展开后加载…", "Expand to load…"],
+    ["加载中…", "Loading…"],
+    ["读取更新日志失败：", "Failed to read the changelog: "],
 ];
 

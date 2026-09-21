@@ -685,12 +685,15 @@ function initSettingsTabs() {
     const firstSectionIdx = children.findIndex(el => el.classList.contains('update-section'));
     const generalEls = firstSectionIdx >= 0 ? children.slice(0, firstSectionIdx) : children;
     const sections = children.filter(el => el.classList.contains('update-section') && el.children.length > 0);
+    // 分组按 DOM 顺序取（空 .update-section 已在上面过滤掉）：
+    //   0 工具设置 ｜ 1 服务器控制 ｜ 2 关于 ｜ 3 SillyTavern 更新 ｜ 4 套壳更新 ｜ 5 完整性检测
+    // 「更新 + 更新日志」都收在「关于」页里（v2.1.3 起）
     const groups = {
         general: generalEls,
         tools: [sections[0]],
         server: [sections[1]],
-        update: [sections[2], sections[3]],
-        integrity: [sections[4]],
+        about: [sections[2], sections[3], sections[4]],
+        integrity: [sections[5]],
     };
     function switchSettingsTab(name) {
         const show = groups[name] || [];
@@ -702,7 +705,9 @@ function initSettingsTabs() {
     }
     settingsTabsData = { children, groups, switchSettingsTab, searchWrap };
     for (const tab of tabs) tab.addEventListener('click', () => switchSettingsTab(tab.dataset.tab));
-    switchSettingsTab(localStorage.getItem('settingsTab') || 'general');
+    // 兼容旧值：以前记过 'update' 的用户 → 落到「关于」页
+    const savedTab = localStorage.getItem('settingsTab');
+    switchSettingsTab(savedTab && groups[savedTab] ? savedTab : 'general');
 }
 function applySettingsSearch() {
     const input = document.getElementById('settings-search');
@@ -770,7 +775,27 @@ document.getElementById('t-backup-dir-browse')?.addEventListener('click', async 
 $('#btn-restart-server')?.addEventListener('click',async()=>{const b=$('#btn-restart-server'),sc=$('#server-ctl-status');if(b)b.disabled=true;if(sc){sc.textContent='正在重启服务器...';sc.className='update-status info';}const r=await window.electronAPI?.server?.restart();if(sc){if(r?.success){sc.textContent='✅ 服务器已重启';sc.className='update-status success';}else{sc.textContent='重启失败: '+(r?.error||'unknown');sc.className='update-status error';}}if(b)b.disabled=false;});
 $('#btn-open-st-dir')?.addEventListener('click',async()=>{const p=await ST?.getServerPath();if(p)window.electronAPI?.window?.openPath(p);});
 $('#btn-open-data-dir')?.addEventListener('click',async()=>{const p=await ST?.getDataRoot();if(p)window.electronAPI?.window?.openPath(p);});
-$('#btn-shell-changelog')?.addEventListener('click',async()=>{const md=await A?.getChangelog();const html=md.replace(/^# (.+)/gm,'<h3>$1</h3>').replace(/^## (.+)/gm,'<h4>$1</h4>').replace(/^- (.+)/gm,'<li>$1</li>').replace(/(<li>.*<\/li>)/gs,'<ul>$1</ul>');const el=document.createElement('div');el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:flex;align-items:center;justify-content:center';el.innerHTML=`<div style=\"background:rgba(18,18,42,0.95);backdrop-filter:blur(20px);border-radius:12px;padding:20px;max-width:500px;max-height:80vh;overflow-y:auto;color:#c8c8d4;font-size:13px;line-height:1.6\"><div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px\"><h3 style=\"margin:0;color:#7c5cbf\">套壳更新日志</h3><button style=\"background:none;border:none;color:#c8c8d4;font-size:18px;cursor:pointer\">&times;</button></div>${html}</div>`;el.querySelector('button').onclick=()=>el.remove();el.onclick=e=>{if(e.target===el)el.remove();};document.body.appendChild(el);});
+// ── 关于页：版本 / 作者 / 更新日志（更新与日志都收在这一页）────
+function renderChangelogMd(md) {
+    return String(md || '')
+        .replace(/^# (.+)/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)/gm, '<h4>$1</h4>')
+        .replace(/^- (.+)/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+}
+let aboutChangelogLoaded = false;
+async function loadAboutChangelog() {
+    const box = document.getElementById('about-changelog');
+    if (!box || aboutChangelogLoaded) return;
+    box.textContent = '加载中…';
+    try {
+        const md = await A?.getChangelog();
+        box.innerHTML = renderChangelogMd(md) || '<p>暂无更新日志</p>';
+        aboutChangelogLoaded = true;
+    } catch (e) { box.textContent = '读取更新日志失败：' + ((e && e.message) || e); }
+}
+document.getElementById('about-changelog-wrap')?.addEventListener('toggle', (e) => { if (e.target && e.target.open) loadAboutChangelog(); });
+$('#btn-shell-changelog')?.addEventListener('click',async()=>{const md=await A?.getChangelog();const html=renderChangelogMd(md);const el=document.createElement('div');el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:flex;align-items:center;justify-content:center';el.innerHTML=`<div style=\"background:rgba(18,18,42,0.95);backdrop-filter:blur(20px);border-radius:12px;padding:20px;max-width:500px;max-height:80vh;overflow-y:auto;color:#c8c8d4;font-size:13px;line-height:1.6\"><div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px\"><h3 style=\"margin:0;color:#7c5cbf\">套壳更新日志</h3><button style=\"background:none;border:none;color:#c8c8d4;font-size:18px;cursor:pointer\">&times;</button></div>${html}</div>`;el.querySelector('button').onclick=()=>el.remove();el.onclick=e=>{if(e.target===el)el.remove();};document.body.appendChild(el);});
 
 // ── Update ───────────────────────────────────
 let updateData=null,updateCleanup=null;
