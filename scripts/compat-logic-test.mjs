@@ -272,7 +272,20 @@ check('三个区块都能定位', gStart > 0 && sStart > 0 && sEnd > sStart && g
 check('stripUndeclaredBlocks 落在 guardMessage 内', idxSrc.slice(gStart, gEnd).indexOf('stripUndeclaredBlocks(') > 0);
 check('stripUndeclaredBlocks 不再出现在 strictCheckMessage 内', idxSrc.slice(sStart, sEnd).indexOf('stripUndeclaredBlocks(') < 0);
 check('guardMessage 先算 base 再 guardText', idxSrc.slice(gStart, gEnd).indexOf('guardText(base, profile, s)') > 0);
-check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.2.8"') > 0 && idxSrc.indexOf("const VERSION = '0.2.8'") > 0);
+check('版本号与 manifest 一致', readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8').indexOf('"0.2.9"') > 0 && idxSrc.indexOf("const VERSION = '0.2.9'") > 0);
+function STRINGS_ZH_HAS(k) { return idxSrc.indexOf(k + "'") > 0; }
+console.log('— 夹具 20：重渲染后补发事件（0.2.9：修「刷新页面状态栏才变回面板」）');
+const nudgeIdx = idxSrc.indexOf('function nudgeRender(');
+const nudgeBody = nudgeIdx >= 0 ? idxSrc.slice(nudgeIdx, nudgeIdx + 900) : '';
+check('存在 nudgeRender()', nudgeIdx > 0);
+check('补发的是酒馆助手真正监听的 MESSAGE_UPDATED', nudgeBody.indexOf('event_types.MESSAGE_UPDATED') > 0, nudgeBody.slice(0, 120));
+check('补发受开关控制（关掉就不发）', nudgeBody.indexOf('s.nudgeRender === false') > 0);
+check('两处重渲染（guardMessage / maybeFixVars）后都补发', (idxSrc.match(/nudgeRender\(messageId\)/g) || []).length >= 2, (idxSrc.match(/nudgeRender\(messageId\)/g) || []).length);
+check('历史楼不重渲染、最新楼重渲染', idxSrc.indexOf('guardMessage(idx, { rerender: rerenderOld || idx === total - 1 })') > 0);
+check('默认不重渲染历史楼（不拆已画好的状态栏）', /rerenderOldFloors: false/.test(idxSrc));
+check('默认开启补发', /nudgeRender: true/.test(idxSrc));
+check('面板给了两个开关', idxSrc.indexOf("cb('cc-nudge-render', 'nudgeRender')") > 0 && idxSrc.indexOf("bind('cc-rerender-old', 'rerenderOldFloors', true)") > 0);
+check('中英文案都补齐', !!STRINGS_ZH_HAS('nudgeRender') && !!STRINGS_ZH_HAS('rerenderOld'), 'nudgeRender/rerenderOld');
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -8,7 +8,7 @@ import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounce
 import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath } from './logic.js';
 
 const NAME = 'card-compat';
-const VERSION = '0.2.8';
+const VERSION = '0.2.9';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -33,6 +33,8 @@ const DEFAULTS = {
     toastOnFail: true,     // 连续多楼缺变量块 → 弹一次气泡
     profileTtlMs: 60000,   // 角色卡档案缓存时长（P1 ④）
     lang: 'auto',          // 面板语言 auto|zh|en（P3 ⑩）
+    nudgeRender: true,     // 重渲染后补发 MESSAGE_UPDATED，让酒馆助手立刻重画前端块（见 nudgeRender()）
+    rerenderOldFloors: false, // 历史楼层修正后是否也重渲染（默认否：不拆掉已经画好的状态栏面板）
 };
 const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
 let lastCoverage = null;
@@ -69,6 +71,8 @@ const STRINGS = {
         mvuExtraOff: 'MVU「额外模型解析」未开启或无法检测。', mvuUnparsed: 'MVU 解析本轮变量块失败：',
         mvuParsed: 'MVU 能解析本轮变量块', toastNoVars: '已连续 {n} 楼没有变量更新块，状态栏可能不会更新',
         floorOff: '关闭', mvuWriteOk: '已写回 MVU 变量', mvuWriteFail: '写回失败：', refreshOK: '已重新读取角色卡数据',
+        nudgeRender: '重渲染后补发事件：让酒馆助手立刻重画前端块（不勾 = 要手动刷新页面才看到状态栏）',
+        rerenderOld: '历史楼层修正后也重渲染（会拆掉已画好的状态栏面板，默认不勾）',
     },
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
@@ -93,6 +97,8 @@ const STRINGS = {
         mvuExtraOff: 'MVU extra model parsing is off or undetectable.', mvuUnparsed: 'MVU failed to parse this reply variable block: ',
         mvuParsed: 'MVU parsed this reply variable block', toastNoVars: '{n} replies in a row have no variable block; the status bar may not update',
         floorOff: 'off', mvuWriteOk: 'written back to MVU', mvuWriteFail: 'write back failed: ', refreshOK: 'character card data reloaded',
+        nudgeRender: 'Re-emit an event after re-rendering so TavernHelper redraws frontend blocks at once (unchecked = you must refresh the page to see the status bar)',
+        rerenderOld: 'Also re-render historical replies after fixing them (tears down drawn status bars; off by default)',
     },
 };
 function langOf() {
@@ -348,6 +354,7 @@ async function maybeFixVars(messageId) {
                 log('varfix-ok', '第' + messageId + '层', v.ops + ' 条操作，已追加到消息');
                 try { saveChatDebounced(); } catch (_) {}
                 try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (_) {}
+                nudgeRender(messageId);
                 const applied = await applyPatchToMvu(blockText, messageId);
                 if (applied.ok) { stats.varFixApplied++; log('varfix-applied', '第' + messageId + '层', '已写回 MVU 变量'); }
                 else log('varfix-not-applied', '第' + messageId + '层', applied.reason);
@@ -373,6 +380,26 @@ async function maybeFixVars(messageId) {
     }
 }
 
+/**
+ * 0.2.9 修复「必须刷新页面状态栏才变回面板」：
+ *   ST 的 updateMessageBlock(id, m, {rerenderMessage:true}) 只重建 .mes_text，**全程不发任何事件**；
+ *   而酒馆助手（TavernHelper）的前端块（卡的状态栏就是 html 围栏）只在
+ *     chatLoaded / MORE_MESSAGES_LOADED 时做全量转换，运行时只靠
+ *     CHARACTER_MESSAGE_RENDERED / MESSAGE_UPDATED / MESSAGE_SWIPED 做「单楼增量」。
+ *   我们重渲染之后不补一次事件，那一楼就会停在源码 <pre> 状态，直到用户刷新页面。
+ */
+function nudgeRender(messageId) {
+    try {
+        const s = settings();
+        if (!s || s.nudgeRender === false) return false;
+        const ev = event_types.MESSAGE_UPDATED;
+        if (!ev) return false;
+        const r = eventSource.emit(ev, messageId);
+        if (r && typeof r.catch === 'function') r.catch(() => {});
+        if (s.logActions) console.debug('[card-compat] 重渲染后补发 MESSAGE_UPDATED #' + messageId + '（让酒馆助手重新转换前端块）');
+        return true;
+    } catch (e) { return false; }
+}
 function log(type, tag, extra) {
     recent.unshift({ t: new Date().toLocaleTimeString(), type: type, tag: tag, extra: extra || '' });
     if (recent.length > 40) recent.pop();
@@ -487,6 +514,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         if (rerender) {
             stats.rerendered++;
             try { updateMessageBlock(messageId, m, { rerenderMessage: true }); } catch (e) { log('rerender-failed', '', String(e?.message || e)); }
+            nudgeRender(messageId);
         }
     }
     // 变量 patch 覆盖度 + 路径白名单（P1 ② / P2 ⑤ / P2 ⑥）
@@ -560,10 +588,13 @@ function normalizeRecent() {
         if (!n || !settings()?.enabled) return;
         const total = chat?.length || 0;
         const from = Math.max(0, total - n);
+        const rerenderOld = settings()?.rerenderOldFloors === true;
         let idx = from;
         const step = () => {
-            if (idx >= total) { log('auto-scan-done', '最近 ' + n + ' 楼'); return; }
-            try { guardMessage(idx); } catch (_) {}
+            if (idx >= total) { log('auto-scan-done', '最近 ' + n + ' 楼' + (rerenderOld ? '' : '（历史楼层只改文本、不重渲染）')); return; }
+            // 历史楼层默认不重渲染：ST 重建 .mes_text 会把酒馆助手画好的前端面板换回源码 pre 块，
+            // 而酒馆助手只在刷新/加载历史时全量兜底；最新一楼仍重渲染并补发事件。
+            try { guardMessage(idx, { rerender: rerenderOld || idx === total - 1 }); } catch (_) {}
             idx++;
             setTimeout(step, 120);
         };
@@ -641,6 +672,7 @@ function buildSettingsUi() {
         "<button id=\"cc-mvu-test\" class=\"menu_button\">" + escHtml(T('btnMvuTest')) + "</button>",
         '</details>',
         '<details class="cc-grp"><summary>⑤ ' + escHtml(T('secUi')) + '</summary>',
+        cb('cc-nudge-render', 'nudgeRender'), cb('cc-rerender-old', 'rerenderOld'),
         '<label>' + escHtml(T('panelFont')) + '</label><select id="cc-font"><option value="1">' + escHtml(T('fontFollow')) + '</option><option value="1.15">' + escHtml(T('fontBig')) + '</option><option value="1.3">' + escHtml(T('fontBigger')) + '</option></select>',
         '<label>' + escHtml(T('lang')) + '</label><select id="cc-lang"><option value="auto">' + escHtml(T('langAuto')) + '</option><option value="zh">中文</option><option value="en">English</option></select>',
         '<label>' + escHtml(T('zoom')) + ' <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
@@ -674,6 +706,8 @@ function buildSettingsUi() {
     bind('cc-path-warn', 'pathWarn', true);
     bind('cc-toast-fail', 'toastOnFail', true);
     bind('cc-mvu-verify', 'mvuVerify', true);
+    bind('cc-nudge-render', 'nudgeRender', true);
+    bind('cc-rerender-old', 'rerenderOldFloors', true);
     document.getElementById('cc-varfix-now')?.addEventListener('click', async () => { varFixTriedIds.delete(chat.length - 1); await maybeFixVars(chat.length - 1); });
     document.getElementById('cc-yaml-check')?.addEventListener('click', async () => { await strictCheckMessage(chat.length - 1, { force: true }); });
     document.getElementById('cc-mvu-write')?.addEventListener('click', async () => { await writeBackMvu(chat.length - 1, false); });

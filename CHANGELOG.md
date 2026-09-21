@@ -1,5 +1,22 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.0.5 (2026-09-20) — 修「状态栏要刷新页面才变回面板」（扩展 card-compat 0.2.9）
+
+### 背景（用户实测）
+- 用户反馈：AI 回复里出现一整段 HTML/CSS **源码黑代码块**（不是状态栏面板），并且 **「刷新再打开就好了」**
+
+### 根因（逐层读本机文件核实，非推测）
+- 那段 HTML **不在消息里**：是「梁丝诺」卡 `regex_scripts[0]「状态栏美化」` 的 `replaceString`（5126 字的 `html 围栏` 模板），渲染时才替换进 `<StatusPlaceHolderImpl/>` —— 所以全数据目录 3688 个文件（含 83 个聊天文件的全部消息与 swipe）都搜不到那段文字
+- 酒馆助手（`JS-Slash-Runner/dist/index.js`）：`Vk(content)` 用 `html>` / `<head>` / `<body` 判定「前端内容」；**全量转换只挂在 `chatLoaded` / `MORE_MESSAGES_LOADED`**，运行时只有「单楼增量」（`CHARACTER_MESSAGE_RENDERED` / `MESSAGE_UPDATED` / `MESSAGE_SWIPED`）
+- ST（`public/script.js`）：`updateMessageBlock(..., {rerenderMessage:true})` **不发任何事件**（`MESSAGE_UPDATED` 只在手动编辑消息时发）
+- ⇒ 本扩展修正正文后重渲染 → 已画好的前端 iframe 被换回源码 `<pre>` → 没人通知酒馆助手 → 停在源码，直到刷新页面（触发全量转换）
+- 触发条件由 **2.0.4 引入**：`stripUndeclaredBlocks` 从此真正生效 → 每轮都改动正文 → 每轮都重渲染
+
+### 修复 / 变更
+- 扩展 card-compat **0.2.8 → 0.2.9**：新增 `nudgeRender`（默认开：重渲染后补发 `MESSAGE_UPDATED`，面板立刻重画）+ `rerenderOldFloors`（默认关：历史楼层只改文本不重渲染）；面板第⑤组两个开关
+- 夹具 `scripts/compat-logic-test.mjs` **102 → 111 项**（新增 9 条防回归断言，含「补发事件名必须是酒馆助手真正监听的那个」）
+- 夹具全绿：compat 111 · ext-deploy 37 · ext-remote 33 · ext-manage 49 · plot-pilot 49 · toolbox 14
+
 ## v2.0.4 (2026-09-20) — card-compat 0.2.8（P1/P2/P3 全量）+ 扩展管理器面板
 
 ### 修复

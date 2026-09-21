@@ -1,4 +1,17 @@
 # 更新日志
+## [0.2.9] - 2026-09-20
+### 修复
+- **「必须刷新页面，状态栏才变回面板」**（用户实测现象：刷新再打开就好了）—— 根因链（逐层读本机文件核实）：
+  1. 卡的「状态栏美化」正则把 `<StatusPlaceHolderImpl/>` 替换成一份 `html 围栏` 的状态栏模板（本例 5126 字），ST 的 markdown 把它渲染成 `<pre>` 代码块；酒馆助手（TavernHelper）再把这类 `<pre>` 转成前端 iframe 面板。
+  2. 酒馆助手**只在** `chatLoaded` / `MORE_MESSAGES_LOADED` 时做全量转换（`$('#chat').find('pre')`），运行时只监听 `CHARACTER_MESSAGE_RENDERED` / `USER_MESSAGE_RENDERED` / `MESSAGE_UPDATED` / `MESSAGE_SWIPED` 做「单楼增量」。
+  3. ST 的 `updateMessageBlock(id, m, {rerenderMessage:true})` **只重建 .mes_text，全程不发任何事件**（`MESSAGE_UPDATED` 只在手动编辑消息时发）→ 本扩展修正正文后重渲染，已经把面板拆成源码 `<pre>`，酒馆助手收不到通知 → 停在源码状态，直到刷新页面触发全量转换。
+  4. 触发条件由 0.2.8 引入：`stripUndeclaredBlocks` 真正生效后，模型每轮回显的块都会被删 → **每轮都触发重渲染**，症状才暴露（0.2.7 及之前清理是死代码，几乎不重渲染）。
+- 修法一 **`nudgeRender`（默认开）**：每次重渲染后补发一次 `event_types.MESSAGE_UPDATED`（正是酒馆助手单楼增量监听的四个事件之一，语义即「本条消息被更新」）→ 前端块立刻重画，无需刷新页面。
+- 修法二 **`rerenderOldFloors`（默认关）**：`normalizeRecent()` 扫最近 N 楼时，历史楼层只改文本 + 存盘、**不动 DOM**（不拆已经画好的面板），最新一楼仍重渲染并补发事件。
+### 变更
+- 面板第⑤组新增两个开关：「重渲染后补发事件」「历史楼层修正后也重渲染」
+- 夹具 `scripts/compat-logic-test.mjs` **102 → 111 项**：新增 9 条（补发函数的存在性 / 事件名 / 开关、两处重渲染后都补发、历史楼 rerender 分支、两个默认值、面板开关、中英文案）
+
 ## [0.2.8] - 2026-09-20
 ### 修复
 - **0.2.6 的「未声明块清理」实际从未生效**：那段代码被误插进 `strictCheckMessage`，里面引用了不存在的 `res` / `changed`，一进入就抛 ReferenceError 又被外层 try/catch 吞掉 —— 模型回显的 <world_setting> 等块其实没被删。现已放回 `guardMessage` 入口，成为守护第一步。
