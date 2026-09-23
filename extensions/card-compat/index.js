@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.12.0';
+const VERSION = '0.13.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -35,6 +35,7 @@ const DEFAULTS = {
     varBar: true,          // 0.10.0：输入框显示「补应用变量」按钮
     varRepair: true,       // 0.11.0：检测到「补丁没生效」时自动重算全部楼层变量（幂等重放，不依赖 MVU）
     overdraftGuard: true,  // 0.12.0：收支保护 —— 某楼补丁会把金额扣成负数时，整楼 delta 不应用（只应用 replace），并提示
+    schemaGuard: true,     // 0.12.1：按卡的 Zod 结构校验写入（类型/枚举/夹取/范围/prefault 默认值），不合规就跳过并记账
     autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
     autoFixVarsMaxChars: 6000,
     pathWarn: true,        // 补丁路径白名单校验（只提示，不改写）
@@ -47,7 +48,7 @@ const DEFAULTS = {
     compatMode: false,     // 0.4.0 兼容模式：关掉所有跨扩展联动（补发事件 / MVU 写回 / 自动补变量），只留纯文本守护
     depCheck: true,        // 0.4.0 面板显示 ST / 酒馆助手 / MVU 的版本与可用性
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, bracketFixed: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0, varReplayRuns: 0, varReplayFloors: 0, varRepairAuto: 0, varStuck: 0, varGuard: 0, varNegFixed: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, bracketFixed: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0, varReplayRuns: 0, varReplayFloors: 0, varRepairAuto: 0, varStuck: 0, varGuard: 0, varNegFixed: 0, varSchema: 0 };
 let lastCoverage = null;
 let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
@@ -62,7 +63,7 @@ const STRINGS = {
     zh: {
         title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
         secMvu: 'MVU 联动', secDep: '依赖与联动', secUi: '界面与诊断', enabled: '启用守护',
-        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', scanNoRules: '无规则原因', scanAlerts: '预警', 'alert_new-dialect': '疑似新方言', 'alert_disabled-views': '渲染正则关着', disViews: '被禁用的渲染正则', disAuto: '（卡自带脚本会运行时开启）', disWarn: '（不会显示）', disAlt: '（有同类启用项，属备选）', 'alert_disabled-alternative': '渲染正则（备选）', applyHint: '本轮补丁', 'apply_no-block': '没输出变量块', 'apply_no-patch': '有变量块但没有补丁操作', apply_unknown: '拿不到 stat_data，无法判断', 'apply_not-applied': '补丁没生效 → 已自动从 [InitVar] 重算各层变量；若仍不更新，点 MVU 面板「重演楼层」或刷新页面', apply_applied: '已生效 ✓', varApplyBtn: '补应用变量', varNoOps: '本轮没有变量补丁', varNoBase: '找不到变量初值（本卡没有 [InitVar] 条目）', varBasePrev: '以上一楼为基线', varBaseInit: '以 [InitVar] 为基线', varWriteFail: '写变量失败（酒馆助手不可用？）', varApplied: '变量已补应用', varMvuWarn: '会逐楼检查补丁有没有真的写进变量，只对「没生效」的楼层补应用：以 MVU 当前值为基线，已生效的楼层一律不动，delta 只加一次（幂等，可重复执行）。继续？', varReplayTitle: '只修「补丁没生效」的楼层：以 MVU 真实值为基线补应用，已生效的楼层不动', varReplayOk: '已修复没生效的楼层', varReplayNone: '所有楼层的补丁都已生效，无需修复', varReplayFloors: '层', varReplaySkipped: '层路径全落空已跳过', varRepair: '补丁没生效时自动补应用（只动没生效的楼层，不覆盖 MVU 已应用的）', varScopeMsg: '写回范围', varBusy: '变量修复正在进行中，请稍后再点', overdraftGuard: '收支保护：某楼补丁会把金额扣成负数时，整楼 delta 不应用（只应用 replace）并提示', varGuardHit: '已拦下会把数值扣成负数的 delta', varNegFixed: '修回被扣成负数的金额', varModeOff: '自动兜底已关', varModeMvu: 'MVU 在运行（不自动接管）', varModeFallback: '兜底引擎自动接管中', varAuto: '无 MVU 时自动兜底应用变量（MVU 在就完全不接管）', varBar: '在输入框显示「补应用变量」按钮', btnCheckFront: '检查前端块', frontNone: '这一楼没有前端块', frontHit: '前端块', frontRendered: '已渲染', frontCollapsed: '被折叠', front_ok: '全部已渲染 ✓', front_partial: '只有一部分渲染出来，建议刷新页面', front_collapse: '被酒馆助手折叠了 —— 可把「折叠代码块」设为 disabled，或点开折叠', front_unrendered: '一个都没渲染 → 刷新页面 / 切聊天再切回 / 重生成这一楼', 'rs_check-unparsed': '有 check 但没解析出', rs_command: '命令式规则', rs_paths: '只有 paths 白名单', rs_structure: '只有变量结构', rs_schema: '规则在 schema 脚本', rs_prose: '散文式规则', rs_other: '其它写法', rs_none: '世界书里没有规则', 'v_error': '解析异常',
+        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', scanNoRules: '无规则原因', scanAlerts: '预警', 'alert_new-dialect': '疑似新方言', 'alert_disabled-views': '渲染正则关着', disViews: '被禁用的渲染正则', disAuto: '（卡自带脚本会运行时开启）', disWarn: '（不会显示）', disAlt: '（有同类启用项，属备选）', 'alert_disabled-alternative': '渲染正则（备选）', applyHint: '本轮补丁', 'apply_no-block': '没输出变量块', 'apply_no-patch': '有变量块但没有补丁操作', apply_unknown: '拿不到 stat_data，无法判断', 'apply_not-applied': '补丁没生效 → 已自动从 [InitVar] 重算各层变量；若仍不更新，点 MVU 面板「重演楼层」或刷新页面', apply_applied: '已生效 ✓', varApplyBtn: '补应用变量', varNoOps: '本轮没有变量补丁', varNoBase: '找不到变量初值（本卡没有 [InitVar] 条目）', varBasePrev: '以上一楼为基线', varBaseInit: '以 [InitVar] 为基线', varWriteFail: '写变量失败（酒馆助手不可用？）', varApplied: '变量已补应用', varMvuWarn: '会逐楼检查补丁有没有真的写进变量，只对「没生效」的楼层补应用：以 MVU 当前值为基线，已生效的楼层一律不动，delta 只加一次（幂等，可重复执行）。继续？', varReplayTitle: '只修「补丁没生效」的楼层：以 MVU 真实值为基线补应用，已生效的楼层不动', varReplayOk: '已修复没生效的楼层', varReplayNone: '所有楼层的补丁都已生效，无需修复', varReplayFloors: '层', varReplaySkipped: '层路径全落空已跳过', varRepair: '补丁没生效时自动补应用（只动没生效的楼层，不覆盖 MVU 已应用的）', varScopeMsg: '写回范围', varBusy: '变量修复正在进行中，请稍后再点', overdraftGuard: '收支保护：某楼补丁会把金额扣成负数时，整楼 delta 不应用（只应用 replace）并提示', varGuardHit: '已拦下会把数值扣成负数的 delta', varNegFixed: '修回被扣成负数的金额', schemaGuard: '变量写入按卡的 Zod 结构校验（类型 / 枚举 / 夹取 / 范围 / prefault 默认值），不合规就跳过并提示', varSchemaHit: '已拦下不符合卡的 Zod 结构的写入', schemaSummary: '卡的 Zod 结构', schemaUnverifiable: '无法离线校验的约束', schemaAllCovered: '（全部可静态校验）', schClamp: '夹取', schBound: '范围', schType: '类型', schEnum: '枚举', schDefault: '默认值', schObject: '对象', schInt: '整数', schCatch: 'catch 兜底', schRound: '取整', varModeOff: '自动兜底已关', varModeMvu: 'MVU 在运行（不自动接管）', varModeFallback: '兜底引擎自动接管中', varAuto: '无 MVU 时自动兜底应用变量（MVU 在就完全不接管）', varBar: '在输入框显示「补应用变量」按钮', btnCheckFront: '检查前端块', frontNone: '这一楼没有前端块', frontHit: '前端块', frontRendered: '已渲染', frontCollapsed: '被折叠', front_ok: '全部已渲染 ✓', front_partial: '只有一部分渲染出来，建议刷新页面', front_collapse: '被酒馆助手折叠了 —— 可把「折叠代码块」设为 disabled，或点开折叠', front_unrendered: '一个都没渲染 → 刷新页面 / 切聊天再切回 / 重生成这一楼', 'rs_check-unparsed': '有 check 但没解析出', rs_command: '命令式规则', rs_paths: '只有 paths 白名单', rs_structure: '只有变量结构', rs_schema: '规则在 schema 脚本', rs_prose: '散文式规则', rs_other: '其它写法', rs_none: '世界书里没有规则', 'v_error': '解析异常',
         protocol: '变量协议', capWrite: '可写回变量', capReadonly: '只读守护（不改宿主变量）', depLoading: '读取依赖版本…', depOff: '依赖检测已关（面板开关）',
         compatNote: '兼容模式：关掉补发事件 / MVU 写回 / 自动补变量，只留纯文本守护 —— 酒馆助手或 MVU 大更新出问题时打开它',
         injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
@@ -96,7 +97,7 @@ const STRINGS = {
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
         secMvu: 'MVU integration', secDep: 'Dependencies and linkage', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
-        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic', scanNoRules: 'No-rule reasons', scanAlerts: 'Alerts', 'alert_new-dialect': 'possible new dialect', 'alert_disabled-views': 'render regexes disabled', disViews: 'Disabled render regexes', disAuto: ' (auto-enabled by card script)', disWarn: ' (will not render)', disAlt: ' (alternative, same kind enabled)', 'alert_disabled-alternative': 'render regexes (alternative)', applyHint: 'Patch this turn', 'apply_no-block': 'no variable block', 'apply_no-patch': 'block without patch ops', apply_unknown: 'stat_data unavailable', 'apply_not-applied': 'patch not applied - floors were recomputed from [InitVar] automatically; if still stale, use MVU Replay floor or reload' , apply_applied: 'applied', varApplyBtn: 'Apply vars', varNoOps: 'no variable patch on this floor', varNoBase: 'no initial variables ([InitVar] entry missing)', varBasePrev: 'base = previous floor', varBaseInit: 'base = [InitVar]', varWriteFail: 'failed to write variables (TavernHelper unavailable?)', varApplied: 'Variables applied', varMvuWarn: 'Every floor is checked: only floors whose patch never reached the variables are fixed, using MVU current state as the base. Applied floors are left untouched and delta is added once (idempotent). Continue?', varReplayTitle: 'Fix only the floors whose patch did not apply; MVU current state is the base', varReplayOk: 'Fixed the floors whose patch had not applied', varReplayNone: 'Every floor patch is already applied', varReplayFloors: 'floor(s)', varReplaySkipped: 'floor(s) skipped (all paths missed)', varRepair: 'Auto-apply patches that did not take effect (never overwrites floors MVU already applied)', varScopeMsg: 'write scope', varBusy: 'A variable repair is already running', overdraftGuard: 'Overdraft guard: when a patch would push a money value negative, that floor deltas are skipped (replace still applies) and reported', varGuardHit: 'Blocked deltas that would go negative', varNegFixed: 'Rebuilt money values that had gone negative', varModeOff: 'auto fallback off', varModeMvu: 'MVU running (no auto takeover)', varModeFallback: 'fallback engine active', varAuto: 'Auto-apply variables when MVU is absent (never touches MVU)', varBar: 'Show the apply-vars button above the input box', btnCheckFront: 'Check front-end blocks', frontNone: 'No front-end block on this floor', frontHit: 'front-end blocks', frontRendered: 'rendered', frontCollapsed: 'collapsed', front_ok: 'all rendered', front_partial: 'only some rendered - try reloading the page', front_collapse: 'collapsed by TavernHelper - set collapse_code_block to disabled or expand it', front_unrendered: 'none rendered - reload the page / switch chats / regenerate this floor', 'rs_check-unparsed': 'has check, unparsed', rs_command: 'command style', rs_paths: 'paths list only', rs_structure: 'structure only', rs_schema: 'rules in schema script', rs_prose: 'prose rules', rs_other: 'other style', rs_none: 'no rules in book',
+        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic', scanNoRules: 'No-rule reasons', scanAlerts: 'Alerts', 'alert_new-dialect': 'possible new dialect', 'alert_disabled-views': 'render regexes disabled', disViews: 'Disabled render regexes', disAuto: ' (auto-enabled by card script)', disWarn: ' (will not render)', disAlt: ' (alternative, same kind enabled)', 'alert_disabled-alternative': 'render regexes (alternative)', applyHint: 'Patch this turn', 'apply_no-block': 'no variable block', 'apply_no-patch': 'block without patch ops', apply_unknown: 'stat_data unavailable', 'apply_not-applied': 'patch not applied - floors were recomputed from [InitVar] automatically; if still stale, use MVU Replay floor or reload' , apply_applied: 'applied', varApplyBtn: 'Apply vars', varNoOps: 'no variable patch on this floor', varNoBase: 'no initial variables ([InitVar] entry missing)', varBasePrev: 'base = previous floor', varBaseInit: 'base = [InitVar]', varWriteFail: 'failed to write variables (TavernHelper unavailable?)', varApplied: 'Variables applied', varMvuWarn: 'Every floor is checked: only floors whose patch never reached the variables are fixed, using MVU current state as the base. Applied floors are left untouched and delta is added once (idempotent). Continue?', varReplayTitle: 'Fix only the floors whose patch did not apply; MVU current state is the base', varReplayOk: 'Fixed the floors whose patch had not applied', varReplayNone: 'Every floor patch is already applied', varReplayFloors: 'floor(s)', varReplaySkipped: 'floor(s) skipped (all paths missed)', varRepair: 'Auto-apply patches that did not take effect (never overwrites floors MVU already applied)', varScopeMsg: 'write scope', varBusy: 'A variable repair is already running', overdraftGuard: 'Overdraft guard: when a patch would push a money value negative, that floor deltas are skipped (replace still applies) and reported', varGuardHit: 'Blocked deltas that would go negative', varNegFixed: 'Rebuilt money values that had gone negative', schemaGuard: 'Validate variable writes against the card Zod schema (types / enums / clamps / ranges / prefault defaults); skip and report what does not fit', varSchemaHit: 'Skipped writes that do not match the card Zod schema', schemaSummary: 'Card Zod schema', schemaUnverifiable: 'constraints that cannot be checked offline', schemaAllCovered: '(all statically checkable)', schClamp: 'clamps', schBound: 'ranges', schType: 'types', schEnum: 'enums', schDefault: 'defaults', schObject: 'objects', schInt: 'ints', schCatch: 'catches', schRound: 'rounds', varModeOff: 'auto fallback off', varModeMvu: 'MVU running (no auto takeover)', varModeFallback: 'fallback engine active', varAuto: 'Auto-apply variables when MVU is absent (never touches MVU)', varBar: 'Show the apply-vars button above the input box', btnCheckFront: 'Check front-end blocks', frontNone: 'No front-end block on this floor', frontHit: 'front-end blocks', frontRendered: 'rendered', frontCollapsed: 'collapsed', front_ok: 'all rendered', front_partial: 'only some rendered - try reloading the page', front_collapse: 'collapsed by TavernHelper - set collapse_code_block to disabled or expand it', front_unrendered: 'none rendered - reload the page / switch chats / regenerate this floor', 'rs_check-unparsed': 'has check, unparsed', rs_command: 'command style', rs_paths: 'paths list only', rs_structure: 'structure only', rs_schema: 'rules in schema script', rs_prose: 'prose rules', rs_other: 'other style', rs_none: 'no rules in book',
         protocol: 'Variable protocol', capWrite: 'can write variables back', capReadonly: 'read-only guard (does not touch host variables)', depLoading: 'Reading dependency versions...', depOff: 'Dependency check is off (panel switch)',
         compatNote: 'Compat mode: disables the event nudge / MVU write-back / auto var fix, leaving pure text guarding - turn it on when TavernHelper or MVU updates break things',
         injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
@@ -852,7 +853,8 @@ async function applyFloorVars(messageId, opts) {
             const iv = initVarOfCard();
             if (iv) { base = iv; baseFrom = T('varBaseInit'); } else { toast(T('varNoBase'), 'warning'); return { applied: 0, skipped: [], reason: 'no-base' }; }
         }
-        const r = applyVarOps(base, ops, { clamps: schemaHintsOfCard().clamps, overdraftGuard: settings().overdraftGuard !== false });
+        const h0 = schemaHintsOfCard();
+        const r = applyVarOps(base, ops, { clamps: h0.clamps, bounds: h0.bounds, types: h0.types, enums: h0.enums, objects: h0.objects, defaults: h0.defaults, ints: h0.ints, catches: h0.catches, rounds: h0.rounds, coerces: h0.coerces, overdraftGuard: settings().overdraftGuard !== false, schemaGuard: settings().schemaGuard !== false });
         const ok = writeStateOf(messageId, r.state, sc.scope);
         if (!ok) { toast(T('varWriteFail'), 'warning'); return { applied: 0, skipped: r.skipped, reason: 'write-failed' }; }
         rerenderFloor(messageId);
@@ -953,12 +955,20 @@ async function recomputeAllFloors(opts) {
             return Object.assign({}, empty, { reason: 'no-base', scope: sc.scope });
         }
         const guardOn = !s || s.overdraftGuard !== false;
-        const plan = planFloorFixes(stored, floorOps, iv || {}, { clamps: hints.clamps, overdraftGuard: guardOn });
+        const schemaOn = !s || s.schemaGuard !== false;
+        // 0.12.1：把 schema 的全部约束交给引擎（类型/枚举/夹取/范围/对象/默认值）
+        const plan = planFloorFixes(stored, floorOps, iv || {}, {
+            clamps: hints.clamps, bounds: hints.bounds, types: hints.types, enums: hints.enums,
+            objects: hints.objects, defaults: hints.defaults,
+            ints: hints.ints, catches: hints.catches, rounds: hints.rounds, coerces: hints.coerces,
+            overdraftGuard: guardOn, schemaGuard: schemaOn,
+        });
         let written = 0, changed = 0, applied = 0;
-        const skippedFloors = [], guardHits = [], negFixed = [];
+        const skippedFloors = [], guardHits = [], negFixed = [], schemaHits = [];
         for (const p of plan) {
             if (p.guardHit && p.guardHit.length) guardHits.push({ index: p.index, paths: p.guardHit });
             if (p.negative && p.negative.length) negFixed.push({ index: p.index, paths: p.negative });
+            if (p.schemaHits && p.schemaHits.length) for (const sh of p.schemaHits) schemaHits.push({ index: p.index, path: sh.path, reason: sh.reason });
             applied += p.applied;
             if (!p.write) continue;                                     // 无补丁 / MVU 已应用 / 已经是对的 → 不写
             if (p.ops && p.skipped && p.skipped.length >= p.ops) { skippedFloors.push(p.index); continue; }  // 路径全落空 → 宁可不写
@@ -970,6 +980,11 @@ async function recomputeAllFloors(opts) {
             stats.varGuard = (stats.varGuard || 0) + guardHits.reduce((n, g) => n + g.paths.length, 0);
             log('var-guard', guardHits.length + ' 层', T('varGuardHit') + '：' + guardHits.map((g) => '#' + g.index + ' ' + g.paths.join('、')).join('；'));
             if (o.toast !== false) toast(T('varGuardHit') + '：' + guardHits.map((g) => g.paths.join('、')).join('；'), 'warning');
+        }
+        if (schemaHits.length) {
+            stats.varSchema = (stats.varSchema || 0) + schemaHits.length;
+            log('var-schema', schemaHits.length + ' 处', T('varSchemaHit') + '：' + schemaHits.slice(0, 4).map((s) => '#' + s.index + ' ' + s.path + '（' + s.reason + '）').join('；'));
+            if (o.toast !== false) toast(T('varSchemaHit') + '：' + schemaHits.length, 'warning');
         }
         if (negFixed.length) {
             stats.varNegFixed = (stats.varNegFixed || 0) + negFixed.length;
@@ -987,7 +1002,7 @@ async function recomputeAllFloors(opts) {
             toast(T('varReplayNone'), 'info');
         }
         if (o.dryRun && changed) log('var-replay-dry', changed + ' 层', '试算：这些楼层的变量需要修复（未写入）');
-        return { floors: written, changed: changed, applied: applied, skippedFloors: skippedFloors, guardHits: guardHits, negFixed: negFixed, scope: sc.scope, reason: 'ok', dryRun: !!o.dryRun, plan: plan.map((p) => ({ index: p.index, ops: p.ops, write: p.write, reason: p.reason, negative: p.negative || [], guardHit: p.guardHit || [] })) };
+        return { floors: written, changed: changed, applied: applied, skippedFloors: skippedFloors, guardHits: guardHits, negFixed: negFixed, schemaHits: schemaHits, scope: sc.scope, reason: 'ok', dryRun: !!o.dryRun, plan: plan.map((p) => ({ index: p.index, ops: p.ops, write: p.write, reason: p.reason, negative: p.negative || [], guardHit: p.guardHit || [], schemaHits: p.schemaHits || [] })) };
     } catch (e) { log('var-replay-failed', '', String((e && e.message) || e)); return Object.assign({}, empty, { reason: 'error' }); }
     finally { replayRunning = false; }
 }
@@ -1107,6 +1122,21 @@ function renderCoverageTable() {
     if (rep.extraPaths && rep.extraPaths.length) parts.push('<div class="cc-line cc-muted"><b>' + escHtml(T('extraPaths')) + '</b>：' + escHtml(rep.extraPaths.join('、')) + '</div>');
     box.innerHTML = parts.join('');
 }
+/** 0.12.1：面板显示「卡的 Zod 结构解析到什么」+「有多少约束无法离线校验」（不静默） */
+function renderSchemaLine() {
+    const box = document.getElementById('cc-schema');
+    if (!box) return;
+    try {
+        const h = schemaHintsOfCard();
+        const n = (a) => (a || []).length;
+        const head = T('schemaSummary') + '：' + T('schClamp') + ' ' + n(h.clamps) + ' ｜ ' + T('schBound') + ' ' + n(h.bounds) + ' ｜ ' + T('schType') + ' ' + n(h.types) + ' ｜ ' + T('schEnum') + ' ' + n(h.enums) + ' ｜ ' + T('schDefault') + ' ' + n(h.defaults) + ' ｜ ' + T('schObject') + ' ' + n(h.objects) + ' ｜ ' + T('schInt') + ' ' + n(h.ints) + ' ｜ ' + T('schCatch') + ' ' + n(h.catches) + ' ｜ ' + T('schRound') + ' ' + n(h.rounds);
+        const un = h.unverifiable || [];
+        box.className = 'cc-line' + (un.length ? ' cc-warn' : ' cc-muted');
+        box.textContent = un.length
+            ? (head + '　' + T('schemaUnverifiable') + ' ' + un.length + '：' + un.slice(0, 5).map((u) => u.kind + (u.path && u.path.length ? '@' + u.path.join('.') : '')).join('、'))
+            : (head + '　' + T('schemaAllCovered'));
+    } catch (_) {}
+}
 function renderStats() {
     const box = document.getElementById('cc-stats');
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
@@ -1118,6 +1148,7 @@ function renderStats() {
     if (trendBox) trendBox.textContent = covHistory.length ? (T('covTrend') + '：' + coverageTrendText()) : '';
     renderCoverageTable();
     renderMvuBox();
+    renderSchemaLine();
     renderProtocolLine();
     refreshDepBox(false);
     renderScan();
@@ -1277,7 +1308,7 @@ function buildSettingsUi() {
         '<div id="cc-trend" class="cc-trend"></div>',
         '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
         cb('cc-enabled', 'enabled'), cb('cc-inject-prompt', 'injectPrompt'), cb('cc-inject', 'injectAnchor'), cb('cc-repair', 'repair'), cb('cc-stale', 'stale'),
-        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-overdraft', 'overdraftGuard'), cb('cc-var-barcb', 'varBar'),
+        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-overdraft', 'overdraftGuard'), cb('cc-schema-guard', 'schemaGuard'), cb('cc-var-barcb', 'varBar'),
         "<button id=\"cc-check\" class=\"menu_button\">" + escHtml(T('btnCheck')) + "</button>",
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         "<button id=\"cc-check-front\" class=\"menu_button\">" + escHtml(T('btnCheckFront')) + "</button>",
@@ -1293,6 +1324,7 @@ function buildSettingsUi() {
         '<details class="cc-grp" open><summary>③ ' + escHtml(T('secReport')) + '</summary><div id="cc-table" class="cc-table"></div></details>',
         '<details class="cc-grp"><summary>④ ' + escHtml(T('secDep')) + '</summary>',
         '<div id="cc-dep" class="cc-mvu"></div>',
+        '<div id="cc-schema" class="cc-line cc-muted"></div>',
         '<div id="cc-proto" class="cc-line"></div>',
         cb('cc-compat-mode', 'compatMode'),
         '<div class="cc-line cc-muted">' + escHtml(T('compatNote')) + '</div>',
@@ -1348,6 +1380,7 @@ function buildSettingsUi() {
     bind('cc-var-auto', 'varAuto', true);
     bind('cc-var-repair', 'varRepair', true);
     bind('cc-overdraft', 'overdraftGuard', true);
+    bind('cc-schema-guard', 'schemaGuard', true);
     bind('cc-var-barcb', 'varBar', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
     bind('cc-bracket-tags', 'fixBracketTags', true);

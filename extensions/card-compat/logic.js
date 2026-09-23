@@ -944,15 +944,22 @@ export function parseSetCommands(text) {
  */
 function runVarOps(state, ops, opts = {}, skipDeltas = false) {
     const out = (state && typeof state === 'object') ? JSON.parse(JSON.stringify(state)) : {};
-    const applied = [];
-    const skipped = [];
+    const applied = [], skipped = [], schemaHits = [];
+    const schemaOn = opts.schemaGuard !== false;
     const segs = (p) => String(p == null ? '' : p).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
-    // 0.11.0：对齐 MVU 的 z.coerce + _.clamp —— 按「现有值类型」强制转换，并按卡的 schema 夹取范围
+    const ruleFor = (arr, segsArr) => { for (const r of (arr || [])) if (pathMatches(segsArr, r.path)) return r; return null; };
+    const inObjects = (segsArr) => { for (const p of (opts.objects || [])) if (pathMatches(segsArr, p)) return true; return false; };
+    /** 夹取区间 = 所有命中规则的交集（_.clamp 与 .min/.max/.nonnegative 一起算） */
+    const clampRange = (segsArr) => {
+        let lo = -Infinity, hi = Infinity, hit = false;
+        for (const r of (opts.clamps || [])) if (pathMatches(segsArr, r.path)) { lo = Math.max(lo, r.min); hi = Math.min(hi, r.max); hit = true; }
+        for (const r of (opts.bounds || [])) if (pathMatches(segsArr, r.path)) { lo = Math.max(lo, r.min); hi = Math.min(hi, r.max); hit = true; }
+        return hit ? { lo: lo, hi: hi } : null;
+    };
     const clampOf = (segsArr, v) => {
-        if (typeof v !== 'number' || !Array.isArray(opts.clamps) || !opts.clamps.length) return v;
-        const rule = opts.clamps.find((r) => pathMatches(segsArr, r.path));
-        if (!rule) return v;
-        return Math.min(Math.max(v, rule.min), rule.max);
+        if (typeof v !== 'number') return v;
+        const r = clampRange(segsArr);
+        return r ? Math.min(Math.max(v, r.lo), r.hi) : v;
     };
     const coerceTo = (prev, v) => {
         if (opts.coerce === false) return v;
@@ -960,11 +967,56 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
         if (typeof v === 'string' && typeof prev === 'boolean' && /^(true|false)$/i.test(v.trim())) return /^true$/i.test(v.trim());
         return v;
     };
+    /** 按卡的 schema 规范化写入值（类型 + z.coerce 语义）；不合规返回 ok:false 并记账 */
+    const check = (segsArr, prev, v, rawPath) => {
+        const t = schemaOn ? ruleFor(opts.types, segsArr) : null;
+        const forceNum = schemaOn && !!(ruleFor(opts.coerces, segsArr) || ruleFor(opts.rounds, segsArr) || ruleFor(opts.ints, segsArr));
+        let value = v;
+        if (t) {
+            if (t.type === 'number') {
+                if (typeof v === 'number' && Number.isFinite(v)) value = v;
+                else if (typeof v === 'string' && (t.coerce || forceNum)) { const s2 = v.trim(); const n = Number(s2); if (s2 !== '' && Number.isFinite(n)) value = n; else return fail(segsArr, rawPath, '需要 number，取不到数字'); }
+                else if (typeof v === 'boolean' && (t.coerce || forceNum)) value = v ? 1 : 0;
+                else return fail(segsArr, rawPath, '需要 number（本卡 schema）');
+            } else if (t.type === 'string') {
+                if (typeof v === 'string') value = v;
+                else if (t.coerce) value = (v === null || v === undefined) ? '' : String(v);
+                else return fail(segsArr, rawPath, '需要 string（本卡 schema）');
+            } else if (t.type === 'boolean') {
+                if (typeof v === 'boolean') value = v;
+                else if (typeof v === 'string' && t.coerce && /^(true|false)$/i.test(v.trim())) value = /^true$/i.test(v.trim());
+                else return fail(segsArr, rawPath, '需要 boolean（本卡 schema）');
+            }
+        } else {
+            value = coerceTo(prev, v);
+        }
+        // transform 白名单：Math.floor/round/trunc 与 .int() 都按「取整」处理（对齐 MVU 的 transform 意图）
+        const rd = schemaOn ? ruleFor(opts.rounds, segsArr) : null;
+        if (rd && typeof value === 'number') value = rd.mode === 'floor' ? Math.floor(value) : (rd.mode === 'round' ? Math.round(value) : Math.trunc(value));
+        if (schemaOn && ruleFor(opts.ints, segsArr) && typeof value === 'number' && !Number.isInteger(value)) value = Math.round(value);
+        const e = schemaOn ? ruleFor(opts.enums, segsArr) : null;
+        if (e) {
+            const vals = e.values || [];
+            if (!vals.some((x) => x === value || String(x) === String(value))) return fail(segsArr, rawPath, '取值必须是 ' + vals.join(' / ') + ' 之一');
+        }
+        return { ok: true, v: value };
+    };
+    /** 不合规时：卡里写了 .catch(x) 就用 x（zod 的 catch 语义），否则跳过并记账 */
+    const fail = (segsArr, rawPath, why) => {
+        const c = schemaOn ? ruleFor(opts.catches, segsArr) : null;
+        if (c) return { ok: true, v: c.value, caught: true };
+        skipped.push({ path: String(rawPath), reason: 'schema: ' + why });
+        schemaHits.push({ path: String(rawPath), reason: why });
+        return { ok: false, why: why };
+    };
     const seek = (segsArr, create) => {
         let node = out;
-        for (const s of segsArr) {
+        for (let i = 0; i < segsArr.length; i++) {
+            const s = segsArr[i];
             if (node[s] === undefined || node[s] === null || typeof node[s] !== 'object') {
                 if (!create) return null;
+                // 只有 schema 明确说这里是对象才敢建（没 schema 信息时退回旧行为）
+                if (schemaOn && (opts.objects || []).length && !inObjects(segsArr.slice(0, i + 1))) return null;
                 node[s] = {};
             }
             node = node[s];
@@ -982,24 +1034,31 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
             if (kind === 'replace' || kind === 'add') {
                 const parent = seek(head, false);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
-                parent[last] = clampOf(path, coerceTo(parent[last], op.value));
+                const ck = check(path, parent[last], op.value, op.path);
+                if (!ck.ok) continue;
+                parent[last] = clampOf(path, ck.v);
             } else if (kind === 'delta') {
                 const parent = seek(head, false);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
                 const cur = parent[last];
-                const dv = coerceTo(cur, op.value);
-                if (typeof cur !== 'number' || typeof dv !== 'number') { skipped.push({ path: String(op.path), reason: 'delta 需要两边都是数字' }); continue; }
-                parent[last] = clampOf(path, cur + dv);
+                const ck = check(path, cur, op.value, op.path);
+                if (!ck.ok) continue;
+                if (typeof cur !== 'number' || typeof ck.v !== 'number') { skipped.push({ path: String(op.path), reason: 'delta 需要两边都是数字' }); continue; }
+                parent[last] = clampOf(path, cur + ck.v);
             } else if (kind === 'insert') {
                 const parent = seek(head, true);
-                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不可建' }); continue; }
+                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不可建（schema 未声明为对象）' }); continue; }
                 if (Array.isArray(parent)) {
-                    const iv2 = clampOf(path, typeof op.value === 'number' ? op.value : coerceTo(0, op.value));
-                    if (last === '-' || /^\d+$/.test(last) === false) parent.push(iv2);
+                    const ckArr = check(path, 0, op.value, op.path);
+                    if (!ckArr.ok) continue;
+                    const iv2 = clampOf(path, ckArr.v);
+                    if (last === '-' || !/^\d+$/.test(last)) parent.push(iv2);
                     else parent.splice(Number(last), 0, iv2);
                 } else {
                     if (parent[last] !== undefined) { skipped.push({ path: String(op.path), reason: 'insert 目标已存在（用 replace）' }); continue; }
-                    parent[last] = clampOf(path, coerceTo(undefined, op.value));
+                    const ck = check(path, undefined, op.value, op.path);
+                    if (!ck.ok) continue;
+                    parent[last] = clampOf(path, ck.v);
                 }
             } else if (kind === 'remove') {
                 const parent = seek(head, false);
@@ -1012,15 +1071,42 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
                 if (!src) { skipped.push({ path: String(op.path), reason: 'move 源路径不存在' }); continue; }
                 const fLast = from[from.length - 1];
                 const val = src[fLast];
+                const ck = check(path, val, val, op.path);
+                if (!ck.ok) continue;
                 delete src[fLast];
                 const dst = seek(head, true);
                 if (!dst) { skipped.push({ path: String(op.path), reason: 'move 目标不可建' }); continue; }
-                dst[last] = val;
+                dst[last] = clampOf(path, ck.v);
             } else { skipped.push({ path: String(op.path), reason: '未知 op ' + kind }); continue; }
             applied.push(String(op.path));
         } catch (e) { skipped.push({ path: String(op && op.path), reason: String((e && e.message) || e) }); }
     }
-    return { state: out, applied: applied, skipped: skipped };
+    return { state: out, applied: applied, skipped: skipped, schemaHits: schemaHits };
+}
+
+/**
+ * 0.12.1：按 schema 的 prefault/default 补上缺失字段（模拟 MVU 的 zod 初始化语义）。
+ * 只补「当前是 undefined」的叶子，绝不覆盖已有值；解析不出来的默认值跳过。
+ */
+export function fillSchemaDefaults(state, defaults) {
+    const out = (state && typeof state === 'object') ? JSON.parse(JSON.stringify(state)) : {};
+    for (const d of (defaults || [])) {
+        const segsArr = d.path || [];
+        if (!segsArr.length) continue;
+        const val = d.value;
+        if (val && typeof val === 'object' && !Array.isArray(val) && val.__unparsed !== undefined) continue;
+        let node = out, ok = true;
+        for (let i = 0; i < segsArr.length - 1; i++) {
+            const s = segsArr[i];
+            if (node[s] === undefined) node[s] = {};
+            if (node[s] === null || typeof node[s] !== 'object') { ok = false; break; }
+            node = node[s];
+        }
+        if (!ok) continue;
+        const last = segsArr[segsArr.length - 1];
+        if (node[last] === undefined) node[last] = (val === null) ? null : JSON.parse(JSON.stringify(val));
+    }
+    return out;
 }
 
 /**
@@ -1070,41 +1156,444 @@ export function applyVarOps(state, ops, opts = {}) {
     const r2 = runVarOps(state, ops, opts, true);
     r2.skipped = r2.skipped.concat(hit.map((p) => ({ path: p, reason: '会让数值变成负数 → 整楼 delta 已跳过（防扣款错误）' })));
     r2.guardHit = hit;
+    r2.schemaHits = (r.schemaHits || []).concat(r2.schemaHits || []);
     return r2;
 }
 
-/**
- * 0.11.0：从卡片的 MVU Zod schema 源码里抠出「夹取规则」与类型信息（引擎对齐 MVU 的 transform/clamp）。
- * 只认实际用到的写法：`键: z.coerce.number().transform(v => _.clamp(v, 0, 100))`、`z.number()`、`z.string()`、`z.boolean()`。
- * @returns {{clamps:Array<{path:string[],min:number,max:number}>, types:Array<{path:string[],type:string}>}}
+/* ── 0.12.1：MVU Zod schema 静态解析 v2 ──────────────────────────────
+ * 旧版是「缩进栈 + 逐行正则」，实测在真实卡上会丢父路径：处理 }).prefault({}), 时
+ * while(indent<=top.indent) 已经弹过一次栈，紧跟的 if(/^\s*\}/) 又弹一次 →
+ * 关系态度 的父级 林婉婷/陈慧兰 被弹掉，4 处 _.clamp 全变成裸路径，
+ * pathMatches 长度不等 → 夹取规则永不命中。也认不出 const X = z.object({...}) 的
+ * helper 引用、z.record(z.enum([...]), X)、.prefault()/.default()、z.enum()。
+ * 本版改成「剥注释（字符串感知）→ 收集 const 定义 → 从根 z.object 括号配对递归下降」，
+ * 路径始终完整。拿不到的东西（.refine/.custom/.pipe、非 _.clamp 的 .transform、
+ * 动态 schema / 计算键 / 展开）不假装能校验，统一记进 unverifiable，由面板与日志显式提示。
+ * @returns {{clamps,bounds,types,enums,defaults,optional,objects,records,unverifiable,helpers}}
  */
-export function schemaHints(scriptText) {
-    const clamps = [], types = [];
-    const lines = String(scriptText || '').split(/\r?\n/);
-    const stack = [];
-    for (const raw of lines) {
-        const line = raw.replace(/\/\/.*$/, '');
-        if (!line.trim()) continue;
-        const indent = line.length - line.replace(/^\s+/, '').length;
-        while (stack.length && indent <= stack[stack.length - 1].indent) stack.pop();
-        const key = line.match(/^\s*([\w\u4e00-\u9fa5$]+)\s*:\s*(.+)$/);
-        if (!key) {
-            if (/^\s*\}/.test(line)) { if (stack.length) stack.pop(); }
-            continue;
+
+/** JS 合法标识符（含中文），用于区分「helper 引用」与「内联表达式」 */
+const IDENT_RE = /^[A-Za-z_$\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*$/;
+
+/** 剥掉 JS 注释（字符串内的 // 与 /* 原样保留） */
+function stripJsComments(src) {
+    const s = String(src == null ? '' : src);
+    const NL = String.fromCharCode(10);
+    let out = '', i = 0, quote = '';
+    while (i < s.length) {
+        const c = s[i], d = s[i + 1];
+        if (quote) {
+            out += c;
+            if (c === '\\') { out += (d || ''); i += 2; continue; }
+            if (c === quote) quote = '';
+            i += 1; continue;
         }
-        const k = key[1];
-        const rest = key[2];
-        const path = stack.map((s) => s.k).concat([k]);
-        if (/z\s*\.\s*object\s*\(/.test(rest)) { stack.push({ indent: indent, k: k }); continue; }
-        if (/z\s*\.\s*record\s*\(/.test(rest)) { continue; }
-        const clamp = rest.match(/_.clamp\(\s*([^,]+),\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
-        if (clamp) clamps.push({ path: path, min: Number(clamp[2]), max: Number(clamp[3]) });
-        if (/z\s*\.\s*(coerce\s*\.\s*)?number\s*\(/.test(rest)) types.push({ path: path, type: 'number' });
-        else if (/z\s*\.\s*(coerce\s*\.\s*)?bool(ean)?\s*\(/.test(rest)) types.push({ path: path, type: 'boolean' });
-        else if (/z\s*\.\s*(coerce\s*\.\s*)?string\s*\(/.test(rest)) types.push({ path: path, type: 'string' });
+        if (c === '"' || c === "'") { quote = c; out += c; i += 1; continue; }
+        if (c === '/' && d === '/') { while (i < s.length && s[i] !== NL) i += 1; continue; }
+        if (c === '/' && d === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i += 1; i += 2; continue; }
+        out += c; i += 1;
     }
-    const uniq = (arr) => { const seen = new Set(); return arr.filter((x) => { const s = x.path.join('.'); if (seen.has(s)) return false; seen.add(s); return true; }); };
-    return { clamps: uniq(clamps), types: uniq(types) };
+    return out;
+}
+
+/** 从 open（{ ( [）找配对闭括号下标；字符串感知；找不到返回 -1 */
+function matchBracket(src, open) {
+    const s = String(src || '');
+    const ch = s[open];
+    const pair = ch === '{' ? '}' : (ch === '(' ? ')' : (ch === '[' ? ']' : ''));
+    if (!pair) return -1;
+    let depth = 0, i = open, quote = '';
+    while (i < s.length) {
+        const c = s[i];
+        if (quote) {
+            if (c === '\\') { i += 2; continue; }
+            if (c === quote) quote = '';
+            i += 1; continue;
+        }
+        if (c === '"' || c === "'") { quote = c; i += 1; continue; }
+        if (c === ch) depth += 1;
+        else if (c === pair) { depth -= 1; if (!depth) return i; }
+        i += 1;
+    }
+    return -1;
+}
+
+/** 按顶层分隔符切分（括号内与字符串内的分隔符忽略） */
+function splitTop(src, sep) {
+    const s = String(src || '');
+    const out = [];
+    let cur = '', depth = 0, quote = '', i = 0;
+    while (i < s.length) {
+        const c = s[i];
+        if (quote) { cur += c; if (c === '\\') { cur += (s[i + 1] || ''); i += 2; continue; } if (c === quote) quote = ''; i += 1; continue; }
+        if (c === '"' || c === "'") { quote = c; cur += c; i += 1; continue; }
+        if (c === '{' || c === '(' || c === '[') depth += 1;
+        else if (c === '}' || c === ')' || c === ']') depth -= 1;
+        if (c === sep && depth === 0) { out.push(cur); cur = ''; i += 1; continue; }
+        cur += c; i += 1;
+    }
+    out.push(cur);
+    return out;
+}
+
+/** 从 idx 起取一条语句（顶层 ; 或换行结束） */
+function takeStatement(src, idx) {
+    const s = String(src || '');
+    const NL = String.fromCharCode(10);
+    let depth = 0, quote = '', i = idx;
+    while (i < s.length) {
+        const c = s[i];
+        if (quote) { if (c === '\\') { i += 2; continue; } if (c === quote) quote = ''; i += 1; continue; }
+        if (c === '"' || c === "'") { quote = c; i += 1; continue; }
+        if (c === '{' || c === '(' || c === '[') depth += 1;
+        else if (c === '}' || c === ')' || c === ']') depth -= 1;
+        else if (depth <= 0 && (c === ';' || c === NL)) break;
+        i += 1;
+    }
+    return s.slice(idx, i);
+}
+
+/** 找 z.object( / z.strictObject( / z.looseObject( 的**字面量**对象体；动态参数返回 null */
+function findObjectCall(src) {
+    const s = String(src || '');
+    const m = /z\s*\.\s*(?:strict|loose)?[oO]bject\s*\(/.exec(s);
+    if (!m) return null;
+    const open = s.indexOf('(', m.index);
+    const close = matchBracket(s, open);
+    if (close < 0) return null;
+    const arg = s.slice(open + 1, close).trim();
+    if (arg[0] !== '{') return null;
+    const end = arg.lastIndexOf('}');
+    if (end < 0) return null;
+    return { body: arg.slice(1, end), tail: s.slice(close + 1) };
+}
+
+/** 解析对象体里的键值对；展开/计算键记进 ctx.unverifiable */
+function parseObjectEntries(body, ctx, path) {
+    const out = [];
+    for (const raw of splitTop(body, ',')) {
+        const t = raw.trim();
+        if (!t) continue;
+        if (t.indexOf('...') === 0) { if (ctx) ctx.unverifiable.push({ path: path.slice(), kind: 'spread' }); continue; }
+        const m = t.match(/^(?:'([^']*)'|"([^"]*)"|([A-Za-z_$\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*))\s*:\s*([\s\S]+)$/);
+        if (!m) { if (ctx && t[0] === '[') ctx.unverifiable.push({ path: path.slice(), kind: 'computed-key' }); continue; }
+        const key = (m[1] !== undefined) ? m[1] : ((m[2] !== undefined) ? m[2] : m[3]);
+        out.push({ key: key, value: m[4].trim() });
+    }
+    return out;
+}
+
+/** JS 字面量 → 值；解析不了返回 { __unparsed: 原文 } */
+function jsLiteral(s) {
+    const t = String(s == null ? '' : s).trim();
+    if (!t) return { __unparsed: t };
+    if (t === 'true') return true;
+    if (t === 'false') return false;
+    if (t === 'null') return null;
+    if (/^-?\d+(?:\.\d+)?$/.test(t)) return Number(t);
+    if (/^'(?:[^'\\]|\\.)*'$/.test(t) || /^"(?:[^"\\]|\\.)*"$/.test(t)) return t.slice(1, -1);
+    try { return JSON.parse(t); } catch (_) {}
+    try {
+        const q = t.replace(/'/g, '"')
+            .replace(/([{,]\s*)([A-Za-z_$\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*)\s*:/g, '$1"$2":')
+            .replace(/,(\s*[}\]])/g, '$1');
+        return JSON.parse(q);
+    } catch (_) {}
+    return { __unparsed: t };
+}
+
+/** 取某个调用（idx 处）括号内的参数，按顶层逗号切开 */
+function callArgs(src, idx) {
+    const s = String(src || '');
+    const open = s.indexOf('(', idx);
+    if (open < 0) return [];
+    const close = matchBracket(s, open);
+    if (close < 0) return [];
+    return splitTop(s.slice(open + 1, close), ',').map((a) => a.trim()).filter((a) => a !== '');
+}
+
+/** zod 类型判定 → { type, coerce } 或 null */
+function zodTypeOf(expr) {
+    const s = String(expr || '');
+    if (/z\s*\.\s*(?:strict|loose)?[oO]bject\s*\(/.test(s)) return { type: 'object', coerce: false };
+    if (/z\s*\.\s*record\s*\(/.test(s)) return { type: 'object', coerce: false };
+    if (/z\s*\.\s*array\s*\(/.test(s)) return { type: 'array', coerce: false };
+    if (/z\s*\.\s*enum\s*\(/.test(s)) return { type: 'enum', coerce: false };
+    if (/z\s*\.\s*literal\s*\(/.test(s)) return { type: 'literal', coerce: false };
+    if (/z\s*\.\s*union\s*\(/.test(s)) return { type: 'union', coerce: false };
+    const c = /z\s*\.\s*(coerce\s*\.\s*)?(number|string|bool(?:ean)?)\s*\(/.exec(s);
+    if (c) {
+        const coerce = !!(c[1] && c[1].trim());
+        const name = c[2].toLowerCase();
+        return { type: (name === 'bool' || name === 'boolean') ? 'boolean' : name, coerce: coerce };
+    }
+    return null;
+}
+
+/** 枚举取值：z.enum([...]) / z.literal(x) / 全字面量 z.union([...]) */
+function zodEnumOf(expr) {
+    const s = String(expr || '');
+    const m = /z\s*\.\s*enum\s*\(/.exec(s);
+    if (m) {
+        const raw = (callArgs(s, m.index)[0] || '').trim();
+        const inner = raw.replace(/^\[/, '').replace(/\]$/, '');
+        const vals = splitTop(inner, ',').map((x) => jsLiteral(x)).filter((v) => typeof v === 'string' || typeof v === 'number');
+        if (vals.length) return vals;
+    }
+    if (/z\s*\.\s*union\s*\(/.test(s)) {
+        const um = /z\s*\.\s*union\s*\(/.exec(s);
+        const raw = (callArgs(s, um.index)[0] || '').trim().replace(/^\[/, '').replace(/\]$/, '');
+        const parts = splitTop(raw, ',').map((x) => x.trim());
+        const vals = [];
+        let allLiteral = parts.length > 0;
+        for (const p of parts) {
+            const lm = /z\s*\.\s*literal\s*\(/.exec(p);
+            if (!lm) { allLiteral = false; break; }
+            const v = jsLiteral(callArgs(p, lm.index)[0] || '');
+            if (typeof v === 'string' || typeof v === 'number') vals.push(v); else { allLiteral = false; break; }
+        }
+        if (allLiteral && vals.length) return vals;
+    }
+    const lm2 = /z\s*\.\s*literal\s*\(/.exec(s);
+    if (lm2) {
+        const v = jsLiteral(callArgs(s, lm2.index)[0] || '');
+        if (typeof v === 'string' || typeof v === 'number') return [v];
+    }
+    return null;
+}
+
+/** 记录一个字段（或对象本身）上的全部约束 */
+function recordSchemaConstraints(expr, path, ctx) {
+    const s = String(expr || '');
+    const clamp = /_.clamp\(\s*[^,()]+\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/.exec(s);
+    if (clamp) ctx.clamps.push({ path: path.slice(), min: Number(clamp[1]), max: Number(clamp[2]), from: '_.clamp' });
+    const ty = zodTypeOf(s);
+    if (ty && ty.type === 'number') {
+        let lo = null, hi = null;
+        const mn = /\.\s*min\(\s*(-?[\d.]+)\s*\)/.exec(s);
+        const mx = /\.\s*max\(\s*(-?[\d.]+)\s*\)/.exec(s);
+        if (mn) lo = Number(mn[1]);
+        if (mx) hi = Number(mx[1]);
+        if (/\.\s*nonnegative\s*\(/.test(s)) lo = (lo === null) ? 0 : Math.max(lo, 0);
+        if (/\.\s*positive\s*\(/.test(s)) lo = (lo === null) ? 0 : Math.max(lo, 0);
+        if (lo !== null || hi !== null) ctx.bounds.push({ path: path.slice(), min: lo === null ? -Infinity : lo, max: hi === null ? Infinity : hi, from: 'minmax' });
+        if (/\.\s*int\s*\(/.test(s)) ctx.ints.push(path.slice());
+    }
+    const cm = /\.\s*catch\s*\(/g;
+    let cmMatch, cmGuard = 0;
+    while ((cmMatch = cm.exec(s)) && cmGuard < 10) {
+        cmGuard += 1;
+        const open = s.indexOf('(', cmMatch.index);
+        const close = matchBracket(s, open);
+        if (close < 0) break;
+        const v = jsLiteral(s.slice(open + 1, close));
+        if (!(v && typeof v === 'object' && !Array.isArray(v) && v.__unparsed !== undefined)) ctx.catches.push({ path: path.slice(), value: v });
+        cm.lastIndex = close;
+    }
+    const pm = /\.\s*(?:prefault|default)\s*\(/g;
+    let pmMatch, guard = 0;
+    while ((pmMatch = pm.exec(s)) && guard < 20) {
+        guard += 1;
+        const open = s.indexOf('(', pmMatch.index);
+        const close = matchBracket(s, open);
+        if (close < 0) break;
+        const v = jsLiteral(s.slice(open + 1, close));
+        if (v && typeof v === 'object' && !Array.isArray(v) && v.__unparsed !== undefined) ctx.unverifiable.push({ path: path.slice(), kind: 'dynamic-default' });
+        else ctx.defaults.push({ path: path.slice(), value: v });
+        pm.lastIndex = close;
+    }
+    if (/\.\s*(?:optional|nullish|nullabe|nullab)\s*\(/.test(s)) ctx.optional.push(path.slice());
+    if (/\.\s*(?:refine|superRefine|custom)\s*\(/.test(s)) ctx.unverifiable.push({ path: path.slice(), kind: 'refine' });
+    // transform：只认语料里真实出现的白名单写法（clamp / Math.max-min / floor-round-trunc / Number / ?? 默认值），
+    // 其它一律记进 unverifiable —— 不假装能执行卡的任意 JS。
+    const tf = /\.\s*transform\s*\(/g;
+    let tm2, tfGuard = 0;
+    while ((tm2 = tf.exec(s)) && tfGuard < 20) {
+        tfGuard += 1;
+        const open = s.indexOf('(', tm2.index);
+        const close = matchBracket(s, open);
+        if (close < 0) break;
+        const raw = s.slice(open + 1, close);
+        tf.lastIndex = close;
+        const arrow = raw.indexOf('=>');
+        const body = (arrow >= 0 ? raw.slice(arrow + 2) : raw).trim();
+        const flat = body.replace(/\s+/g, '');
+        let handled = false;
+        const cl = /(?:_.clamp|clamp)\([a-zA-Z_$][\w$]*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\)/.exec(flat);
+        if (cl) { ctx.clamps.push({ path: path.slice(), min: Number(cl[1]), max: Number(cl[2]), from: 'transform' }); handled = true; }
+        const mx = /Math\.max\(\s*(-?[\d.]+)\s*,[a-zA-Z_$][\w$]*\)/.exec(flat) || /Math\.max\([a-zA-Z_$][\w$]*,\s*(-?[\d.]+)\)/.exec(flat);
+        if (mx) { ctx.bounds.push({ path: path.slice(), min: Number(mx[1]), max: Infinity, from: 'transform' }); handled = true; }
+        const mn = /Math\.min\(\s*(-?[\d.]+)\s*,[a-zA-Z_$][\w$]*\)/.exec(flat) || /Math\.min\([a-zA-Z_$][\w$]*,\s*(-?[\d.]+)\)/.exec(flat);
+        if (mn) { ctx.bounds.push({ path: path.slice(), min: -Infinity, max: Number(mn[1]), from: 'transform' }); handled = true; }
+        if (/Math\.floor\(/.test(flat)) { ctx.rounds.push({ path: path.slice(), mode: 'floor' }); handled = true; }
+        else if (/Math\.round\(/.test(flat)) { ctx.rounds.push({ path: path.slice(), mode: 'round' }); handled = true; }
+        else if (/Math\.trunc\(/.test(flat)) { ctx.rounds.push({ path: path.slice(), mode: 'trunc' }); handled = true; }
+        if (/^Number\(/.test(flat)) { ctx.coerces.push(path.slice()); handled = true; }
+        const qq = body.indexOf('??');
+        if (qq >= 0) {
+            const dv = jsLiteral(body.slice(qq + 2));
+            if (!(dv && typeof dv === 'object' && !Array.isArray(dv) && dv.__unparsed !== undefined)) { ctx.defaults.push({ path: path.slice(), value: dv, nullish: true }); handled = true; }
+        }
+        if (!handled) ctx.unverifiable.push({ path: path.slice(), kind: 'transform' });
+    }
+    if (/\.\s*pipe\s*\(/.test(s)) ctx.unverifiable.push({ path: path.slice(), kind: 'pipe' });
+    if (/\.\s*check\s*\(/.test(s)) ctx.unverifiable.push({ path: path.slice(), kind: 'check' });
+}
+
+/** 展开 helper 引用（带环保护） */
+function expandSchemaHelper(name, path, ctx) {
+    const gk = path.join('.') + '|' + name;
+    if (ctx.expanding.has(gk)) { ctx.unverifiable.push({ path: path.slice(), kind: 'helper-cycle:' + name }); return; }
+    ctx.expanding.add(gk);
+    const h = ctx.helpers[name];
+    if (!h) { ctx.unverifiable.push({ path: path.slice(), kind: 'unknown-ref:' + name }); return; }
+    if (h.kind === 'object') {
+        ctx.objects.push(path.slice());
+        for (const e of h.entries) walkSchemaField(e.key, e.value, path, ctx);
+    } else if (h.kind === 'record') {
+        expandSchemaRecord(h.expr, path, ctx);
+    } else {
+        const ex = String(h.expr || '').trim();
+        if (!ex) { ctx.unverifiable.push({ path: path.slice(), kind: 'dynamic-ref:' + name }); return; }
+        recordSchemaConstraints(ex, path, ctx);
+        const ty = zodTypeOf(ex);
+        if (ty) ctx.types.push({ path: path.slice(), type: ty.type, coerce: ty.coerce });
+        const en = zodEnumOf(ex);
+        if (en) ctx.enums.push({ path: path.slice(), values: en });
+    }
+}
+
+/** 展开 z.record(键, 值)：键是 z.enum([...]) 就逐个展开，否则用通配 * */
+function expandSchemaRecord(expr, path, ctx) {
+    const s = String(expr || '');
+    const m = /z\s*\.\s*record\s*\(/.exec(s);
+    if (!m) return;
+    const args = callArgs(s, m.index);
+    const keyExpr = (args[0] || '').trim();
+    const valExpr = args.slice(1).join(',').trim();
+    let keys = zodEnumOf(keyExpr);
+    if (!keys) {
+        if (!keyExpr || /z\s*\.\s*(?:coerce\s*\.\s*)?string\s*\(/.test(keyExpr) || /z\s*\.\s*(?:any|unknown)\s*\(/.test(keyExpr)) keys = ['*'];
+        else { ctx.unverifiable.push({ path: path.slice(), kind: 'record-key' }); keys = ['*']; }
+    }
+    keys = keys.map((k) => String(k));
+    ctx.records.push({ path: path.slice(), keys: keys.slice() });
+    for (const k of keys) walkSchemaField(k, valExpr, path, ctx);
+}
+
+/** 递归走一个字段 */
+function walkSchemaField(key, expr, basePath, ctx) {
+    const path = basePath.concat([String(key)]);
+    const s = String(expr == null ? '' : expr).trim();
+    if (!s) return;
+    if (IDENT_RE.test(s)) { expandSchemaHelper(s, path, ctx); return; }
+    if (/z\s*\.\s*record\s*\(/.test(s)) {
+        const rmm = /z\s*\.\s*record\s*\(/.exec(s);
+        const ropen = s.indexOf('(', rmm.index);
+        const rclose = matchBracket(s, ropen);
+        recordSchemaConstraints(rclose >= 0 ? s.slice(rclose + 1) : '', path, ctx);
+        expandSchemaRecord(s, path, ctx);
+        return;
+    }
+    const obj = findObjectCall(s);
+    if (obj) {
+        recordSchemaConstraints(obj.tail, path, ctx);
+        ctx.objects.push(path.slice());
+        for (const e of parseObjectEntries(obj.body, ctx, path)) walkSchemaField(e.key, e.value, path, ctx);
+        return;
+    }
+    if (/z\s*\.\s*(?:strict|loose)?[oO]bject\s*\(/.test(s)) { recordSchemaConstraints(s, path, ctx); ctx.unverifiable.push({ path: path.slice(), kind: 'dynamic-object' }); return; }
+    recordSchemaConstraints(s, path, ctx);
+    const ty = zodTypeOf(s);
+    if (ty) ctx.types.push({ path: path.slice(), type: ty.type, coerce: ty.coerce });
+    const en = (ty && (ty.type === 'enum' || ty.type === 'union' || ty.type === 'literal')) ? zodEnumOf(s) : null;
+    if (en) ctx.enums.push({ path: path.slice(), values: en });
+    if (ty && ty.type === 'array') {
+        const am = /z\s*\.\s*array\s*\(/.exec(s);
+        const inner = (callArgs(s, am.index)[0] || '').trim();
+        const elemPath = path.concat(['*']);
+        if (!inner) ctx.unverifiable.push({ path: elemPath, kind: 'array-elem' });
+        else if (IDENT_RE.test(inner) && ctx.helpers[inner]) expandSchemaHelper(inner, elemPath, ctx);
+        else {
+            const io = findObjectCall(inner);
+            if (io) {
+                ctx.objects.push(elemPath);
+                for (const e of parseObjectEntries(io.body, ctx, elemPath)) walkSchemaField(e.key, e.value, elemPath, ctx);
+            } else {
+                recordSchemaConstraints(inner, elemPath, ctx);
+                const it = zodTypeOf(inner);
+                if (it) ctx.types.push({ path: elemPath, type: it.type, coerce: it.coerce });
+                else ctx.unverifiable.push({ path: elemPath, kind: 'array-elem' });
+            }
+        }
+    }
+}
+
+/** 主入口：把卡里的 Zod schema 源码解析成「可静态执行的约束」+「无法离线校验的清单」 */
+export function schemaHints(scriptText) {
+    let src = stripJsComments(scriptText).replace(/\bzod\s*\./g, 'z.');
+    const ctx = {
+        clamps: [], bounds: [], types: [], enums: [], defaults: [], optional: [],
+        objects: [], records: [], unverifiable: [], helpers: {}, expanding: new Set(),
+        ints: [], catches: [], rounds: [], coerces: [],
+    };
+    const defRe = /(?:^|[;{}\n])\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*)\s*=\s*/g;
+    let dm;
+    while ((dm = defRe.exec(src))) {
+        const name = dm[1];
+        const stmt = takeStatement(src, defRe.lastIndex);
+        const o = findObjectCall(stmt);
+        if (o) ctx.helpers[name] = { kind: 'object', entries: parseObjectEntries(o.body, null, []), body: o.body };
+        else if (/z\s*\.\s*record\s*\(/.test(stmt)) ctx.helpers[name] = { kind: 'record', expr: stmt };
+        else ctx.helpers[name] = { kind: 'other', expr: stmt };
+    }
+    let root = null;
+    const rm = /(?:export\s+)?(?:const|let|var)\s+Schema\s*=\s*/.exec(src);
+    if (rm) root = findObjectCall(takeStatement(src, rm.index + rm[0].length));
+    if (!root) {
+        // registerMvuSchema(XXX) → 用 XXX 这个名字查 helper（语料里很常见：statSchema / HaremChar / 角色结构…）
+        const names = [];
+        const rs = /registerMvuSchema\s*\(\s*([A-Za-z_$\u4e00-\u9fa5][\w$\u4e00-\u9fa5]*)?/g;
+        let rsm;
+        while ((rsm = rs.exec(src))) if (rsm[1]) names.push(rsm[1]);
+        for (let i = names.length - 1; i >= 0 && !root; i--) {
+            const h = ctx.helpers[names[i]];
+            if (h && h.kind === 'object' && h.body) root = { body: h.body };
+        }
+    }
+    if (!root) {
+        // 退路：取「顶层条目最多」的 z.object 字面量（比取最后一个更稳）
+        const all = [];
+        const g = /z\s*\.\s*(?:strict|loose)?[oO]bject\s*\(/g;
+        let gm;
+        while ((gm = g.exec(src))) { const o = findObjectCall(src.slice(gm.index)); if (o) all.push(o); }
+        if (all.length) {
+            all.sort((a, b) => parseObjectEntries(b.body, null, []).length - parseObjectEntries(a.body, null, []).length);
+            root = all[0];
+        }
+    }
+    if (root) {
+        for (const e of parseObjectEntries(root.body, ctx, [])) walkSchemaField(e.key, e.value, [], ctx);
+    } else {
+        ctx.unverifiable.push({ path: [], kind: 'no-root-schema' });
+    }
+    const uniqBy = (arr, keyOf) => { const seen = new Set(); return arr.filter((x) => { const k = keyOf(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
+    return {
+        clamps: uniqBy(ctx.clamps, (c) => c.path.join('.') + '|' + c.min + '|' + c.max),
+        bounds: uniqBy(ctx.bounds, (c) => c.path.join('.') + '|' + c.min + '|' + c.max),
+        types: uniqBy(ctx.types, (t) => t.path.join('.') + '|' + t.type),
+        enums: uniqBy(ctx.enums, (e) => e.path.join('.')),
+        defaults: uniqBy(ctx.defaults, (d) => d.path.join('.')),
+        optional: uniqBy(ctx.optional, (p) => p.join('.')),
+        objects: uniqBy(ctx.objects, (p) => p.join('.')),
+        records: ctx.records,
+        ints: uniqBy(ctx.ints, (p) => p.join('.')).map((p) => ({ path: p })),
+        catches: uniqBy(ctx.catches, (c) => c.path.join('.')),
+        rounds: uniqBy(ctx.rounds, (r) => r.path.join('.')),
+        coerces: uniqBy(ctx.coerces, (p) => p.join('.')).map((p) => ({ path: p })),
+        unverifiable: uniqBy(ctx.unverifiable, (u) => u.kind + '|' + u.path.join('.')),
+        helpers: Object.keys(ctx.helpers).reduce((m, k) => { m[k] = ctx.helpers[k].kind + (ctx.helpers[k].entries ? ':' + ctx.helpers[k].entries.length : ''); return m; }, {}),
+    };
 }
 
 /** 路径匹配：'林婉婷.关系态度' 命中规则路径 ['林婉婷','关系态度']（也允许规则里带 * 通配一层） */
@@ -1171,16 +1660,19 @@ export function planFloorFixes(stored, ops, initState, opts = {}) {
         if (bad.length) info.negative = bad;
         if (o.length) {
             const r = applyVarOps(base, o, opts);
-            info.want = r.state;
+            // 0.12.1：补上 schema 声明的 prefault 默认值（模拟 MVU 的 zod 初始化，只补 undefined）
+            const want = (opts.defaults && opts.fillDefaults !== false) ? fillSchemaDefaults(r.state, opts.defaults) : r.state;
+            info.want = want;
             info.applied = r.applied.length;
             info.skipped = r.skipped;
             if (r.guardHit) info.guardHit = r.guardHit;
+            if (r.schemaHits && r.schemaHits.length) info.schemaHits = r.schemaHits;
             const stuck = cur ? (prevOrig ? stableStringify(cur) === stableStringify(prevOrig) : false) : true;
-            if (bad.length && stableStringify(cur) !== stableStringify(r.state)) { info.write = true; info.reason = 'negative-fix'; }
-            else if (stuck && stableStringify(cur) !== stableStringify(r.state)) { info.write = true; info.reason = 'stuck'; }
+            if (bad.length && stableStringify(cur) !== stableStringify(want)) { info.write = true; info.reason = 'negative-fix'; }
+            else if (stuck && stableStringify(cur) !== stableStringify(want)) { info.write = true; info.reason = 'stuck'; }
             else if (stuck) info.reason = 'already-correct';
             else info.reason = 'mvu-applied';
-            base = info.write ? r.state : (cur || r.state);
+            base = info.write ? want : (cur || want);
         } else if (cur) {
             if (bad.length && stableStringify(cur) !== stableStringify(base)) {
                 // 没有补丁的楼层（含 user 快照）带着坏数值 → 用当前最新真相覆盖它

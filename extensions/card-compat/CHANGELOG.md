@@ -1,4 +1,31 @@
 # 更新日志
+## [0.13.0] - 2026-09-25
+### 修复
+- **Zod 结构解析 v2：把卡里能静态拿到的约束全部拿到，不再丢父路径**
+  - 旧版「缩进栈 + 逐行正则」处理 `}).prefault({}),` 时会多弹一次栈 → `关系态度` 的父级 `林婉婷/`陈慧兰` 被弹掉，4 处 `_.clamp` 全变成裸路径；`pathMatches` 要求路径长度相等，于是**夹取规则对「破产后姐姐…」这张卡从未生效**（实测 `varHints().clamps` 只有裸 `关系态度`/`堕落进度` 两条）
+  - 本版改成「剥注释（字符串感知）→ 收集 const 定义 → 从根 `z.object` 括号配对递归下降」：
+    - `const X = z.object({...})` helper 引用按引用处展开（`外貌` / `身体状态` / `条目`）
+    - `z.record(z.enum([...]), X)` 展开成具体键（6 部位 × 3 字段 = 18 条路径）
+    - 非 object 别名内联（`const num = z.coerce.number()...`、`const 身体状态 = z.enum([...])`）
+    - `z.array(<结构>)` / `z.array(z.string())` 用 `*` 段展开元素
+    - `z.enum` / 全字面量 `z.union` / `z.literal` → 取值枚举
+    - `.prefault(x)` / `.default(x)` / `?? x` → 默认值；`.optional` / `.nullable` → 可选
+    - `.min` / `.max` / `.nonnegative` / `.positive` → 数值范围；`.int()` → 整数
+    - `.catch(x)` → zod 兜底语义（校验失败时用 x）
+    - transform 白名单：`_.clamp` / `clamp` / `Math.max-min` / `Math.floor-round-trunc` / `Number(v)`（本地 94 张卡语料实测这些占绝大多数）
+  - 找不到根 schema 时依次尝试 `const Schema`、`registerMvuSchema(名字)`、以及「顶层条目最多」的对象，不再瞎猜最后一个
+- **引擎真的按结构强制**（新开关 `schemaGuard`，默认开）：类型（区分 `z.string()` 与 `z.coerce.string()`）、枚举、夹取与范围取交集、整数与取整 transform、`.catch` 兜底；不合规的写入**跳过并记账**（`schemaHits`，面板与日志显示），不再静默写脏值
+- **只在 schema 声明为对象时才建中间层**：`insert` 到未声明的路径会被拒绝并说明原因（旧版会凭空造中间对象）
+- **prefault 默认值补齐**：`fillSchemaDefaults()` 按 zod 的 prefault 语义补缺失字段（只补 `undefined`，绝不覆盖已有值）——实测你那局 8 层状态的补齐增量为 0（MVU 早就填好了）
+### 新增
+- 面板第④组「卡的 Zod 结构」摘要行：夹取 / 范围 / 类型 / 枚举 / 默认值 / 对象 / 整数 / catch / 取整 各多少条；**无法离线校验的约束**单独醒目显示（不假装全都能校验）
+- 新增工具 `scripts/schema-coverage.mjs`：拿本地全部角色卡实测静态覆盖
+- `varHints()` 返回 `ints` / `catches` / `rounds` / `coerces` / `objects` / `records` / `unverifiable` 等
+### 实测（本地 94 张卡里 51 张带 MVU schema）
+- 约束总量：clamps 203→214、bounds 3→56、types 1756→1838、enums 157、defaults 1661、objects 378
+- **完全可静态校验的卡：22/51 → 33/51**（65%）；仍有无法离线校验构造的 18 张，**全部如实报告**（15 张是 `.transform()` 里的任意 JS：`_.pickBy` 过滤、`takeRight(n)` 截断、正则分类、派生字段；另有 dynamic-default 2 / array-elem 1 / 真·动态引用 4）
+- 夹具 `scripts/compat-logic-test.mjs` **336 → 380** 项（新增夹具 40 真实卡回归 / 41 结构强制 / 42 语料补的规则）
+
 ## [0.12.0] - 2026-09-25
 ### 修复
 - **金额被扣成负数**（用户实测反馈「修复风险的金钱错误问题」；病灶：`现金 500 被扣 2500 → -2000`）

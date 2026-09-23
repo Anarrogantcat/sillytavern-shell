@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -717,7 +717,7 @@ check('⑤ 说不准时默认 message（与 MVU 写在同一处，最安全）',
 // ⑥ 扩展接线
 check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,3000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
 check('⑥ 试算模式 dryRun：只统计不写（E2E / 排查用）', idxSrc.indexOf('o.dryRun') > 0 && /dryRun: !!o.dryRun/.test(idxSrc));
-check('⑥ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.12.0'") > 0);
+check('⑥ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.0'") > 0);
 
 console.log('— 夹具 37：状态级核对（0.11.0；用户实测「一排 ✅ 但状态栏不动，检查不出来」）');
 const prev37 = { 系统: { 时间: '14:00', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: 'user家门口' }, 陈慧兰: { 位置: '公司' } };
@@ -799,7 +799,192 @@ check('② 幂等：把修好的值当存值再跑 → 0 写入', planFloorFixes
 check('② 路径全落空会计账（执行层据此宁可不写）', (function () { const pl = planFloorFixes([good39, bad39], [[], [{ op: 'replace', path: '/不存在/字段', value: 1 }]], iv39)[1]; return pl.ops === 1 && pl.skipped.length >= pl.ops; })());
 check('② 不带补丁的 user 快照若带坏值也会被覆盖回最新真相', (function () { const pl = planFloorFixes([good39, bad39, bad39], [[], p39, []], iv39); return pl[2].write === true && pl[2].reason === 'negative-fix'; })());
 check('③ 扩展接线（引擎传 overdraftGuard / 面板开关 / 拦下与修复都写日志提示）', /overdraftGuard: guardOn/.test(idxSrc) && idxSrc.indexOf("cb('cc-overdraft', 'overdraftGuard')") > 0 && idxSrc.indexOf("T('varGuardHit')") > 0 && idxSrc.indexOf("T('varNegFixed')") > 0 && /var-guard/.test(idxSrc) && /var-negative/.test(idxSrc));
-check('③ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.12.0'") > 0);
+check('③ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.0'") > 0);
+
+console.log('— 夹具 40：Zod 结构静态解析 v2（0.13.0；实测「破产后姐姐…」的真实 schema）');
+const REAL_SCHEMA = [
+    "import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';",
+    "",
+    "const 身体部位状态 = z.object({",
+    "  状态: z.string().prefault('干净'),",
+    "  总次数: z.coerce.number().prefault(0),",
+    "  当次次数: z.coerce.number().prefault(0),",
+    "}).prefault({});",
+    "",
+    "const 外貌结构 = z.object({",
+    "  发型: z.string().prefault('未描述'),",
+    "  妆容: z.string().prefault('未描述'),",
+    "  表情: z.string().prefault('未描述'),",
+    "}).prefault({});",
+    "",
+    "const 角色身体状态 = z.record(",
+    "  z.enum(['嘴巴', '手', '玉足', '胸部', '小穴', '后庭']),",
+    "  身体部位状态,",
+    ").prefault({",
+    "  嘴巴: {}, 手: {}, 玉足: {}, 胸部: {}, 小穴: {}, 后庭: {},",
+    "});",
+    "",
+    "export const Schema = z.object({",
+    "  系统: z.object({",
+    "    日期: z.string().prefault('待初始化'),",
+    "    时间: z.string().prefault('待初始化'),",
+    "    地点: z.string().prefault('待初始化'),",
+    "    天气: z.string().prefault('待初始化'),",
+    "    剧情天数: z.coerce.number().prefault(0),",
+    "  }).prefault({}),",
+    "",
+    "  林婉婷: z.object({",
+    "    位置: z.string().prefault('未知'),",
+    "    外貌: 外貌结构,",
+    "    穿搭: z.string().prefault('未描述'),",
+    "    心情: z.string().prefault('平静'),",
+    "    当前在做什么: z.string().prefault('无'),",
+    "    经济: z.object({",
+    "      欠款: z.coerce.number().prefault(0),",
+    "      现金: z.coerce.number().prefault(0),",
+    "    }).prefault({}),",
+    "    生理: z.object({",
+    "      月经状态: z.string().prefault('正常期'),",
+    "    }).prefault({}),",
+    "    关系态度: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),",
+    "    堕落进度: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),",
+    "    身体状态: 角色身体状态,",
+    "  }).prefault({}),",
+    "",
+    "  陈慧兰: z.object({",
+    "    位置: z.string().prefault('未登场'),",
+    "    外貌: 外貌结构,",
+    "    穿搭: z.string().prefault('未描述'),",
+    "    心情: z.string().prefault('平静'),",
+    "    当前在做什么: z.string().prefault('无'),",
+    "    经济: z.object({",
+    "      现金: z.coerce.number().prefault(0),",
+    "    }).prefault({}),",
+    "    生理: z.object({",
+    "      月经状态: z.string().prefault('围绝经期'),",
+    "    }).prefault({}),",
+    "    关系态度: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),",
+    "    堕落进度: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),",
+    "    身体状态: 角色身体状态,",
+    "  }).prefault({}),",
+    "",
+    "  母女关系: z.object({",
+    "    母女氛围: z.string().prefault('未触发'),",
+    "  }).prefault({}),",
+    "",
+    "  互动次数: z.record(",
+    "    z.enum([",
+    "      '林婉婷与user',",
+    "      '陈慧兰与user',",
+    "      '母女与user三人',",
+    "      '林婉婷与多人',",
+    "      '陈慧兰与多人',",
+    "      '母女与多人',",
+    "    ]),",
+    "    z.coerce.number().prefault(0),",
+    "  ).prefault({",
+    "    林婉婷与user: 0,",
+    "    陈慧兰与user: 0,",
+    "    母女与user三人: 0,",
+    "    林婉婷与多人: 0,",
+    "    陈慧兰与多人: 0,",
+    "    母女与多人: 0,",
+    "  }),",
+    "",
+    "  user: z.object({",
+    "    累计支出_林婉婷: z.coerce.number().prefault(0),",
+    "    累计支出_陈慧兰: z.coerce.number().prefault(0),",
+    "  }).prefault({}),",
+    "});",
+    "",
+    "$(() => {",
+    "  registerMvuSchema(Schema);",
+    "});",
+    "",
+].join(NL);
+const h40 = schemaHints(REAL_SCHEMA);
+const p40 = (a) => (a || []).map((x) => x.path.join('.')).sort().join(',');
+check('① 4 处 _.clamp 全部拿到完整父路径（旧版丢父路径 → 夹取永不命中）', p40(h40.clamps) === '林婉婷.关系态度,林婉婷.堕落进度,陈慧兰.关系态度,陈慧兰.堕落进度', p40(h40.clamps));
+check('② helper 引用（const X = z.object）按引用处展开', h40.types.some((t) => t.path.join('.') === '林婉婷.外貌.发型') && h40.types.some((t) => t.path.join('.') === '陈慧兰.外貌.表情'), h40.types.length);
+check('③ z.record(z.enum([...]), helper) 展开成 6 个键 × 3 个字段', h40.types.filter((t) => t.path[1] === '身体状态').length === 36, h40.types.filter((t) => t.path[1] === '身体状态').length);
+check('④ 互动次数 record 展开成 6 个 coerce.number 键', h40.types.filter((t) => t.path[0] === '互动次数').length === 6 && h40.types.filter((t) => t.path[0] === '互动次数').every((t) => t.type === 'number' && t.coerce));
+check('⑤ z.coerce.number() 标 coerce，z.string() 不标', h40.types.find((t) => t.path.join('.') === '系统.剧情天数').coerce === true && h40.types.find((t) => t.path.join('.') === '系统.时间').coerce === false);
+check('⑥ prefault 默认值全部解析（中文键 / 对象 / 尾随逗号）', h40.defaults.find((d) => d.path.join('.') === '林婉婷.心情').value === '平静' && h40.defaults.find((d) => d.path.join('.') === '系统.剧情天数').value === 0 && h40.defaults.filter((d) => d.path[1] === '身体状态').length === 36, h40.defaults.length);
+check('⑦ 对象路径清单（用于「只建对象」）', h40.objects.some((p) => p.join('.') === '林婉婷.经济') && h40.objects.some((p) => p.join('.') === '林婉婷.身体状态.嘴巴'), h40.objects.map((p) => p.join('.')));
+check('⑧ 这张卡没有无法离线校验的构造', h40.unverifiable.length === 0, h40.unverifiable);
+check('⑨ helper 定义被识别（含中文名）', h40.helpers['身体部位状态'] === 'object:3' && h40.helpers['角色身体状态'] === 'record' && h40.helpers['Schema'] === 'object:6', h40.helpers);
+const S40 = [
+    "const 内 = z.object({ x: z.coerce.number().min(0).max(10) });",
+    "export const Schema = z.object({",
+    "  '带引号键': z.string().default('d'),",
+    "  a: z.enum(['x', 'y']),",
+    "  b: z.union([z.literal(1), z.literal(2)]),",
+    "  c: z.string().optional().nullable(),",
+    "  d: 内,",
+    "  e: z.record(z.string(), z.coerce.number()),",
+    "  f: z.number().refine((v) => v > 0),",
+    "  g: z.string().transform((v) => v.trim()),",
+    "  f2: z.number().superRefine(() => {}),",
+    "});",
+].join(NL);
+const h40b = schemaHints(S40);
+check('⑩ 单引号键 / default / optional+nullable 都认', h40b.defaults.some((d) => d.path.join('.') === '带引号键') && h40b.optional.map((p) => p.join('.')).indexOf('c') >= 0);
+check('⑩ enum 与全字面量 union 都当枚举', h40b.enums.find((e) => e.path.join('.') === 'a').values.join(',') === 'x,y' && h40b.enums.find((e) => e.path.join('.') === 'b').values.join(',') === '1,2');
+check('⑩ z.record(z.string(), ...) 用通配 * 展开', h40b.types.some((t) => t.path.join('.') === 'e.*' && t.type === 'number' && t.coerce));
+check('⑩ .min/.max 记进 bounds（不混进 clamps）', h40b.bounds.find((b) => b.path.join('.') === 'd.x').min === 0 && h40b.bounds.find((b) => b.path.join('.') === 'd.x').max === 10 && h40b.clamps.length === 0);
+check('⑩ refine / superRefine / transform / 动态构造全进 unverifiable（不装作能校验）', (function () { const k = h40b.unverifiable.map((u) => u.kind); return k.indexOf('refine') >= 0 && k.indexOf('transform') >= 0; })(), h40b.unverifiable);
+const S40b = ['export const Schema = z.object({', "  'k': z.string(),", '  ...z的展开,', "  [dyn]: z.string(),", '})'].join(NL);
+const h40c = schemaHints(S40b);
+check('⑩ spread / 计算键 也不漏报', h40c.unverifiable.map((u) => u.kind).indexOf('spread') >= 0 && h40c.unverifiable.map((u) => u.kind).indexOf('computed-key') >= 0, h40c.unverifiable);
+check('⑩ 找不到根 schema 时明说 no-root-schema', schemaHints('const a = 1;').unverifiable.some((u) => u.kind === 'no-root-schema'));
+console.log('— 夹具 41：按卡的 Zod 结构强制写入（0.13.0）');
+const o41 = { clamps: h40.clamps, bounds: h40.bounds, types: h40.types, enums: h40.enums, objects: h40.objects, defaults: h40.defaults };
+const b41 = { 林婉婷: { 关系态度: 90, 经济: { 现金: 500 }, 身体状态: { 嘴巴: { 总次数: 1 } } }, 系统: { 时间: '14:00' } };
+check('① 夹取现在真的命中（90 + 50 → 100）', applyVarOps(b41, [{ op: 'delta', path: '/林婉婷/关系态度', value: 50 }], o41).state['林婉婷']['关系态度'] === 100);
+check('① replace 超界也夹（999 → 100）', applyVarOps(b41, [{ op: 'replace', path: '/林婉婷/堕落进度', value: 999 }], o41).state['林婉婷']['堕落进度'] === 100);
+check('② coerce.number 接受数字字符串', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/林婉婷/经济/现金', value: '750' }], o41); return r.state['林婉婷']['经济']['现金'] === 750 && r.schemaHits.length === 0; })());
+check('② 非数字串 → 跳过 + schemaHits（不静默）', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/林婉婷/经济/现金', value: '很多钱' }], o41); return r.state['林婉婷']['经济']['现金'] === 500 && r.schemaHits.length === 1 && r.skipped.some((s) => s.reason.indexOf('schema') >= 0); })());
+check('② z.string()（无 coerce）写数字 → 跳过并记账', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/系统/时间', value: 123 }], o41); return r.state['系统']['时间'] === '14:00' && r.schemaHits.length === 1; })());
+check('② record 展开出的路径同样受约束（身体状态.嘴巴.总次数）', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/林婉婷/身体状态/嘴巴/总次数', value: '三' }], o41); return r.state['林婉婷']['身体状态']['嘴巴']['总次数'] === 1 && r.schemaHits.length === 1; })());
+check('③ 枚举：非法取值被拦、合法放行', (function () { const h = schemaHints('export const Schema = z.object({ s: z.enum(["x", "y"]) });'); const bad = applyVarOps({ s: 'x' }, [{ op: 'replace', path: '/s', value: 'z' }], h); const ok = applyVarOps({ s: 'x' }, [{ op: 'replace', path: '/s', value: 'y' }], h); return bad.state['s'] === 'x' && bad.schemaHits.length === 1 && ok.state['s'] === 'y' && ok.schemaHits.length === 0; })());
+check('③ .min/.max 参与夹取（bounds 与 clamps 取交集）', (function () { const h = schemaHints('export const Schema = z.object({ n: z.coerce.number().min(0).max(10) });'); return applyVarOps({ n: 5 }, [{ op: 'delta', path: '/n', value: 20 }], h).state['n'] === 10; })());
+check('④ 只在 schema 声明为对象时才建中间层', (function () { const good = applyVarOps({}, [{ op: 'insert', path: '/林婉婷/经济/现金', value: 7 }], o41); const bad = applyVarOps({}, [{ op: 'insert', path: '/林婉婷/没有这个/字段', value: 7 }], o41); return good.state['林婉婷']['经济']['现金'] === 7 && !bad.state['林婉婷']['没有这个']; })());
+check('⑤ prefault 默认值补齐：只补 undefined，不覆盖已有值', (function () { const f = fillSchemaDefaults({ 林婉婷: { 经济: { 现金: 999 } } }, h40.defaults); return f['林婉婷']['经济']['现金'] === 999 && f['林婉婷']['经济']['欠款'] === 0 && f['系统']['日期'] === '待初始化'; })());
+check('⑤ schemaGuard:false 时完全不校验（安全阀）', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/系统/时间', value: 123 }], Object.assign({}, o41, { schemaGuard: false })); return r.state['系统']['时间'] === 123 && r.schemaHits.length === 0; })());
+check('⑥ planFloorFixes 把 schemaHits 带出来（面板可显示）', (function () { const stored = [{ 系统: { 时间: '14:00' } }, { 系统: { 时间: '14:00' } }]; const ops = [[], [{ op: 'replace', path: '/系统/时间', value: 123 }]]; const pl = planFloorFixes(stored, ops, { 系统: { 时间: '14:00' } }, o41); return (pl[1].schemaHits || []).length === 1; })());
+check('⑦ 扩展接线（schemaGuard 开关 / 面板摘要行 / var-schema 日志 / 全量 hints 传入引擎）', idxSrc.indexOf("cb('cc-schema-guard', 'schemaGuard')") > 0 && idxSrc.indexOf('renderSchemaLine') > 0 && idxSrc.indexOf("'var-schema'") > 0 && /types: hints.types/.test(idxSrc) && /objects: hints.objects/.test(idxSrc) && /defaults: hints.defaults/.test(idxSrc) && /bounds: hints.bounds/.test(idxSrc));
+check('⑧ 版本号已到 0.13.0', idxSrc.indexOf("const VERSION = '0.13.0'") > 0);
+
+console.log('— 夹具 42：语料实测补的规则（别名内联 / z.array 元素 / .int() / .catch() / transform 白名单）');
+const S42 = [
+    'const num = z.coerce.number().transform(v => Math.max(0, v)).prefault(0).catch(0);',
+    'const 身体状态 = z.enum(["常态", "情动"]);',
+    'const 条目 = z.object({ 名: z.string(), 数量: z.coerce.number() });',
+    'export const Schema = z.object({',
+    '  n: num,',
+    '  s: 身体状态,',
+    '  c: z.coerce.number().int().catch(5),',
+    '  f: z.coerce.number().transform(v => Math.floor(v)),',
+    '  list: z.array(条目),',
+    '  names: z.array(z.string()),',
+    '  keep: z.record(z.string(), z.coerce.number()).transform(data => _.pickBy(data, n => n > 0)),',
+    '});',
+].join(NL);
+const o42 = schemaHints(S42);
+check('① 非 object 别名内联（const num / const 身体状态 = z.enum）', o42.types.some((t) => t.path.join('.') === 'n' && t.type === 'number') && o42.enums.some((e) => e.path.join('.') === 's' && e.values.join(',') === '常态,情动'), o42.enums);
+check('① Math.max(0, v) transform → 下界 0', o42.bounds.some((b) => b.path.join('.') === 'n' && b.min === 0), o42.bounds);
+check('① .catch(0) / .catch(5) 被解析（zod 的兜底语义）', o42.catches.some((c) => c.path.join('.') === 'n' && c.value === 0) && o42.catches.some((c) => c.path.join('.') === 'c' && c.value === 5), o42.catches);
+check('① .int() 记进 ints', o42.ints.some((x) => x.path.join('.') === 'c'), o42.ints);
+check('① Math.floor transform 记进 rounds', o42.rounds.some((r) => r.path.join('.') === 'f' && r.mode === 'floor'), o42.rounds);
+check('① z.array(helper) 用 * 展开元素结构', o42.types.some((t) => t.path.join('.') === 'list.*.数量' && t.type === 'number'), o42.types.filter((t) => t.path[0] === 'list').map((t) => t.path.join('.')));
+check('① z.array(z.string()) 元素类型也拿得到', o42.types.some((t) => t.path.join('.') === 'names.*' && t.type === 'string'), o42.types.filter((t) => t.path[0] === 'names').map((t) => t.path.join('.')));
+check('① 任意 transform（_.pickBy）仍然如实标 unverifiable（不假装能执行）', o42.unverifiable.some((u) => u.kind === 'transform' && u.path.join('.') === 'keep'), o42.unverifiable);
+check('② .catch() 生效：非法数字串 → 用兜底值且不报错', (function () { const r = applyVarOps({ n: 1, c: 3 }, [{ op: 'replace', path: '/c', value: '不是数字' }], o42); return r.state['c'] === 5 && r.schemaHits.length === 0; })());
+check('② .int()：小数取整（对齐 zod .int() 的整数意图）', applyVarOps({ c: 1 }, [{ op: 'replace', path: '/c', value: 2.6 }], o42).state['c'] === 3);
+check('② Math.floor transform：小数向下取整', applyVarOps({ f: 1 }, [{ op: 'replace', path: '/f', value: 2.9 }], o42).state['f'] === 2);
+check('② Math.max(0,v) 下界：负数被抬到 0', applyVarOps({ n: 1 }, [{ op: 'replace', path: '/n', value: -5 }], o42).state['n'] === 0);
+check('② 枚举别名内联后仍然拦非法取值', (function () { const r = applyVarOps({ s: '常态' }, [{ op: 'replace', path: '/s', value: '乱写' }], o42); return r.state['s'] === '常态' && r.schemaHits.length === 1; })());
+check('③ 扩展接线（新约束全部传进引擎 + 面板摘要含整数/catch/取整）', /ints: hints.ints/.test(idxSrc) && /catches: hints.catches/.test(idxSrc) && /rounds: hints.rounds/.test(idxSrc) && /coerces: hints.coerces/.test(idxSrc) && idxSrc.indexOf("T('schInt')") > 0 && idxSrc.indexOf("T('schCatch')") > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
