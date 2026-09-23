@@ -1,5 +1,15 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.12 (2026-09-25) — card-compat 0.13.2：修「切换角色卡后面板仍显示上一张卡的表」
+
+### 修复
+- 你截图里的现象：切到 `Science Worship 20260718` 后，面板第③组仍是「破产后姐姐…」的字段表（`系统.日期/时间/地点…`）。根因：`lastReport` 只在「本卡有规则 **且** 本楼有 `<UpdateVariable>`」时才重建，新卡不满足条件就一直沿用旧表（摘要行会刷新、对照表不会 —— 已实机复现：charId 75→3，摘要行变成「夹取 0 / 类型 13」，表里还是旧卡那 5 行）
+- 抽取 `buildReport()`：**不管有没有变量块都建表**；切卡/切聊天先清空再按当前卡重建；新增 `watchCard()`（以「角色 id + 头像」为标识，挂在 `CHAT_CHANGED` / `MESSAGE_RECEIVED` / `CHARACTER_MESSAGE_RENDERED` + 3 秒看门狗，因为 ST 切角色不一定发 CHAT_CHANGED）
+- 报表头新增「本卡：<卡名>（第 N 楼）」；本卡无可解析规则时给出提示；顺带修同一路径重复两行的问题（渲染时去重，统计口径不变）
+
+### 夹具
+- compat **381 → 385** ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
+
 ## v2.2.11 (2026-09-25) — card-compat 0.13.1：无法离线校验的约束「写时提示」
 
 ### 变更

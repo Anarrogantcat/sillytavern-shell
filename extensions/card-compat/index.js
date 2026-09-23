@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.13.1';
+const VERSION = '0.13.2';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -81,7 +81,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', colField: '卡要求的字段', colDone: '本轮是否更新', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -115,7 +115,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', colField: 'Required field', colDone: 'Updated this reply', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -507,6 +507,97 @@ function coverageTrendText() {
     const arrow = (a !== null && b !== null) ? (a > b ? ' ↑' : (a < b ? ' ↓' : ' →')) : '';
     return bars + '  ' + (a === null ? '' : a + '%') + (b === null ? '' : ('（前 10 轮 ' + b + '%）')) + arrow;
 }
+/**
+ * 0.13.2：独立构建/刷新「本卡要求 vs 本轮实际」报表。
+ * 旧版只在「本卡有规则 **且** 本楼有 <UpdateVariable>」时才写 lastReport ——
+ * 于是切换角色卡后，如果新卡的楼不满足条件，面板会一直显示上一张卡的旧表（用户实测截图）。
+ * 现在：不管有没有变量块都建表（没有就是「全部未更新」），并且由 ref。
+ * @param {number} messageId 目标楼层（通常是最后一条 assistant 消息）
+ * @param {{log?:boolean}} [opts]
+ */
+function buildReport(messageId, opts) {
+    try {
+        const m = chat && chat[messageId];
+        if (!m || typeof m.mes !== 'string') { lastReport = null; return null; }
+        const profile = profileOf();
+        const req = profile.required || [];
+        const hasBlock = m.mes.includes('<UpdateVariable>');
+        let cardName = '';
+        try { const ctx = getContext(); const ch = ctx && ctx.characters && ctx.characters[ctx.characterId]; cardName = (ch && ch.name) || ''; } catch (_) {}
+        const report = { id: messageId, card: cardName, required: req, covered: [], missing: req.map((f) => f.path), written: [], blocks: 0, unknownPaths: [], extraPaths: [] };
+        lastReport = report;                      // 先挂上，后面 log() 触发的渲染就不会再画旧表
+        if (req.length && hasBlock) {
+            const cov = coverageByProtocol(m.mes, req, profile.protocol);
+            lastCoverage = cov;
+            stats.coverageTotal = cov.total;
+            stats.coverageHit = cov.covered.length;
+            if (settings().coverageHistory !== false) {
+                covHistory.push({ at: Date.now(), id: messageId, hit: cov.covered.length, total: cov.total, blocks: cov.blocks || 1 });
+                while (covHistory.length > 40) covHistory.shift();
+            }
+            report.covered = cov.covered;
+            report.missing = cov.missing;
+            report.written = cov.written || [];
+            report.blocks = cov.blocks || 1;
+            if (settings().pathWarn !== false) {
+                for (const b of extractUpdateBlocks(m.mes)) {
+                    const vp = validatePatchPaths(b.patchText || b.block, profile.allowed || {});
+                    if (vp.checked) {
+                        for (const u of vp.unknown) if (report.unknownPaths.indexOf(u.path) < 0) report.unknownPaths.push(u.path);
+                        for (const e of vp.extra) if (report.extraPaths.indexOf(e) < 0) report.extraPaths.push(e);
+                    }
+                }
+                if (report.unknownPaths.length) { stats.pathUnknown += report.unknownPaths.length; log('path-unknown', report.unknownPaths.join(','), '补丁写了本卡规则里没有的路径（可能是模型自创字段）'); }
+                if (report.extraPaths.length) { stats.extraPaths += report.extraPaths.length; log('path-extra', report.extraPaths.join(','), '组内路径但卡未逐条声明（放行，仅提示）'); }
+            }
+            if (!opts || opts.log !== false) log('patch-coverage', cov.covered.length + '/' + cov.total, cov.missing.length ? ('缺: ' + cov.missing.join('、')) : '全部覆盖 ✅');
+        }
+        return report;
+    } catch (_) { return null; }
+}
+
+let cardKey = '';
+/** 0.13.2：当前卡的标识（角色 id + 头像/名字），用来发现「切卡」 */
+function cardKeyNow() {
+    try {
+        const ctx = getContext();
+        const ch = ctx && ctx.characters && ctx.characters[ctx.characterId];
+        return String((ctx && ctx.characterId) || '') + '|' + String((ch && (ch.avatar || ch.name)) || '');
+    } catch (_) { return ''; }
+}
+/** 0.13.2：清掉上一张卡的报表 → 按新卡重建 → 立即重绘面板 */
+function refreshReport(delay) {
+    const run = () => {
+        try {
+            lastReport = null; lastCoverage = null;
+            const total = (chat && chat.length) || 0;
+            if (total) {
+                let id = total - 1;
+                for (let i = total - 1; i >= 0; i--) { if (chat[i] && !chat[i].is_user) { id = i; break; } }
+                buildReport(id, { log: false });
+            }
+            renderStats();
+        } catch (_) {}
+    };
+    if (delay) setTimeout(run, delay); else run();
+}
+/** 0.13.2：切卡看门狗（ST 切角色不一定发 CHAT_CHANGED，所以事件 + 定时都查一次） */
+function watchCard() {
+    try {
+        const k = cardKeyNow();
+        if (!k || k === cardKey) return false;
+        cardKey = k;
+        invalidateProfile();
+        lastSeen.clear();
+        varRepairTried.clear();
+        applyVarBar();
+        refreshReport(0);
+        setTimeout(() => { try { updatePromptInjection(); renderStats(); } catch (_) {} }, 500);
+        setTimeout(() => { try { checkPatchApplied((chat && chat.length) ? chat.length - 1 : 0, { notify: false }); } catch (_) {} }, 2000);
+        return true;
+    } catch (_) { return false; }
+}
+
 /** 返回 true 表示文本被修改并已重渲染 */
 function guardMessage(messageId, { rerender = true } = {}) {
     const s = settings();
@@ -612,34 +703,10 @@ function guardMessage(messageId, { rerender = true } = {}) {
         }
     }
     // 变量 patch 覆盖度 + 路径白名单（P1 ② / P2 ⑤ / P2 ⑥）
+    // 0.13.2：报表构建抽成 buildReport()，切卡时也能立即重建（旧版切卡后会一直显示上一张卡的表）
     try {
-        const req = profile.required || [];
+        buildReport(messageId);
         const hasBlock = m.mes.includes('<UpdateVariable>');
-        if (req.length && hasBlock) {
-            // 0.4.0：按识别到的协议统计（MVU/JSONPatch 看补丁路径，_.set 看赋值路径）
-            const cov = coverageByProtocol(m.mes, req, profile.protocol);
-            lastCoverage = cov;
-            stats.coverageTotal = cov.total;
-            stats.coverageHit = cov.covered.length;
-            if (settings().coverageHistory !== false) {
-                covHistory.push({ at: Date.now(), id: messageId, hit: cov.covered.length, total: cov.total, blocks: cov.blocks || 1 });
-                while (covHistory.length > 40) covHistory.shift();
-            }
-            const report = { id: messageId, required: req, covered: cov.covered, missing: cov.missing, written: cov.written || [], blocks: cov.blocks || 1, unknownPaths: [], extraPaths: [] };
-            if (s.pathWarn !== false) {
-                for (const b of extractUpdateBlocks(m.mes)) {
-                    const vp = validatePatchPaths(b.patchText || b.block, profile.allowed || {});
-                    if (vp.checked) {
-                        for (const u of vp.unknown) if (report.unknownPaths.indexOf(u.path) < 0) report.unknownPaths.push(u.path);
-                        for (const e of vp.extra) if (report.extraPaths.indexOf(e) < 0) report.extraPaths.push(e);
-                    }
-                }
-                if (report.unknownPaths.length) { stats.pathUnknown += report.unknownPaths.length; log('path-unknown', report.unknownPaths.join(','), '补丁写了本卡规则里没有的路径（可能是模型自创字段）'); }
-                if (report.extraPaths.length) { stats.extraPaths += report.extraPaths.length; log('path-extra', report.extraPaths.join(','), '组内路径但卡未逐条声明（放行，仅提示）'); }
-            }
-            lastReport = report;
-            log('patch-coverage', cov.covered.length + '/' + cov.total, cov.missing.length ? ('缺: ' + cov.missing.join('、')) : '全部覆盖 ✅');
-        }
         // P1 ③ 连续多楼缺变量块 → 一次气泡（10 分钟内不重复）
         const declaresVars = (profile.dataTags || []).length > 0;
         if (declaresVars && !hasBlock) hardFailStreak++; else hardFailStreak = 0;
@@ -1106,10 +1173,21 @@ function renderCoverageTable() {
     const rep = lastReport;
     if (!rep) { box.innerHTML = '<div class="cc-muted">' + escHtml(T('noReport')) + '</div>'; return; }
     const parts = [];
+    // 0.13.2：表头写明是哪张卡的表 —— 切卡后一眼能看出是不是还在显示旧卡
+    if (rep.card) parts.push('<div class="cc-line cc-muted">' + escHtml(T('reportCard')) + '：<b>' + escHtml(rep.card) + '</b>' + (rep.id != null ? ('（' + escHtml(T('reportFloor')) + ' ' + rep.id + '）') : '') + '</div>');
+    if (!(rep.required || []).length) {
+        parts.push('<div class="cc-muted">' + escHtml(T('noRequired')) + '</div>');
+        box.innerHTML = parts.join('');
+        return;
+    }
     // 0.11.0：新增第三列「变量是否真的变了」—— 旧表只有「文本写没写」（用户实测：一排 ✅ 但状态栏不动，检查不出来）
     parts.push('<table class="cc-tab"><thead><tr><th>' + escHtml(T('colField')) + '</th><th>' + escHtml(T('colDone')) + '</th><th>' + escHtml(T('colState')) + '</th></tr></thead><tbody>');
     const st = rep.state || null;
+    // 0.13.2：有些卡的规则会让同一路径抽出来两次（实测 Science Worship…：角色.超现实形式/层级各重复一次）→ 渲染时去重，统计不受影响
+    const seenRow = new Set();
     for (const f of (rep.required || [])) {
+        if (!f || seenRow.has(f.path)) continue;
+        seenRow.add(f.path);
         const ok = (rep.covered || []).indexOf(f.path) >= 0;
         let mark = '<span class="cc-muted">—</span>';
         if (st && !st.noBase) {
@@ -1511,13 +1589,13 @@ function exposeApi() {
     applyFont();
     exposeApi();
     // ① 非流式：渲染前
-    eventSource.on(event_types.MESSAGE_RECEIVED, (id) => { try { guardMessage(id, { rerender: false }); } catch (e) { console.error(e); } });
+    eventSource.on(event_types.MESSAGE_RECEIVED, (id) => { try { watchCard(); } catch (_) {} try { guardMessage(id, { rerender: false }); } catch (e) { console.error(e); } });
     // ② 流式：生成结束（hideStopButton 触发），此时 messageId = chat.length-1
     eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } try { const id = chat.length - 1; setTimeout(() => { try { checkPatchApplied(id, { notify: false }); } catch (_) {} }, 2500); setTimeout(() => { try { checkPatchApplied(id); } catch (_) {} }, 7000); } catch (_) {}
     // 0.10.0：MVU 不在（或被关）时自动兜底 —— 自己把本轮补丁应用进变量，状态栏才会动
     try { if (settings().varAuto !== false && !mvuActive() && !settings().compatMode) { setTimeout(() => { try { recomputeAllFloors({ silent: true, toast: false, auto: true }); } catch (_) {} }, 1800); } } catch (_) {} });
     // ③ 渲染后兜底校验
-    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { verifyRendered(id); } catch (_) {} try { setTimeout(() => { try { checkFrontBlocks(id); } catch (_) {} }, 1500); } catch (_) {} });
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { watchCard(); } catch (_) {} try { verifyRendered(id); } catch (_) {} try { setTimeout(() => { try { checkFrontBlocks(id); } catch (_) {} }, 1500); } catch (_) {} });
     // 0.10.0：变量兜底按钮条（照剧情推进插件：注入 #send_form + 事件/MutationObserver 重注入）
     try { for (const ev of [event_types.GENERATION_STARTED, event_types.GENERATION_ENDED, event_types.GENERATION_STOPPED, event_types.MESSAGE_SENT, event_types.CHAT_CHANGED]) eventSource.on(ev, () => { try { applyVarBar(); } catch (_) {} }); } catch (_) {}
     try {
@@ -1531,9 +1609,17 @@ function exposeApi() {
         }
     } catch (_) {}
     try { applyVarBar(); } catch (_) {}
-    eventSource.on(event_types.CHAT_CHANGED, () => { try { invalidateProfile(); applyFont(); lastSeen.clear(); varRepairTried.clear(); updatePromptInjection(); applyVarBar(); setTimeout(normalizeRecent, 600); } catch (_) {} 
-      // 0.11.0：切聊天后自动跑一次「补丁生效 + 状态级核对」，面板第三列会自己填上；确认没生效就自动修
-      try { setTimeout(() => { try { checkPatchApplied(chat.length - 1, { notify: false }); } catch (_) {} }, 2200); } catch (_) {} });
+    try { watchCard(); } catch (_) {}
+    try { setInterval(watchCard, 3000); } catch (_) {}
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+      try {
+        invalidateProfile(); applyFont(); lastSeen.clear(); varRepairTried.clear(); updatePromptInjection(); applyVarBar();
+        cardKey = cardKeyNow();                 // 同步卡标识：同卡换聊天不该走「切卡」分支
+        refreshReport(0);                       // 0.13.2：上一张卡的表立刻消失，按当前卡重建
+        setTimeout(normalizeRecent, 600);
+      } catch (_) {}
+      // 0.11.0 / 0.13.2：切聊天/切卡后自动核对一次（面板第三列自己填上；确认没生效就自动修）
+      try { setTimeout(() => { try { refreshReport(0); checkPatchApplied(chat.length - 1, { notify: false }); } catch (_) {} }, 2200); } catch (_) {} });
     eventSource.on(event_types.MESSAGE_SENT, () => { try { updatePromptInjection(); } catch (_) {} });
     try { updatePromptInjection(); } catch (_) {}
     setTimeout(normalizeRecent, 900);
