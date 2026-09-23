@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.9.2';
+const VERSION = '0.9.3';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -215,8 +215,9 @@ function updatePromptInjection() {
         const s = settings();
         if (!s?.enabled || !s.injectPrompt) { setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.NONE, 0); return; }
         const prof = profileOf();
-        // 提醒里只列前 12 个（避免几千字的结尾提醒），但覆盖度仍按全部 200 条算
-        const text = buildTailReminder(prof, { varSpec: prof.varSpec || '', required: (prof.required || []).slice(0, 12) });
+        // 0.9.3：提醒按顶层分组轮询取 14 条 —— 旧实现只取前 12 条，实测会让「互动次数 / 身体状态 / user.累计支出」
+        // 永远进不了提醒（那张卡前 12 条全是系统+林婉婷基础字段），模型每轮都忘更新这些
+        const text = buildTailReminder(prof, { varSpec: prof.varSpec || '', required: pickReminderFields(prof.required || [], 14) });
         setExtensionPrompt(PROMPT_KEY, text, text ? extension_prompt_types.IN_CHAT : extension_prompt_types.NONE, 0, false, extension_prompt_roles.SYSTEM);
         if (settings().logActions) console.debug('[card-compat] 注入提醒长度=' + text.length + ' 变量格式=' + ((prof.varSpec || '').length) + ' 字符');
     } catch (e) { console.error('[card-compat] prompt inject failed', e); }

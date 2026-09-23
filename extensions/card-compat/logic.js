@@ -112,7 +112,9 @@ export function normalizePath(raw) {
 }
 
 const D = String.fromCharCode(36);   // 美元符常量：拼正则用，避免源码里出现模板组起始标记
-const TPL_RE = new RegExp('\\' + D + '\\{([^}]+)\\}');
+// 0.9.3：`$` 变成可选 —— 实测「破产后姐姐…」卡里 17 条规则写成 {林婉婷|陈慧兰}（不带 $），
+// 旧模式只认 ${A|B}，于是这些路径原样带着花括号进了「必更字段」清单（MVU 里并不存在这种路径）
+const TPL_RE = new RegExp('\\' + D + '?\\{([^}]+)\\}');
 
 /**
  * 展开「模板组」：一条规则里可以出现多组，组名/字段名/路径段都可能带
@@ -1258,6 +1260,34 @@ export function frontBlockVerdict(o) {
         else level = 'unrendered';
     }
     return { level: level, front: front, rendered: rendered, collapsed: collapsed, fences: fences };
+}
+/**
+ * 0.9.3：挑要写进「本轮必更字段」清单的路径 —— 按顶层分组轮询，别永远只列前 N 条。
+ * 实测病灶：「破产后姐姐和美母和我的性交易」有 49 条规则，按条目顺序前 12 条全是「系统 / 林婉婷基础」，
+ * 互动次数、身体状态、user.累计支出 永远进不了提醒 → 模型每轮都忘更新这些（用户反馈「部分数据不更新」）。
+ * @param {Array<{path:string, check?:string}>} fields
+ * @param {number} limit 提醒里最多列几条
+ */
+export function pickReminderFields(fields, limit = 14) {
+    const list = (fields || []).filter((f) => f && f.path);
+    if (list.length <= limit) return list.slice();
+    const groups = new Map();
+    for (const f of list) {
+        const g = String(f.path).split('.')[0];
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(f);
+    }
+    const keys = [...groups.keys()];
+    const out = [];
+    for (let round = 0; out.length < limit; round++) {
+        let added = false;
+        for (const k of keys) {
+            const arr = groups.get(k);
+            if (round < arr.length) { out.push(arr[round]); added = true; if (out.length >= limit) break; }
+        }
+        if (!added) break;
+    }
+    return out;
 }
 /**
  * 兼容性体检（0.6.0）：对一份角色卡列表跑一遍 card-compat 的全部判定，

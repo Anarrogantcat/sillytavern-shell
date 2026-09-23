@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -612,6 +612,21 @@ check('⑤ 一个都没渲染、也没折叠 → unrendered（要刷新/切聊�
 check('⑥ 数字原样带回，且容错 undefined', (function () { const r = frontBlockVerdict({ front: 1, rendered: 0, collapsed: 0, fences: 3 }); const z = frontBlockVerdict(undefined); return r.fences === 3 && r.level === 'unrendered' && z.level === 'none' && z.front === 0; })());
 check('⑦ 自检函数接线（判定原样用酒馆助手的 html>/<head/<body、找 TH-render 与折叠按钮）', idxSrc.indexOf('checkFrontBlocks') > 0 && idxSrc.indexOf("['html>', '<head', '<body']") > 0 && idxSrc.indexOf('div.TH-render') > 0 && idxSrc.indexOf('TH-collapse-code-block-button') > 0);
 check('⑧ 面板接线（按钮/结果行/被动自检/一键检查也跑）', idxSrc.indexOf('cc-check-front') > 0 && idxSrc.indexOf('cc-front') > 0 && /CHARACTER_MESSAGE_RENDERED[\s\S]{0,160}checkFrontBlocks/.test(idxSrc) && /verifyRendered\(chat\.length - 1\); checkFrontBlocks\(chat\.length - 1\)/.test(idxSrc));
+
+console.log('— 夹具 33：裸 {A|B} 模板组 + 必更字段轮询（0.9.3；实测「破产后姐姐…」卡）');
+check('① 裸 {林婉婷|陈慧兰} 现在能展开（旧实现不认，会把带花括号的伪路径写进提醒）', expandTemplateGroups(['{林婉婷|陈慧兰}.位置']).join(',') === '林婉婷.位置,陈慧兰.位置', expandTemplateGroups(['{林婉婷|陈慧兰}.位置']));
+check('① 带 $ 的写法不受影响', expandTemplateGroups(['user.累计支出_$' + '{林婉婷|陈慧兰}']).join(',') === 'user.累计支出_林婉婷,user.累计支出_陈慧兰');
+check('① 多组路径逐层展开', expandTemplateGroups(['{A|B}.{x|y}']).join(',') === 'A.x,A.y,B.x,B.y', expandTemplateGroups(['{A|B}.{x|y}']));
+const many33 = [];
+for (let i = 0; i < 5; i++) many33.push({ path: '系统.F' + i });
+for (let i = 0; i < 20; i++) many33.push({ path: '林婉婷.F' + i });
+many33.push({ path: '互动次数.林婉婷与user' }, { path: 'user.累计支出_林婉婷' }, { path: '母女关系.母女氛围' });
+const pick33 = pickReminderFields(many33, 14);
+check('② 轮询后覆盖到所有顶层分组（旧实现只看前 12 条 → 互动次数/usera 永远缺席）', (function () { const g = new Set(pick33.map((f) => f.path.split('.')[0])); return g.has('系统') && g.has('林婉婷') && g.has('互动次数') && g.has('user') && g.has('母女关系'); })(), [...new Set(pick33.map((f) => f.path.split('.')[0]))]);
+check('② 条数不超过上限', pick33.length === 14, pick33.length);
+check('② 字段少时原样返回（不重排）', pickReminderFields([{ path: 'a.b' }, { path: 'c.d' }], 14).map((f) => f.path).join(',') === 'a.b,c.d');
+check('② 空输入安全', pickReminderFields(undefined, 5).length === 0 && pickReminderFields([], 5).length === 0);
+check('③ 扩展接线（提醒用 pickReminderFields）', idxSrc.indexOf('pickReminderFields(prof.required || [], 14)') > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
