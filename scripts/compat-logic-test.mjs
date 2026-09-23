@@ -717,7 +717,7 @@ check('⑤ 说不准时默认 message（与 MVU 写在同一处，最安全）',
 // ⑥ 扩展接线
 check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,3000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
 check('⑥ 试算模式 dryRun：只统计不写（E2E / 排查用）', idxSrc.indexOf('o.dryRun') > 0 && /dryRun: !!o.dryRun/.test(idxSrc));
-check('⑥ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.0'") > 0);
+check('⑥ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.1'") > 0);
 
 console.log('— 夹具 37：状态级核对（0.11.0；用户实测「一排 ✅ 但状态栏不动，检查不出来」）');
 const prev37 = { 系统: { 时间: '14:00', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: 'user家门口' }, 陈慧兰: { 位置: '公司' } };
@@ -799,7 +799,7 @@ check('② 幂等：把修好的值当存值再跑 → 0 写入', planFloorFixes
 check('② 路径全落空会计账（执行层据此宁可不写）', (function () { const pl = planFloorFixes([good39, bad39], [[], [{ op: 'replace', path: '/不存在/字段', value: 1 }]], iv39)[1]; return pl.ops === 1 && pl.skipped.length >= pl.ops; })());
 check('② 不带补丁的 user 快照若带坏值也会被覆盖回最新真相', (function () { const pl = planFloorFixes([good39, bad39, bad39], [[], p39, []], iv39); return pl[2].write === true && pl[2].reason === 'negative-fix'; })());
 check('③ 扩展接线（引擎传 overdraftGuard / 面板开关 / 拦下与修复都写日志提示）', /overdraftGuard: guardOn/.test(idxSrc) && idxSrc.indexOf("cb('cc-overdraft', 'overdraftGuard')") > 0 && idxSrc.indexOf("T('varGuardHit')") > 0 && idxSrc.indexOf("T('varNegFixed')") > 0 && /var-guard/.test(idxSrc) && /var-negative/.test(idxSrc));
-check('③ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.0'") > 0);
+check('③ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.1'") > 0);
 
 console.log('— 夹具 40：Zod 结构静态解析 v2（0.13.0；实测「破产后姐姐…」的真实 schema）');
 const REAL_SCHEMA = [
@@ -953,7 +953,7 @@ check('⑤ prefault 默认值补齐：只补 undefined，不覆盖已有值', (f
 check('⑤ schemaGuard:false 时完全不校验（安全阀）', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/系统/时间', value: 123 }], Object.assign({}, o41, { schemaGuard: false })); return r.state['系统']['时间'] === 123 && r.schemaHits.length === 0; })());
 check('⑥ planFloorFixes 把 schemaHits 带出来（面板可显示）', (function () { const stored = [{ 系统: { 时间: '14:00' } }, { 系统: { 时间: '14:00' } }]; const ops = [[], [{ op: 'replace', path: '/系统/时间', value: 123 }]]; const pl = planFloorFixes(stored, ops, { 系统: { 时间: '14:00' } }, o41); return (pl[1].schemaHits || []).length === 1; })());
 check('⑦ 扩展接线（schemaGuard 开关 / 面板摘要行 / var-schema 日志 / 全量 hints 传入引擎）', idxSrc.indexOf("cb('cc-schema-guard', 'schemaGuard')") > 0 && idxSrc.indexOf('renderSchemaLine') > 0 && idxSrc.indexOf("'var-schema'") > 0 && /types: hints.types/.test(idxSrc) && /objects: hints.objects/.test(idxSrc) && /defaults: hints.defaults/.test(idxSrc) && /bounds: hints.bounds/.test(idxSrc));
-check('⑧ 版本号已到 0.13.0', idxSrc.indexOf("const VERSION = '0.13.0'") > 0);
+check('⑧ 版本号已到 0.13.0', idxSrc.indexOf("const VERSION = '0.13.1'") > 0);
 
 console.log('— 夹具 42：语料实测补的规则（别名内联 / z.array 元素 / .int() / .catch() / transform 白名单）');
 const S42 = [
@@ -985,6 +985,7 @@ check('② Math.floor transform：小数向下取整', applyVarOps({ f: 1 }, [{ 
 check('② Math.max(0,v) 下界：负数被抬到 0', applyVarOps({ n: 1 }, [{ op: 'replace', path: '/n', value: -5 }], o42).state['n'] === 0);
 check('② 枚举别名内联后仍然拦非法取值', (function () { const r = applyVarOps({ s: '常态' }, [{ op: 'replace', path: '/s', value: '乱写' }], o42); return r.state['s'] === '常态' && r.schemaHits.length === 1; })());
 check('③ 扩展接线（新约束全部传进引擎 + 面板摘要含整数/catch/取整）', /ints: hints.ints/.test(idxSrc) && /catches: hints.catches/.test(idxSrc) && /rounds: hints.rounds/.test(idxSrc) && /coerces: hints.coerces/.test(idxSrc) && idxSrc.indexOf("T('schInt')") > 0 && idxSrc.indexOf("T('schCatch')") > 0);
+check('④ 无法离线校验的约束在「写变量这一刻」也提示（不只在面板躺着）', idxSrc.indexOf('function unverKinds(') > 0 && idxSrc.indexOf("'var-unverified'") > 0 && idxSrc.indexOf("T('varUnverified'") > 0 && idxSrc.indexOf('const caveat = unver.length') > 0 && idxSrc.indexOf('vunverKinds(unver)') < 0 && idxSrc.indexOf('unverKinds(unver)') > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
