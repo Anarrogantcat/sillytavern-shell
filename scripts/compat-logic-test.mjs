@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -627,6 +627,17 @@ check('② 条数不超过上限', pick33.length === 14, pick33.length);
 check('② 字段少时原样返回（不重排）', pickReminderFields([{ path: 'a.b' }, { path: 'c.d' }], 14).map((f) => f.path).join(',') === 'a.b,c.d');
 check('② 空输入安全', pickReminderFields(undefined, 5).length === 0 && pickReminderFields([], 5).length === 0);
 check('③ 扩展接线（提醒用 pickReminderFields）', idxSrc.indexOf('pickReminderFields(prof.required || [], 14)') > 0);
+
+console.log('— 夹具 34：补丁到底生效了没（0.9.4；实测「破产后姐姐…」第 7 楼）');
+check('① 没变量块 → no-block', patchApplyVerdict({ hasBlock: false, ops: 0 }).level === 'no-block');
+check('② 有块但没有补丁操作 → no-patch（实测该卡第 3 楼：只有 Analysis）', patchApplyVerdict({ hasBlock: true, hasPatch: false, ops: 0 }).level === 'no-patch');
+check('③ 拿不到 stat_data → unknown（不能瞎报）', patchApplyVerdict({ hasBlock: true, hasPatch: true, ops: 12, hasStates: false }).level === 'unknown');
+check('④ 补丁合法但两楼 stat_data 一模一样 → not-applied（实测病灶）', patchApplyVerdict({ hasBlock: true, hasPatch: true, ops: 12, hasStates: true, sameState: true }).level === 'not-applied');
+check('⑤ stat_data 变了 → applied', patchApplyVerdict({ hasBlock: true, hasPatch: true, ops: 14, hasStates: true, sameState: false }).level === 'applied');
+check('⑥ stableStringify 忽略键顺序', stableStringify({ a: 1, b: { x: 2, y: 3 } }) === stableStringify({ b: { y: 3, x: 2 }, a: 1 }));
+check('⑥ stableStringify 能区分真实差异', stableStringify({ a: 1 }) !== stableStringify({ a: 2 }) && stableStringify([1, 2]) !== stableStringify([2, 1]));
+check('⑥ stableStringify 容错（undefined / 循环安全由 try 兜底）', stableStringify(undefined) === undefined && stableStringify(null) === 'null');
+check('⑦ 扩展接线（检测器/取变量/面板行/提示语/生成结束钩子）', idxSrc.indexOf('function checkPatchApplied') > 0 && idxSrc.indexOf('function mvuVarsOf') > 0 && idxSrc.indexOf('cc-apply') > 0 && idxSrc.indexOf("'apply_not-applied'") > 0 && /GENERATION_ENDED[\s\S]{0,400}checkPatchApplied/.test(idxSrc));
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

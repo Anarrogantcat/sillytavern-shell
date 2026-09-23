@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.9.3';
+const VERSION = '0.9.4';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -58,7 +58,7 @@ const STRINGS = {
     zh: {
         title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
         secMvu: 'MVU 联动', secDep: '依赖与联动', secUi: '界面与诊断', enabled: '启用守护',
-        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', scanNoRules: '无规则原因', scanAlerts: '预警', 'alert_new-dialect': '疑似新方言', 'alert_disabled-views': '渲染正则关着', disViews: '被禁用的渲染正则', disAuto: '（卡自带脚本会运行时开启）', disWarn: '（不会显示）', disAlt: '（有同类启用项，属备选）', 'alert_disabled-alternative': '渲染正则（备选）', btnCheckFront: '检查前端块', frontNone: '这一楼没有前端块', frontHit: '前端块', frontRendered: '已渲染', frontCollapsed: '被折叠', front_ok: '全部已渲染 ✓', front_partial: '只有一部分渲染出来，建议刷新页面', front_collapse: '被酒馆助手折叠了 —— 可把「折叠代码块」设为 disabled，或点开折叠', front_unrendered: '一个都没渲染 → 刷新页面 / 切聊天再切回 / 重生成这一楼', 'rs_check-unparsed': '有 check 但没解析出', rs_command: '命令式规则', rs_paths: '只有 paths 白名单', rs_structure: '只有变量结构', rs_schema: '规则在 schema 脚本', rs_prose: '散文式规则', rs_other: '其它写法', rs_none: '世界书里没有规则', 'v_error': '解析异常',
+        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', scanNoRules: '无规则原因', scanAlerts: '预警', 'alert_new-dialect': '疑似新方言', 'alert_disabled-views': '渲染正则关着', disViews: '被禁用的渲染正则', disAuto: '（卡自带脚本会运行时开启）', disWarn: '（不会显示）', disAlt: '（有同类启用项，属备选）', 'alert_disabled-alternative': '渲染正则（备选）', applyHint: '本轮补丁', 'apply_no-block': '没输出变量块', 'apply_no-patch': '有变量块但没有补丁操作', apply_unknown: '拿不到 stat_data，无法判断', 'apply_not-applied': '补丁没生效 → 打开 MVU 面板点「重演楼层」，或刷新页面', apply_applied: '已生效 ✓', btnCheckFront: '检查前端块', frontNone: '这一楼没有前端块', frontHit: '前端块', frontRendered: '已渲染', frontCollapsed: '被折叠', front_ok: '全部已渲染 ✓', front_partial: '只有一部分渲染出来，建议刷新页面', front_collapse: '被酒馆助手折叠了 —— 可把「折叠代码块」设为 disabled，或点开折叠', front_unrendered: '一个都没渲染 → 刷新页面 / 切聊天再切回 / 重生成这一楼', 'rs_check-unparsed': '有 check 但没解析出', rs_command: '命令式规则', rs_paths: '只有 paths 白名单', rs_structure: '只有变量结构', rs_schema: '规则在 schema 脚本', rs_prose: '散文式规则', rs_other: '其它写法', rs_none: '世界书里没有规则', 'v_error': '解析异常',
         protocol: '变量协议', capWrite: '可写回变量', capReadonly: '只读守护（不改宿主变量）', depLoading: '读取依赖版本…', depOff: '依赖检测已关（面板开关）',
         compatNote: '兼容模式：关掉补发事件 / MVU 写回 / 自动补变量，只留纯文本守护 —— 酒馆助手或 MVU 大更新出问题时打开它',
         injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
@@ -92,7 +92,7 @@ const STRINGS = {
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
         secMvu: 'MVU integration', secDep: 'Dependencies and linkage', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
-        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic', scanNoRules: 'No-rule reasons', scanAlerts: 'Alerts', 'alert_new-dialect': 'possible new dialect', 'alert_disabled-views': 'render regexes disabled', disViews: 'Disabled render regexes', disAuto: ' (auto-enabled by card script)', disWarn: ' (will not render)', disAlt: ' (alternative, same kind enabled)', 'alert_disabled-alternative': 'render regexes (alternative)', btnCheckFront: 'Check front-end blocks', frontNone: 'No front-end block on this floor', frontHit: 'front-end blocks', frontRendered: 'rendered', frontCollapsed: 'collapsed', front_ok: 'all rendered', front_partial: 'only some rendered - try reloading the page', front_collapse: 'collapsed by TavernHelper - set collapse_code_block to disabled or expand it', front_unrendered: 'none rendered - reload the page / switch chats / regenerate this floor', 'rs_check-unparsed': 'has check, unparsed', rs_command: 'command style', rs_paths: 'paths list only', rs_structure: 'structure only', rs_schema: 'rules in schema script', rs_prose: 'prose rules', rs_other: 'other style', rs_none: 'no rules in book',
+        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic', scanNoRules: 'No-rule reasons', scanAlerts: 'Alerts', 'alert_new-dialect': 'possible new dialect', 'alert_disabled-views': 'render regexes disabled', disViews: 'Disabled render regexes', disAuto: ' (auto-enabled by card script)', disWarn: ' (will not render)', disAlt: ' (alternative, same kind enabled)', 'alert_disabled-alternative': 'render regexes (alternative)', applyHint: 'Patch this turn', 'apply_no-block': 'no variable block', 'apply_no-patch': 'block without patch ops', apply_unknown: 'stat_data unavailable', 'apply_not-applied': 'patch not applied - open MVU panel and click Replay floor, or reload the page', apply_applied: 'applied', btnCheckFront: 'Check front-end blocks', frontNone: 'No front-end block on this floor', frontHit: 'front-end blocks', frontRendered: 'rendered', frontCollapsed: 'collapsed', front_ok: 'all rendered', front_partial: 'only some rendered - try reloading the page', front_collapse: 'collapsed by TavernHelper - set collapse_code_block to disabled or expand it', front_unrendered: 'none rendered - reload the page / switch chats / regenerate this floor', 'rs_check-unparsed': 'has check, unparsed', rs_command: 'command style', rs_paths: 'paths list only', rs_structure: 'structure only', rs_schema: 'rules in schema script', rs_prose: 'prose rules', rs_other: 'other style', rs_none: 'no rules in book',
         protocol: 'Variable protocol', capWrite: 'can write variables back', capReadonly: 'read-only guard (does not touch host variables)', depLoading: 'Reading dependency versions...', depOff: 'Dependency check is off (panel switch)',
         compatNote: 'Compat mode: disables the event nudge / MVU write-back / auto var fix, leaving pure text guarding - turn it on when TavernHelper or MVU updates break things',
         injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
@@ -713,6 +713,42 @@ function checkFrontBlocks(messageId, opts) {
         return r;
     } catch (_) { return null; }
 }
+/** 0.9.4：读某一楼的 stat_data（MVU 存在 message.variables[swipe]，靠酒馆助手的 getVariables 取） */
+function mvuVarsOf(id) {
+    try {
+        const th = window.TavernHelper || window.Tavernhelper;
+        const fn = (th && typeof th.getVariables === 'function') ? th.getVariables.bind(th) : (typeof window.getVariables === 'function' ? window.getVariables : null);
+        if (!fn) return null;
+        const v = fn({ type: 'message', message_id: id });
+        return (v && v.stat_data) || null;
+    } catch (_) { return null; }
+}
+/** 0.9.4：本轮的变量补丁到底生效了没 —— 对比该楼与上一楼的 stat_data（实测病灶：补丁合法但 MVU 没应用） */
+let applyAlerted = new Set();
+function checkPatchApplied(messageId, opts) {
+    try {
+        const m = chat && chat[messageId];
+        if (!m || m.is_user || typeof m.mes !== 'string') return null;
+        const blocks = extractUpdateBlocks(m.mes);
+        const ops = blocks.reduce((n, b) => n + ((parsePatchOps(b.patchText || b.block).ops || []).length), 0);
+        const hasBlock = blocks.length > 0;
+        const hasPatch = /<JSONPatch\b/i.test(m.mes);
+        let prev = null;
+        for (let i = messageId - 1; i >= 0; i--) { const v = mvuVarsOf(i); if (v) { prev = v; break; } }
+        const cur = mvuVarsOf(messageId);
+        const r = patchApplyVerdict({ hasBlock: hasBlock, hasPatch: hasPatch, ops: ops, hasStates: !!(prev && cur), sameState: !!(prev && cur) && stableStringify(prev) === stableStringify(cur) });
+        const box = document.getElementById('cc-apply');
+        if (box) box.textContent = T('applyHint') + '：' + T('apply_' + r.level) + (ops ? ('（' + ops + ' ops）') : '');
+        if (r.level === 'not-applied' || r.level === 'no-patch') {
+            if ((!opts || opts.notify !== false) && !applyAlerted.has(messageId)) {
+                applyAlerted.add(messageId);
+                log('mvu-apply', r.level + ' ops=' + ops, '本轮的变量补丁没有生效（状态栏不会更新）');
+                toast(T('apply_' + r.level), 'warning');
+            }
+        }
+        return r;
+    } catch (_) { return null; }
+}
 function applyPanelFont() {
     try {
         const el = document.getElementById('cc-panel');
@@ -931,6 +967,7 @@ function buildSettingsUi() {
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         "<button id=\"cc-check-front\" class=\"menu_button\">" + escHtml(T('btnCheckFront')) + "</button>",
         '<div id="cc-front" class="cc-line cc-muted"></div>',
+        '<div id="cc-apply" class="cc-line cc-muted"></div>',
         '</details>',
         '<details class="cc-grp"><summary>② ' + escHtml(T('secBlocks')) + '</summary>',
         cb('cc-fix-quotes', 'fixQuotes'), cb('cc-bracket-tags', 'fixBracketTags'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-structure', 'fixYamlStructure'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
@@ -1038,7 +1075,7 @@ function buildSettingsUi() {
     bind('cc-floor', 'fontFloor', false);
     const zv = document.getElementById('cc-zoom-val'); if (zv) zv.textContent = Math.round(settings().fontZoom * 100) + '%';
     const fv = document.getElementById('cc-floor-val'); if (fv) fv.textContent = settings().fontFloor ? settings().fontFloor + 'px' : T('floorOff');
-    document.getElementById('cc-check')?.addEventListener('click', () => { guardMessage(chat.length - 1); verifyRendered(chat.length - 1); checkFrontBlocks(chat.length - 1); });
+    document.getElementById('cc-check')?.addEventListener('click', () => { guardMessage(chat.length - 1); verifyRendered(chat.length - 1); checkFrontBlocks(chat.length - 1); checkPatchApplied(chat.length - 1); });
     document.getElementById('cc-check-front')?.addEventListener('click', () => { const id = chat.length - 1; frontAlerted.delete(id); checkFrontBlocks(id); });
     applyPanelFont();
     renderStats();
@@ -1103,7 +1140,7 @@ function exposeApi() {
     // ① 非流式：渲染前
     eventSource.on(event_types.MESSAGE_RECEIVED, (id) => { try { guardMessage(id, { rerender: false }); } catch (e) { console.error(e); } });
     // ② 流式：生成结束（hideStopButton 触发），此时 messageId = chat.length-1
-    eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } });
+    eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } try { const id = chat.length - 1; setTimeout(() => { try { checkPatchApplied(id, { notify: false }); } catch (_) {} }, 2500); setTimeout(() => { try { checkPatchApplied(id); } catch (_) {} }, 7000); } catch (_) {} });
     // ③ 渲染后兜底校验
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { verifyRendered(id); } catch (_) {} try { setTimeout(() => { try { checkFrontBlocks(id); } catch (_) {} }, 1500); } catch (_) {} });
     eventSource.on(event_types.CHAT_CHANGED, () => { try { invalidateProfile(); applyFont(); lastSeen.clear(); updatePromptInjection(); setTimeout(normalizeRecent, 600); } catch (_) {} });

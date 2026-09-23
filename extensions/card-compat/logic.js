@@ -835,6 +835,35 @@ export function extractVarSpec(entries, maxLen = 600) {
     return [...block].length > maxLen ? [...block].slice(0, maxLen).join("") + " …" : block;
 }
 
+/** 稳定序列化：键排序后 JSON.stringify，用来比较两份 stat_data 是否等价 */
+export function stableStringify(v) {
+    const walk = (x) => {
+        if (Array.isArray(x)) return x.map(walk);
+        if (x && typeof x === 'object') {
+            const out = {};
+            for (const k of Object.keys(x).sort()) out[k] = walk(x[k]);
+            return out;
+        }
+        return x;
+    };
+    try { return JSON.stringify(walk(v)); } catch (_) { return ''; }
+}
+
+/**
+ * 0.9.4：判断本轮的变量补丁到底有没有生效（纯函数，便于单测）。
+ * 真实病灶：「破产后姐姐和美母和我的性交易」第 7 楼里 <JSONPatch> 完全合法（12 个操作），
+ * 但该楼自己的 stat_data 快照与上一楼一模一样 → MVU 根本没应用，状态栏自然不更新。
+ * @param {{hasBlock:boolean, hasPatch:boolean, ops:number, hasStates:boolean, sameState:boolean}} o
+ * @returns {{level:'no-block'|'no-patch'|'unknown'|'not-applied'|'applied'}}
+ */
+export function patchApplyVerdict(o) {
+    const hasBlock = !!(o && o.hasBlock);
+    const ops = Number(o && o.ops) || 0;
+    if (!hasBlock) return { level: 'no-block' };
+    if (!ops) return { level: 'no-patch' };
+    if (!o || !o.hasStates) return { level: 'unknown' };
+    return { level: o.sameState ? 'not-applied' : 'applied' };
+}
 /**
  * 从角色卡世界书条目里抽出「本轮必须更新的字段清单」。
  * v0.5.0：不再写死「组(缩进2) / 字段(缩进4)」—— 实测 90 张卡里有 12 张因为规则层级不固定而抽不出来。
