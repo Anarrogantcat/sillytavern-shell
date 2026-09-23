@@ -835,6 +835,176 @@ export function extractVarSpec(entries, maxLen = 600) {
     return [...block].length > maxLen ? [...block].slice(0, maxLen).join("") + " …" : block;
 }
 
+/**
+ * 0.10.0：解析角色卡的 [InitVar] 条目（MVU 的变量初始化）→ stat_data。
+ * 只支持 MVU 卡实际用到的 YAML 子集：缩进嵌套映射、`- ` 列表、数字/布尔/字符串、块标量 | 与 >。
+ * 不支持的写法（锚点/引用/多文档）跳过那一行 —— 宁可少一个字段，也不要解析出错误结构。
+ * @returns {object}
+ */
+export function parseInitVar(text) {
+    const root = {};
+    const stack = [{ indent: -1, obj: root, parent: null, key: null }];
+    const lines = String(text || '').split(/\r?\n/);
+    const scalar = (v) => {
+        const s = String(v).trim();
+        if (s === '') return '';
+        if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+        if (/^(true|false)$/i.test(s)) return /^true$/i.test(s);
+        if (/^null$/i.test(s)) return null;
+        let t = s;
+        if (t.length > 1 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) t = t.slice(1, -1);
+        return t;
+    };
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const body = raw.trim();
+        if (!body || body[0] === '#' || body === '---' || body.indexOf(String.fromCharCode(96).repeat(3)) === 0) continue;
+        const indent = raw.length - raw.replace(/^\s+/, '').length;
+        while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
+        const top = stack[stack.length - 1];
+        if (body.indexOf('- ') === 0 || body === '-') {
+            const v = scalar(body.slice(1).trim());
+            let arr = top.obj;
+            if (!Array.isArray(arr)) {
+                const nn = [];
+                if (top.parent && top.key !== null) { top.parent[top.key] = nn; stack[stack.length - 1].obj = nn; }
+                else return root;
+                arr = nn;
+            }
+            arr.push(v);
+            continue;
+        }
+        const m = body.match(/^([^:]+):\s*(.*)$/);
+        if (!m) continue;
+        const key = m[1].trim();
+        const val = m[2].trim();
+        if (val === '') {
+            const child = {};
+            top.obj[key] = child;
+            stack.push({ indent: indent, obj: child, parent: top.obj, key: key });
+            continue;
+        }
+        if (/^[|>][-+]?$/.test(val)) {
+            const raw2 = [];
+            let j = i + 1;
+            for (; j < lines.length; j++) {
+                const l2 = lines[j];
+                if (!l2.trim()) { raw2.push(''); continue; }
+                const ind2 = l2.length - l2.replace(/^\s+/, '').length;
+                if (ind2 <= indent) break;
+                raw2.push(l2);
+            }
+            i = j - 1;
+            const ne = raw2.filter((l) => l.trim() !== '');
+            const cut = ne.length ? Math.min.apply(null, ne.map((l) => l.length - l.replace(/^\s+/, '').length)) : indent + 1;
+            top.obj[key] = raw2.map((l) => (l.trim() === '' ? '' : l.slice(cut))).join(String.fromCharCode(10)).replace(/\s+$/, '');
+            continue;
+        }
+        top.obj[key] = scalar(val);
+    }
+    return root;
+}
+
+/**
+ * 0.10.0：解析命令式更新 `_.set(路径, 值)` / `_.assign(路径, 键?, 值)` / `_.add(路径, 增量)` / `_.remove(路径, 键?)`
+ * → 统一的 op 列表（MC房子 那类不用 JSONPatch 的卡）。
+ */
+export function parseSetCommands(text) {
+    const ops = [];
+    const src = String(text || '');
+    const re = /_\s*\.\s*(set|assign|add|remove)\s*\(([^)]*)\)/g;
+    let m;
+    const clean = (s) => {
+        let t = String(s || '').trim();
+        if (t.length > 1 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) t = t.slice(1, -1);
+        t = t.split(String.fromCharCode(96)).join('');
+        return t.trim();
+    };
+    const val = (s) => { const t = clean(s); return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : t; };
+    while ((m = re.exec(src))) {
+        const fnName = m[1].toLowerCase();
+        const args = m[2].split(',').map((s) => s.trim()).filter((s) => s !== '');
+        const path = clean(args[0]);
+        if (!path) continue;
+        if (fnName === 'set') ops.push({ op: 'replace', path: path, value: val(args[1]) });
+        else if (fnName === 'add') ops.push({ op: 'delta', path: path, value: val(args[1]) });
+        else if (fnName === 'assign') {
+            if (args.length >= 3) ops.push({ op: 'replace', path: path + '.' + clean(args[1]), value: val(args[2]) });
+            else ops.push({ op: 'insert', path: path, value: val(args[1]) });
+        } else ops.push({ op: 'remove', path: path + (args[1] ? '.' + clean(args[1]) : '') });
+    }
+    return ops;
+}
+
+/**
+ * 0.10.0：把 op 列表应用到一份 stat_data 上（不改原对象）。支持 replace / delta / insert / remove / move；
+ * 路径接受 /a/b 与 a.b；父路径不存在就跳过并记账（不猜、不建奇怪的中间层）。
+ * @returns {{state:object, applied:string[], skipped:Array<{path:string,reason:string}>}}
+ */
+export function applyVarOps(state, ops) {
+    const out = (state && typeof state === 'object') ? JSON.parse(JSON.stringify(state)) : {};
+    const applied = [];
+    const skipped = [];
+    const segs = (p) => String(p == null ? '' : p).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
+    const seek = (segsArr, create) => {
+        let node = out;
+        for (const s of segsArr) {
+            if (node[s] === undefined || node[s] === null || typeof node[s] !== 'object') {
+                if (!create) return null;
+                node[s] = {};
+            }
+            node = node[s];
+        }
+        return node;
+    };
+    for (const op of (ops || [])) {
+        const kind = String((op && op.op) || '').toLowerCase();
+        const path = segs(op && op.path);
+        if (!path.length) { skipped.push({ path: String((op && op.path) || ''), reason: '空路径' }); continue; }
+        const head = path.slice(0, -1);
+        const last = path[path.length - 1];
+        try {
+            if (kind === 'replace' || kind === 'add') {
+                const parent = seek(head, false);
+                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
+                parent[last] = op.value;
+            } else if (kind === 'delta') {
+                const parent = seek(head, false);
+                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
+                const cur = parent[last];
+                if (typeof cur !== 'number' || typeof op.value !== 'number') { skipped.push({ path: String(op.path), reason: 'delta 需要两边都是数字' }); continue; }
+                parent[last] = cur + op.value;
+            } else if (kind === 'insert') {
+                const parent = seek(head, true);
+                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不可建' }); continue; }
+                if (Array.isArray(parent)) {
+                    if (last === '-' || /^\d+$/.test(last) === false) parent.push(op.value);
+                    else parent.splice(Number(last), 0, op.value);
+                } else {
+                    if (parent[last] !== undefined) { skipped.push({ path: String(op.path), reason: 'insert 目标已存在（用 replace）' }); continue; }
+                    parent[last] = op.value;
+                }
+            } else if (kind === 'remove') {
+                const parent = seek(head, false);
+                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
+                if (Array.isArray(parent) && /^\d+$/.test(last)) parent.splice(Number(last), 1);
+                else delete parent[last];
+            } else if (kind === 'move') {
+                const from = segs(op.from);
+                const src = from.length ? seek(from.slice(0, -1), false) : null;
+                if (!src) { skipped.push({ path: String(op.path), reason: 'move 源路径不存在' }); continue; }
+                const fLast = from[from.length - 1];
+                const val = src[fLast];
+                delete src[fLast];
+                const dst = seek(head, true);
+                if (!dst) { skipped.push({ path: String(op.path), reason: 'move 目标不可建' }); continue; }
+                dst[last] = val;
+            } else { skipped.push({ path: String(op.path), reason: '未知 op ' + kind }); continue; }
+            applied.push(String(op.path));
+        } catch (e) { skipped.push({ path: String(op && op.path), reason: String((e && e.message) || e) }); }
+    }
+    return { state: out, applied: applied, skipped: skipped };
+}
 /** 稳定序列化：键排序后 JSON.stringify，用来比较两份 stat_data 是否等价 */
 export function stableStringify(v) {
     const walk = (x) => {

@@ -1,4 +1,14 @@
 # 更新日志
+## [0.10.0] - 2026-09-24
+### 新增
+- **变量兜底引擎（不依赖 MVU）**：MVU 不在（或被关）时，card-compat 自己当引擎 —— 从角色卡的 `[InitVar]` 条目建初值 → 解析并应用每轮的 `<JSONPatch>`（replace/delta/insert/remove/move）与命令式 `_.set/_.assign/_.add/_.remove` → 用酒馆助手 `updateVariablesWith` 写回该楼变量 → 重渲染该楼；卡自己的状态栏模板（读 `all_variables.stat_data`）随之更新
+  - 实测：在「破产后姐姐和美母和我的性交易」的真实补丁上，引擎算出的状态与补丁意图完全一致（MVU 存的快照恰恰是没跟上补丁的那个）
+- **输入框功能按钮**（照剧情推进器 plot-pilot 的做法：prepend 进 `#send_form` + MutationObserver 重注入）：「补应用变量」—— 手动把**当前楼**的补丁补应用一次（B 档）。检测到 MVU 在运行时会先弹确认，提醒 `delta` 类数值可能二次累加（默认不自动接管 MVU 的活）
+- 新增开关：`varAuto`（无 MVU 时自动兜底，默认开；MVU 在就完全不插手）、`varBar`（显示按钮，默认开）
+- 新增纯函数 `parseInitVar()` / `applyVarOps()` / `parseSetCommands()`
+### 变更
+- 夹具 `scripts/compat-logic-test.mjs` **270 → 282** 项（夹具 35：InitVar 解析含列表与块标量、五种 op、路径两种写法、父路径缺失/非数字 delta 跳过、纯函数不改原对象、命令式解析、接线与样式）
+
 ## [0.9.4] - 2026-09-24
 ### 新增
 - **「补丁生效自检」**（面板第①组新增结果行）：判断本轮发出去的 `<JSONPatch>` 到底有没有被 MVU 应用 —— 对比**该楼与上一楼**的 `stat_data`（MVU 存在 `message.variables[swipe]`，通过酒馆助手的 `getVariables` 读），给出五档：已生效 / **补丁没生效** / 有变量块但没有补丁操作 / 没输出变量块 / 拿不到 stat_data 无法判断

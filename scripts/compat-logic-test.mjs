@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -638,6 +638,29 @@ check('⑥ stableStringify 忽略键顺序', stableStringify({ a: 1, b: { x: 2, 
 check('⑥ stableStringify 能区分真实差异', stableStringify({ a: 1 }) !== stableStringify({ a: 2 }) && stableStringify([1, 2]) !== stableStringify([2, 1]));
 check('⑥ stableStringify 容错（undefined / 循环安全由 try 兜底）', stableStringify(undefined) === undefined && stableStringify(null) === 'null');
 check('⑦ 扩展接线（检测器/取变量/面板行/提示语/生成结束钩子）', idxSrc.indexOf('function checkPatchApplied') > 0 && idxSrc.indexOf('function mvuVarsOf') > 0 && idxSrc.indexOf('cc-apply') > 0 && idxSrc.indexOf("'apply_not-applied'") > 0 && /GENERATION_ENDED[\s\S]{0,400}checkPatchApplied/.test(idxSrc));
+
+console.log('— 夹具 35：变量兜底引擎（0.10.0，不依赖 MVU）');
+const ivText35 = ['系统:', '  日期: 2025年7月18日', '  时间: 14:00', '  剧情天数: 1', '林婉婷:', '  位置: user家门口', '  经济:', '    欠款: 3000', '    现金: 500', '  身体状态:', '    嘴巴:', '      状态: 干净', '      总次数: 0', 'user:{x}', '  累计支出_林婉婷: 0', '标签: [a, b]', '说明: |', '  第一行', '  第二行'].join(NL).replace('{x}', '');
+const iv35 = parseInitVar(ivText35);
+check('① InitVar 解析：嵌套映射 + 数字 + 中文键', iv35['系统']['剧情天数'] === 1 && iv35['林婉婷']['经济']['欠款'] === 3000 && iv35['林婉婷']['身体状态']['嘴巴']['状态'] === '干净', iv35['系统']);
+check('① InitVar 解析：块标量 | 收集后续缩进行', iv35['说明'] === '第一行' + NL + '第二行', iv35['说明']);
+const ivList35 = parseInitVar(['角色:', '  技能:', '    - 剑术', '    - 炼丹'].join(NL));
+check('① InitVar 解析：- 列表变数组', Array.isArray(ivList35['角色']['技能']) && ivList35['角色']['技能'].join(',') === '剑术,炼丹', ivList35['角色'].技能);
+const base35 = { 系统: { 时间: '14:00', 剧情天数: 1 }, 角色: { 钱: 100, 体力: 50 }, 日志: ['a'] };
+const rv1 = applyVarOps(base35, [{ op: 'replace', path: '/系统/时间', value: '14:25' }, { op: 'delta', path: '/角色/钱', value: -50 }, { op: 'delta', path: '/角色/体力', value: 10 }]);
+check('② replace / delta 生效', rv1.state['系统']['时间'] === '14:25' && rv1.state['角色']['钱'] === 50 && rv1.state['角色']['体力'] === 60 && rv1.applied.length === 3, rv1.state);
+check('② 不改原对象（纯函数）', base35['系统']['时间'] === '14:00' && base35['角色']['钱'] === 100);
+check('② 路径 /a/b 与 a.b 等价', stableStringify(applyVarOps(base35, [{ op: 'replace', path: '系统.时间', value: 'X' }]).state) === stableStringify(applyVarOps(base35, [{ op: 'replace', path: '/系统/时间', value: 'X' }]).state));
+const rv2 = applyVarOps(base35, [{ op: 'replace', path: '/不存在/字段', value: 1 }, { op: 'delta', path: '/系统/时间', value: 5 }]);
+check('③ 父路径不存在 / delta 非数字 → 跳过并记账', rv2.applied.length === 0 && rv2.skipped.length === 2, rv2.skipped);
+const rv3 = applyVarOps(base35, [{ op: 'insert', path: '/角色/耐力', value: 10 }, { op: 'insert', path: '/日志/-', value: 'b' }, { op: 'remove', path: '/角色/体力' }]);
+check('④ insert 新增键 / 数组用 - 追加 / remove 删除', rv3.state['角色']['耐力'] === 10 && rv3.state['日志'].join(',') === 'a,b' && rv3.state['角色']['体力'] === undefined, rv3.state);
+const rv4 = applyVarOps({ a: { b: 1 } }, [{ op: 'move', from: '/a/b', path: '/a/c' }]);
+check('④ move 搬移', rv4.state['a']['c'] === 1 && rv4.state['a']['b'] === undefined, rv4.state);
+const scc = parseSetCommands(['_.set("角色.金钱", 100)', '_.add(角色.体力, -10)', '_.assign(角色, 姓名, "小明")', '_.remove(角色.临时)'].join(NL));
+check('⑤ 命令式 _.set/_.add/_.assign/_.remove 解析', scc.length === 4 && scc[0].op === 'replace' && scc[0].value === 100 && scc[1].op === 'delta' && scc[1].value === -10 && scc[2].path === '角色.姓名' && scc[3].op === 'remove', scc);
+check('⑥ 扩展接线（引擎/按钮条/自动兜底/开关/事件重注入）', idxSrc.indexOf('function applyFloorVars') > 0 && idxSrc.indexOf('function ensureVarBar') > 0 && idxSrc.indexOf('cc-var-bar') > 0 && idxSrc.indexOf('function mvuActive') > 0 && idxSrc.indexOf('varAuto') > 0 && idxSrc.indexOf('varBar') > 0 && /GENERATION_ENDED[\s\S]{0,600}applyFloorVars/.test(idxSrc) && /MutationObserver[\s\S]{0,300}cc-var-bar/.test(idxSrc));
+check('⑥ 样式里有按钮条', readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8').indexOf('#cc-var-bar') > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

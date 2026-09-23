@@ -36,3 +36,28 @@
 #cc-panel .cc-info-toggle { cursor: pointer; user-select: none; opacity: .55; font-size: .9em; padding: 4px 2px; }
 #cc-panel .cc-info-toggle:hover { opacity: .95; }
 #cc-panel .cc-info-toggle[aria-expanded="true"] { opacity: .85; }
+/* 0.10.0：变量兜底按钮条（照剧情推进器 plot-pilot 的样式） */
+#cc-var-bar {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 0 0 6px 0;
+    order: -1;
+    flex-wrap: wrap;
+}
+#cc-var-bar .ccv-btn {
+    padding: 5px 22px;
+    border-radius: 15px;
+    border: 1px solid rgba(0, 229, 255, .45);
+    background: rgba(0, 0, 0, .2);
+    color: #4dd0e1;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1.4;
+    cursor: pointer;
+    user-select: none;
+    transition: background .2s, opacity .2s, transform .1s;
+}
+#cc-var-bar .ccv-btn:hover { background: rgba(0, 229, 255, .16); }
+#cc-var-bar .ccv-btn:active { transform: scale(.97); }
