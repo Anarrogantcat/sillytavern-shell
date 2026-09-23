@@ -1,5 +1,5 @@
 // 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目：https://github.com/Anarrogantcat/sillytavern-shell
-// index.js — 卡兼容助手（ST 扩展）v0.2.8
+// index.js — 卡兼容助手（ST 扩展）v0.11.0
 // ① 锚点守护 ② 数据块守护（绝不改数据内容）③ 消息区字号 ④ 结构块 YAML 修复/严格校验
 // ⑤ 未声明块清理 ⑥ 变量块兜底（静默补一次 + 写回 MVU）⑦ 路径白名单 / 多块记账 / 覆盖度趋势 ⑧ MVU 联动
 // 历史：v0.2.7 的「未声明块清理」被误插进 strictCheckMessage（那里没有 res，一进入就抛错并被吞掉）
@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -33,6 +33,7 @@ const DEFAULTS = {
     fixBracketTags: true,  // 0.8.0：模型把尖括号写成全角方括号时改回 <Tag>（实测【NSFW_IMG> 会让插图整块不显示）
     varAuto: true,         // 0.10.0：MVU 不在时自动兜底应用变量补丁（MVU 在就完全不接管）
     varBar: true,          // 0.10.0：输入框显示「补应用变量」按钮
+    varRepair: true,       // 0.11.0：检测到「补丁没生效」时自动重算全部楼层变量（幂等重放，不依赖 MVU）
     autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
     autoFixVarsMaxChars: 6000,
     pathWarn: true,        // 补丁路径白名单校验（只提示，不改写）
@@ -45,7 +46,7 @@ const DEFAULTS = {
     compatMode: false,     // 0.4.0 兼容模式：关掉所有跨扩展联动（补发事件 / MVU 写回 / 自动补变量），只留纯文本守护
     depCheck: true,        // 0.4.0 面板显示 ST / 酒馆助手 / MVU 的版本与可用性
 };
-const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, bracketFixed: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0 };
+const stats = { guarded: 0, rerendered: 0, anchorInjected: 0, closeRepaired: 0, dataMissing: 0, staleWarned: 0, unrendered: 0, foreignTags: 0, duplicatesCollapsed: 0, quotesFixed: 0, scalarsQuoted: 0, yamlIssues: 0, yamlStructFixed: 0, yamlStrictOk: 0, yamlStrictFail: 0, yamlStrictSkipped: 0, blocksStripped: 0, unclosedBlocks: 0, varFixTried: 0, varFixOk: 0, varFixApplied: 0, varFixFailed: 0, coverageTotal: 0, coverageHit: 0, pathUnknown: 0, extraPaths: 0, multiBlocks: 0, nudgeMisses: 0, formatMissing: 0, bracketFixed: 0, mvuParseOk: 0, mvuParseFail: 0, toasts: 0, varReplayRuns: 0, varReplayFloors: 0, varRepairAuto: 0, varStuck: 0 };
 let lastCoverage = null;
 let lastReport = null;            // P1 ② 面板对照表数据
 const recent = [];
@@ -60,7 +61,7 @@ const STRINGS = {
     zh: {
         title: '卡兼容助手', secGuard: '守护与修复', secBlocks: '结构块与变量块', secReport: '本卡要求 vs 本轮实际',
         secMvu: 'MVU 联动', secDep: '依赖与联动', secUi: '界面与诊断', enabled: '启用守护',
-        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', scanNoRules: '无规则原因', scanAlerts: '预警', 'alert_new-dialect': '疑似新方言', 'alert_disabled-views': '渲染正则关着', disViews: '被禁用的渲染正则', disAuto: '（卡自带脚本会运行时开启）', disWarn: '（不会显示）', disAlt: '（有同类启用项，属备选）', 'alert_disabled-alternative': '渲染正则（备选）', applyHint: '本轮补丁', 'apply_no-block': '没输出变量块', 'apply_no-patch': '有变量块但没有补丁操作', apply_unknown: '拿不到 stat_data，无法判断', 'apply_not-applied': '补丁没生效 → 打开 MVU 面板点「重演楼层」，或刷新页面', apply_applied: '已生效 ✓', varApplyBtn: '补应用变量', varNoOps: '本轮没有变量补丁', varNoBase: '找不到变量初值（本卡没有 [InitVar] 条目）', varBasePrev: '以上一楼为基线', varBaseInit: '以 [InitVar] 为基线', varWriteFail: '写变量失败（酒馆助手不可用？）', varApplied: '变量已补应用', varMvuWarn: '检测到 MVU 在运行：手动补应用可能让 delta 类数值二次累加。确定继续？', varModeOff: '自动兜底已关', varModeMvu: 'MVU 在运行（不自动接管）', varModeFallback: '兜底引擎自动接管中', varAuto: '无 MVU 时自动兜底应用变量（MVU 在就完全不接管）', varBar: '在输入框显示「补应用变量」按钮', btnCheckFront: '检查前端块', frontNone: '这一楼没有前端块', frontHit: '前端块', frontRendered: '已渲染', frontCollapsed: '被折叠', front_ok: '全部已渲染 ✓', front_partial: '只有一部分渲染出来，建议刷新页面', front_collapse: '被酒馆助手折叠了 —— 可把「折叠代码块」设为 disabled，或点开折叠', front_unrendered: '一个都没渲染 → 刷新页面 / 切聊天再切回 / 重生成这一楼', 'rs_check-unparsed': '有 check 但没解析出', rs_command: '命令式规则', rs_paths: '只有 paths 白名单', rs_structure: '只有变量结构', rs_schema: '规则在 schema 脚本', rs_prose: '散文式规则', rs_other: '其它写法', rs_none: '世界书里没有规则', 'v_error': '解析异常',
+        secScan: '兼容性体检', scanNote: '对全部角色卡跑一遍判定：每张卡能做什么、为什么降级（本地纯计算，100 张约 0.2 秒）', scanRun: '开始体检', scanCopy: '复制报告', scanIdle: '还没体检过 —— 点「开始体检」', scanRunning: '体检中…', scanSum: '结果', scanOf: ' 张', scanGuard: '可守护', scanWrite: '可写回', scanRules: '有规则', colCard: '角色卡', colProto: '变量协议', colCap: '锚点/数据块/规则', colVerdict: '结论', scanMore: '（只显示前 200 张，完整结果可用「复制报告」）', scanCopied: '报告已复制', scanCopyFail: '复制失败（剪贴板不可用）', v_all: '全部', v_ok: '守护+校验可用', 'v_guard-only': '只能守护（无变量块）', 'v_no-rules': '有变量块但抽不到规则', 'v_read-only': '协议只读（不能写回）', 'v_format-only': '只有格式标签（仅提醒）', 'v_helper-only': '靠酒馆助手脚本渲染', v_plain: '纯正文卡（无需处理）', 'v_dyn-bar': '动态状态栏（前端渲染）', scanDyn: '动态状态栏', scanPanel: '交互面板', scanDynYes: '动态', scanNoRules: '无规则原因', scanAlerts: '预警', 'alert_new-dialect': '疑似新方言', 'alert_disabled-views': '渲染正则关着', disViews: '被禁用的渲染正则', disAuto: '（卡自带脚本会运行时开启）', disWarn: '（不会显示）', disAlt: '（有同类启用项，属备选）', 'alert_disabled-alternative': '渲染正则（备选）', applyHint: '本轮补丁', 'apply_no-block': '没输出变量块', 'apply_no-patch': '有变量块但没有补丁操作', apply_unknown: '拿不到 stat_data，无法判断', 'apply_not-applied': '补丁没生效 → 已自动从 [InitVar] 重算各层变量；若仍不更新，点 MVU 面板「重演楼层」或刷新页面', apply_applied: '已生效 ✓', varApplyBtn: '补应用变量', varNoOps: '本轮没有变量补丁', varNoBase: '找不到变量初值（本卡没有 [InitVar] 条目）', varBasePrev: '以上一楼为基线', varBaseInit: '以 [InitVar] 为基线', varWriteFail: '写变量失败（酒馆助手不可用？）', varApplied: '变量已补应用', varMvuWarn: '会逐楼检查补丁有没有真的写进变量，只对「没生效」的楼层补应用：以 MVU 当前值为基线，已生效的楼层一律不动，delta 只加一次（幂等，可重复执行）。继续？', varReplayTitle: '只修「补丁没生效」的楼层：以 MVU 真实值为基线补应用，已生效的楼层不动', varReplayOk: '已修复没生效的楼层', varReplayNone: '所有楼层的补丁都已生效，无需修复', varReplayFloors: '层', varReplaySkipped: '层路径全落空已跳过', varRepair: '补丁没生效时自动补应用（只动没生效的楼层，不覆盖 MVU 已应用的）', varScopeMsg: '写回范围', varBusy: '变量修复正在进行中，请稍后再点', varModeOff: '自动兜底已关', varModeMvu: 'MVU 在运行（不自动接管）', varModeFallback: '兜底引擎自动接管中', varAuto: '无 MVU 时自动兜底应用变量（MVU 在就完全不接管）', varBar: '在输入框显示「补应用变量」按钮', btnCheckFront: '检查前端块', frontNone: '这一楼没有前端块', frontHit: '前端块', frontRendered: '已渲染', frontCollapsed: '被折叠', front_ok: '全部已渲染 ✓', front_partial: '只有一部分渲染出来，建议刷新页面', front_collapse: '被酒馆助手折叠了 —— 可把「折叠代码块」设为 disabled，或点开折叠', front_unrendered: '一个都没渲染 → 刷新页面 / 切聊天再切回 / 重生成这一楼', 'rs_check-unparsed': '有 check 但没解析出', rs_command: '命令式规则', rs_paths: '只有 paths 白名单', rs_structure: '只有变量结构', rs_schema: '规则在 schema 脚本', rs_prose: '散文式规则', rs_other: '其它写法', rs_none: '世界书里没有规则', 'v_error': '解析异常',
         protocol: '变量协议', capWrite: '可写回变量', capReadonly: '只读守护（不改宿主变量）', depLoading: '读取依赖版本…', depOff: '依赖检测已关（面板开关）',
         compatNote: '兼容模式：关掉补发事件 / MVU 写回 / 自动补变量，只留纯文本守护 —— 酒馆助手或 MVU 大更新出问题时打开它',
         injectPrompt: '生成前注入结尾结构块提醒（推荐开）', injectAnchor: '缺锚点时补一个空锚点',
@@ -78,7 +79,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', colField: '卡要求的字段', colDone: '本轮是否更新',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', colField: '卡要求的字段', colDone: '本轮是否更新', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -94,7 +95,7 @@ const STRINGS = {
     en: {
         title: 'Card Compat', secGuard: 'Guard and repair', secBlocks: 'Blocks and variables', secReport: 'Card requirements vs this reply',
         secMvu: 'MVU integration', secDep: 'Dependencies and linkage', secUi: 'Interface and diagnostics', enabled: 'Enable guard',
-        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic', scanNoRules: 'No-rule reasons', scanAlerts: 'Alerts', 'alert_new-dialect': 'possible new dialect', 'alert_disabled-views': 'render regexes disabled', disViews: 'Disabled render regexes', disAuto: ' (auto-enabled by card script)', disWarn: ' (will not render)', disAlt: ' (alternative, same kind enabled)', 'alert_disabled-alternative': 'render regexes (alternative)', applyHint: 'Patch this turn', 'apply_no-block': 'no variable block', 'apply_no-patch': 'block without patch ops', apply_unknown: 'stat_data unavailable', 'apply_not-applied': 'patch not applied - open MVU panel and click Replay floor, or reload the page', apply_applied: 'applied', varApplyBtn: 'Apply vars', varNoOps: 'no variable patch on this floor', varNoBase: 'no initial variables ([InitVar] entry missing)', varBasePrev: 'base = previous floor', varBaseInit: 'base = [InitVar]', varWriteFail: 'failed to write variables (TavernHelper unavailable?)', varApplied: 'Variables applied', varMvuWarn: 'MVU is running: manual apply may double-count delta values. Continue?', varModeOff: 'auto fallback off', varModeMvu: 'MVU running (no auto takeover)', varModeFallback: 'fallback engine active', varAuto: 'Auto-apply variables when MVU is absent (never touches MVU)', varBar: 'Show the apply-vars button above the input box', btnCheckFront: 'Check front-end blocks', frontNone: 'No front-end block on this floor', frontHit: 'front-end blocks', frontRendered: 'rendered', frontCollapsed: 'collapsed', front_ok: 'all rendered', front_partial: 'only some rendered - try reloading the page', front_collapse: 'collapsed by TavernHelper - set collapse_code_block to disabled or expand it', front_unrendered: 'none rendered - reload the page / switch chats / regenerate this floor', 'rs_check-unparsed': 'has check, unparsed', rs_command: 'command style', rs_paths: 'paths list only', rs_structure: 'structure only', rs_schema: 'rules in schema script', rs_prose: 'prose rules', rs_other: 'other style', rs_none: 'no rules in book',
+        secScan: 'Compatibility check', scanNote: 'Runs one pass over every character card: what card-compat can do and why it degrades (pure local computation)', scanRun: 'Run check', scanCopy: 'Copy report', scanIdle: 'Not scanned yet - press Run check', scanRunning: 'Scanning...', scanSum: 'Result', scanOf: ' cards', scanGuard: 'guardable', scanWrite: 'writable', scanRules: 'with rules', colCard: 'Card', colProto: 'Protocol', colCap: 'anchor/data/rules', colVerdict: 'Verdict', scanMore: '(first 200 only; use Copy report for the full list)', scanCopied: 'Report copied', scanCopyFail: 'Copy failed (clipboard unavailable)', v_all: 'All', v_ok: 'guard + check', 'v_guard-only': 'guard only (no variable block)', 'v_no-rules': 'variable block without rules', 'v_read-only': 'read-only protocol', 'v_format-only': 'format tags only (report)', 'v_helper-only': 'rendered by TavernHelper', v_plain: 'plain card (nothing to do)', 'v_dyn-bar': 'dynamic status bar (front-end)', scanDyn: 'Dynamic bars', scanPanel: 'Panels', scanDynYes: 'dynamic', scanNoRules: 'No-rule reasons', scanAlerts: 'Alerts', 'alert_new-dialect': 'possible new dialect', 'alert_disabled-views': 'render regexes disabled', disViews: 'Disabled render regexes', disAuto: ' (auto-enabled by card script)', disWarn: ' (will not render)', disAlt: ' (alternative, same kind enabled)', 'alert_disabled-alternative': 'render regexes (alternative)', applyHint: 'Patch this turn', 'apply_no-block': 'no variable block', 'apply_no-patch': 'block without patch ops', apply_unknown: 'stat_data unavailable', 'apply_not-applied': 'patch not applied - floors were recomputed from [InitVar] automatically; if still stale, use MVU Replay floor or reload' , apply_applied: 'applied', varApplyBtn: 'Apply vars', varNoOps: 'no variable patch on this floor', varNoBase: 'no initial variables ([InitVar] entry missing)', varBasePrev: 'base = previous floor', varBaseInit: 'base = [InitVar]', varWriteFail: 'failed to write variables (TavernHelper unavailable?)', varApplied: 'Variables applied', varMvuWarn: 'Every floor is checked: only floors whose patch never reached the variables are fixed, using MVU current state as the base. Applied floors are left untouched and delta is added once (idempotent). Continue?', varReplayTitle: 'Fix only the floors whose patch did not apply; MVU current state is the base', varReplayOk: 'Fixed the floors whose patch had not applied', varReplayNone: 'Every floor patch is already applied', varReplayFloors: 'floor(s)', varReplaySkipped: 'floor(s) skipped (all paths missed)', varRepair: 'Auto-apply patches that did not take effect (never overwrites floors MVU already applied)', varScopeMsg: 'write scope', varBusy: 'A variable repair is already running', varModeOff: 'auto fallback off', varModeMvu: 'MVU running (no auto takeover)', varModeFallback: 'fallback engine active', varAuto: 'Auto-apply variables when MVU is absent (never touches MVU)', varBar: 'Show the apply-vars button above the input box', btnCheckFront: 'Check front-end blocks', frontNone: 'No front-end block on this floor', frontHit: 'front-end blocks', frontRendered: 'rendered', frontCollapsed: 'collapsed', front_ok: 'all rendered', front_partial: 'only some rendered - try reloading the page', front_collapse: 'collapsed by TavernHelper - set collapse_code_block to disabled or expand it', front_unrendered: 'none rendered - reload the page / switch chats / regenerate this floor', 'rs_check-unparsed': 'has check, unparsed', rs_command: 'command style', rs_paths: 'paths list only', rs_structure: 'structure only', rs_schema: 'rules in schema script', rs_prose: 'prose rules', rs_other: 'other style', rs_none: 'no rules in book',
         protocol: 'Variable protocol', capWrite: 'can write variables back', capReadonly: 'read-only guard (does not touch host variables)', depLoading: 'Reading dependency versions...', depOff: 'Dependency check is off (panel switch)',
         compatNote: 'Compat mode: disables the event nudge / MVU write-back / auto var fix, leaving pure text guarding - turn it on when TavernHelper or MVU updates break things',
         injectPrompt: 'Inject tail structure reminder before generating (recommended)', injectAnchor: 'Add an empty anchor when missing',
@@ -112,7 +113,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', colField: 'Required field', colDone: 'Updated this reply',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', colField: 'Required field', colDone: 'Updated this reply', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -160,7 +161,7 @@ const settings = () => extension_settings[NAME];
 
 /* ── P1 ④ 角色卡档案缓存：同一角色 60s 内只解析一次（世界书很大时每次解析都卡） ── */
 let profCache = { key: '', prof: null, at: 0 };
-function invalidateProfile() { profCache = { key: '', prof: null, at: 0 }; }
+function invalidateProfile() { profCache = { key: '', prof: null, at: 0 }; schemaCache = null; schemaCacheKey = ''; scopeCache = null; scopeCacheKey = ''; }
 /** 汇总卡的文本（正则脚本 + 酒馆助手脚本 + 世界书 + 主字段），供变量协议识别使用 */
 function cardTextForProtocol(ch) {
     try {
@@ -739,8 +740,27 @@ function checkPatchApplied(messageId, opts) {
         for (let i = messageId - 1; i >= 0; i--) { const v = mvuVarsOf(i); if (v) { prev = v; break; } }
         const cur = mvuVarsOf(messageId);
         const r = patchApplyVerdict({ hasBlock: hasBlock, hasPatch: hasPatch, ops: ops, hasStates: !!(prev && cur), sameState: !!(prev && cur) && stableStringify(prev) === stableStringify(cur) });
+        // 0.11.0 状态级核对：面板的 ✅ 只说明「文本写了」，这里回答「变量真的变了没」（用户实测：一排 ✅ 但状态栏不动）
+        let sd = null;
+        try {
+            const sameFloor = !!(lastReport && lastReport.id === messageId);
+            const req = sameFloor ? (lastReport.required || []) : (profileOf().required || []);
+            const cov = sameFloor ? (lastReport.covered || []) : [];
+            // 本楼整体有没有推进：没推进（补丁没生效）时，「写了却没变」才是病灶；推进了只是「写的值本来就一样」
+            const floorApplied = !!(prev && cur) && stableStringify(prev) !== stableStringify(cur);
+            sd = stateDiffFields(cur, prev, req, cov, { applied: floorApplied });
+            if (sameFloor) lastReport.state = sd;
+            if (!sd.noBase && sd.stuck.length) {
+                stats.varStuck = (stats.varStuck || 0) + sd.stuck.length;
+                log('var-stuck', sd.stuck.length + ' 字段', '模型写了但存储值没变（状态栏不会更新）：' + sd.stuck.slice(0, 4).join('、'));
+            }
+        } catch (_) {}
         const box = document.getElementById('cc-apply');
-        if (box) box.textContent = T('applyHint') + '：' + T('apply_' + r.level) + (ops ? ('（' + ops + ' ops）') : '');
+        if (box) {
+            box.textContent = T('applyHint') + '：' + T('apply_' + r.level) + (ops ? ('（' + ops + ' ops）') : '')
+                + ((sd && !sd.noBase) ? ('　' + T('stateSummary') + ' ' + sd.advanced.length + '/' + (sd.advanced.length + sd.stuck.length + sd.same.length + sd.absent.length)) : '');
+        }
+        try { renderCoverageTable(); } catch (_) {}
         if (r.level === 'not-applied' || r.level === 'no-patch') {
             if ((!opts || opts.notify !== false) && !applyAlerted.has(messageId)) {
                 applyAlerted.add(messageId);
@@ -748,6 +768,11 @@ function checkPatchApplied(messageId, opts) {
                 toast(T('apply_' + r.level), 'warning');
             }
         }
+        // 0.11.0：确认「补丁没生效」就自动幂等重算一次（不依赖 MVU；重放幂等，不会二次累加 delta）。
+        // MVU 不在场时，哪怕整体判定 applied，只要有个别字段「写了没变」也修 —— 这时没有 MVU 的原生逻辑可撞。
+        // MVU 在场且整体 applied 时不动手：卡的 transform 可能算出我们复刻不了的派生值，宁可只提示、让用户点按钮。
+        const stuckNow = !!(sd && !sd.noBase && sd.stuck.length);
+        if ((r.level === 'not-applied' || (stuckNow && !mvuActive())) && (!opts || opts.repair !== false)) scheduleVarRepair(messageId);
         return r;
     } catch (_) { return null; }
 }
@@ -781,14 +806,22 @@ function initVarOfCard() {
         return Object.keys(parsed).length ? parsed : null;
     } catch (_) { return null; }
 }
-function readStateOf(id) {
-    try { const th = thApi(); if (!th || typeof th.getVariables !== 'function') return null; const v = th.getVariables({ type: 'message', message_id: id }); return (v && v.stat_data) || null; } catch (_) { return null; }
+/** 0.11.0：变量作用域（风险 3）—— message（MVU 同款，默认）/ chat / character，由 detectVarScope 从卡的脚本与世界书推断 */
+function scopeOpts(scope, id) {
+    const sc = scope || 'message';
+    if (sc === 'chat') return { type: 'chat' };
+    if (sc === 'character') return { type: 'character' };
+    return { type: 'message', message_id: id };
 }
-function writeStateOf(id, statData) {
+function readStateOf(id, scope) {
+    try { const th = thApi(); if (!th || typeof th.getVariables !== 'function') return null; const v = th.getVariables(scopeOpts(scope, id)); return (v && v.stat_data) || null; } catch (_) { return null; }
+}
+function writeStateOf(id, statData, scope) {
     try {
         const th = thApi();
-        if (th && typeof th.updateVariablesWith === 'function') { th.updateVariablesWith((v) => { v.stat_data = statData; return v; }, { type: 'message', message_id: id }); return true; }
-        if (th && typeof th.replaceVariables === 'function') { th.replaceVariables({ stat_data: statData }, { type: 'message', message_id: id }); return true; }
+        const opt = scopeOpts(scope, id);
+        if (th && typeof th.updateVariablesWith === 'function') { th.updateVariablesWith((v) => { v.stat_data = statData; return v; }, opt); return true; }
+        if (th && typeof th.replaceVariables === 'function') { th.replaceVariables({ stat_data: statData }, opt); return true; }
     } catch (e) { log('var-write-failed', '', String((e && e.message) || e)); }
     return false;
 }
@@ -811,20 +844,140 @@ async function applyFloorVars(messageId, opts) {
         if (!m || m.is_user || typeof m.mes !== 'string') return null;
         const ops = opsForMessage(m.mes);
         if (!ops.length) { if (!opts || opts.silent !== true) toast(T('varNoOps'), 'info'); return { applied: 0, skipped: [], reason: 'no-ops' }; }
-        let base = readStateOf(messageId - 1);
+        const sc = varScope();
+        let base = readStateOf(messageId - 1, sc.scope);
         let baseFrom = T('varBasePrev');
         if (!base) {
             const iv = initVarOfCard();
             if (iv) { base = iv; baseFrom = T('varBaseInit'); } else { toast(T('varNoBase'), 'warning'); return { applied: 0, skipped: [], reason: 'no-base' }; }
         }
-        const r = applyVarOps(base, ops);
-        const ok = writeStateOf(messageId, r.state);
+        const r = applyVarOps(base, ops, { clamps: schemaHintsOfCard().clamps });
+        const ok = writeStateOf(messageId, r.state, sc.scope);
         if (!ok) { toast(T('varWriteFail'), 'warning'); return { applied: 0, skipped: r.skipped, reason: 'write-failed' }; }
         rerenderFloor(messageId);
         log('var-applied', r.applied.length + ' ops（' + baseFrom + '）', '跳过 ' + r.skipped.length + ' 个：' + r.skipped.slice(0, 4).map((s) => s.path + '(' + s.reason + ')').join('、'));
         if (!opts || opts.toast !== false) toast(T('varApplied') + '：' + r.applied.length + ' / ' + ops.length, r.skipped.length ? 'warning' : 'success');
         return { applied: r.applied.length, skipped: r.skipped, reason: 'ok' };
     } catch (e) { log('var-apply-failed', '', String((e && e.message) || e)); return null; }
+}
+/* ── 0.11.0：幂等重算引擎（正面解决三个风险）──────────────────────
+ * 旧 A 路（applyFloorVars）用「上一楼的 stat_data」当基线逐楼应用。MVU 一旦漏应用某一楼，
+ * 之后每一楼都建在错误基线上，delta 还会被反复累加 —— 这就是「状态栏部分数据不更新」修不好的原因。
+ * 新 A 路：以 [InitVar] 为唯一初值，按楼层顺序把每层的补丁重放一遍，算出「每层本该有的 stat_data」再写回。
+ * 重放是纯函数且幂等：同一批补丁跑多少次结果都一样，所以 MVU 在场时也能安全自动修。
+ */
+let schemaCache = null, schemaCacheKey = '';
+let scopeCache = null, scopeCacheKey = '';
+/** 当前卡的脚本 + 世界书全文（schema 与作用域都从这里推断；按角色换卡自动失效） */
+function cardScriptText() {
+    try {
+        const ctx = getContext();
+        const ch = ctx && ctx.characters && ctx.characters[ctx.characterId];
+        const parts = [];
+        const st = (ch && ch.data && ch.data.extensions && ch.data.extensions.tavern_helper) || {};
+        for (const s of (Array.isArray(st.scripts) ? st.scripts : [])) parts.push(String((s && s.content) || ''));
+        const entries = (ch && ch.data && ch.data.character_book && ch.data.character_book.entries) || [];
+        for (const e of entries) parts.push(String((e && e.content) || ''));
+        return { key: String((ch && (ch.avatar || ch.name)) || (ctx && ctx.characterId) || ''), text: parts.join(String.fromCharCode(10)) };
+    } catch (_) { return { key: '', text: '' }; }
+}
+/** 卡的 MVU Zod schema → 夹取规则与类型（风险 2：对齐 MVU 的 z.coerce + _.clamp，避免超界/字符串数字） */
+function schemaHintsOfCard() {
+    try {
+        const c = cardScriptText();
+        if (schemaCache && schemaCacheKey === c.key) return schemaCache;
+        const r = schemaHints(c.text);
+        schemaCache = r; schemaCacheKey = c.key;
+        return r;
+    } catch (_) { return { clamps: [], types: [] }; }
+}
+/** 模板读的是哪个作用域，就写到哪个作用域（风险 3） */
+function varScope() {
+    try {
+        const c = cardScriptText();
+        if (scopeCache && scopeCacheKey === c.key) return scopeCache;
+        const r = detectVarScope(c.text);
+        scopeCache = r; scopeCacheKey = c.key;
+        return r;
+    } catch (_) { return { scope: 'message', reason: '' }; }
+}
+let replayRunning = false;
+let varRepairTried = new Set();
+let varRepairTimer = null;
+/** 检测到「补丁没生效」后，延迟一小会儿自动修一次（同一楼只修一次，避免和 MVU 抢写） */
+function scheduleVarRepair(messageId) {
+    try {
+        if (settings() && settings().compatMode) return false;
+        if (settings() && settings().varRepair === false) return false;
+        if (varRepairTried.has(messageId)) return false;
+        varRepairTried.add(messageId);
+        if (varRepairTimer) clearTimeout(varRepairTimer);
+        varRepairTimer = setTimeout(() => {
+            varRepairTimer = null;
+            stats.varRepairAuto = (stats.varRepairAuto || 0) + 1;
+            recomputeAllFloors({ silent: true, toast: false, auto: true });
+        }, 1200);
+        return true;
+    } catch (_) { return false; }
+}
+/**
+ * 只修「卡住」的楼层（策略见 logic.js 的 planFloorFixes）：
+ * 以 MVU 的真实快照为基线，MVU 已应用的楼层**永不覆盖**；本楼的 delta 只加这一次（不二次累加）；
+ * 我们解析不了的方言、MVU 自算的字段（时间流逝等）不会回退；MVU 完全不在场时才退回 [InitVar] 累积。
+ * 幂等：修完再跑一遍，存值已变 → 不再写。
+ * @param {{silent?:boolean, toast?:boolean, auto?:boolean, dryRun?:boolean}} [opts]
+ */
+async function recomputeAllFloors(opts) {
+    const o = opts || {};
+    const empty = { floors: 0, changed: 0, applied: 0, skippedFloors: [], scope: '', reason: '' };
+    if (replayRunning) return Object.assign({}, empty, { reason: 'busy' });
+    replayRunning = true;
+    try {
+        const s = settings();
+        if (s && s.enabled === false) return Object.assign({}, empty, { reason: 'disabled' });
+        if (s && s.compatMode && o.auto) return Object.assign({}, empty, { reason: 'compat-mode' });
+        const total = (chat && chat.length) || 0;
+        if (!total) return Object.assign({}, empty, { reason: 'no-chat' });
+        const sc = varScope();
+        const hints = schemaHintsOfCard();
+        const iv = initVarOfCard();
+        const floorOps = [], stored = [];
+        for (let i = 0; i < total; i++) {
+            const m = chat[i];
+            floorOps.push((m && !m.is_user && typeof m.mes === 'string') ? opsForMessage(m.mes) : []);
+            stored.push(readStateOf(i, sc.scope));      // MVU 的真实快照（拿不到就是 null）
+        }
+        if (!iv && !stored.some(Boolean)) {
+            if (o.silent !== true) toast(T('varNoBase'), 'warning');
+            return Object.assign({}, empty, { reason: 'no-base', scope: sc.scope });
+        }
+        const plan = planFloorFixes(stored, floorOps, iv || {}, { clamps: hints.clamps });
+        let written = 0, changed = 0, applied = 0;
+        const skippedFloors = [];
+        for (const p of plan) {
+            if (!p.ops) continue;                                       // 没有补丁的楼层保持原样
+            applied += p.applied;
+            if (p.skipped && p.skipped.length >= p.ops) { skippedFloors.push(p.index); continue; }  // 路径全落空 → 宁可不写
+            if (!p.write) continue;                                     // MVU 已应用 / 已经是对的 → 不写
+            changed++;
+            if (o.dryRun) continue;                                     // 试算模式：只统计不写（E2E / 排查用）
+            if (writeStateOf(p.index, p.want, sc.scope)) written++;
+        }
+        if (written) {
+            stats.varReplayRuns = (stats.varReplayRuns || 0) + 1;
+            stats.varReplayFloors = (stats.varReplayFloors || 0) + written;
+            let last = -1;
+            for (let i = plan.length - 1; i >= 0; i--) { if (plan[i].write) { last = i; break; } }
+            if (last >= 0) rerenderFloor(last);
+            log('var-replay', written + ' 层', '以 MVU 真实值为基线修「卡住」的楼层（补丁 ' + applied + ' 个操作）；范围 ' + sc.scope + (skippedFloors.length ? ('；' + skippedFloors.length + ' 层路径全落空已跳过') : ''));
+            if (o.toast !== false) toast(T('varReplayOk') + '：' + written + ' ' + T('varReplayFloors'), skippedFloors.length ? 'warning' : 'success');
+        } else if (!o.dryRun && o.toast !== false && o.silent !== true) {
+            toast(T('varReplayNone'), 'info');
+        }
+        if (o.dryRun && changed) log('var-replay-dry', changed + ' 层', '试算：这些楼层的变量需要修复（未写入）');
+        return { floors: written, changed: changed, applied: applied, skippedFloors: skippedFloors, scope: sc.scope, reason: 'ok', dryRun: !!o.dryRun, plan: plan.map((p) => ({ index: p.index, ops: p.ops, write: p.write, reason: p.reason })) };
+    } catch (e) { log('var-replay-failed', '', String((e && e.message) || e)); return Object.assign({}, empty, { reason: 'error' }); }
+    finally { replayRunning = false; }
 }
 /** 输入框功能按钮（照剧情推进插件的做法：prepend 进 #send_form） */
 function ensureVarBar() {
@@ -839,12 +992,29 @@ function ensureVarBar() {
     b.className = 'ccv-btn';
     b.textContent = T('varApplyBtn');
     b.addEventListener('click', async () => {
-        const id = chat.length - 1;
-        if (mvuActive()) {
-            const ok = await showConfirm({ title: T('varApplyBtn'), message: T('varMvuWarn'), confirmText: T('varApplyBtn'), danger: true });
+        // 0.11.0：按钮 = 「只修没生效的楼层」。MVU 在场时先确认一次（会写入变量，用户要知情）。
+        // 注意：ST 页面里没有 showConfirm 这个全局函数 —— 0.10.0 用它导致点击时抛 ReferenceError、
+        // 表现就是「点了没反应」（用户实测反馈）。改用 ST 自己的 callGenericPopup(POPUP_TYPE.CONFIRM)，
+        // 并且整段包 try/catch，任何异常都会弹出来，不再静默失败。
+        try {
+            // 先试算一次：没有再给出即时反馈（点了必有反应），有问题才弹确认框
+            const dry = await recomputeAllFloors({ dryRun: true, silent: true, toast: false });
+            if (dry && dry.reason === 'busy') { toast(T('varBusy'), 'info'); return; }
+            const need = (dry && dry.changed) || 0;
+            if (!need) {
+                log('var-check', '0 层', '所有楼层的补丁都已生效，无需修复');
+                toast(T('varReplayNone'), 'info');
+                return;
+            }
+            const sc = varScope();
+            const ok = await callGenericPopup('<b>' + escHtml(T('varApplyBtn')) + '</b><br>' + escHtml(T('varReplayTitle')) + '<br>' + escHtml(T('varReplayFloors') + '：' + need + '（' + T('varScopeMsg') + '：' + sc.scope + '）') + '<br><br>' + escHtml(T('varMvuWarn')), POPUP_TYPE.CONFIRM, '', { okButton: T('varApplyBtn'), cancelButton: T('close') });
             if (!ok) return;
+            const r = await recomputeAllFloors({});
+            if (r && r.reason === 'busy') toast(T('varBusy'), 'info');
+        } catch (e) {
+            log('var-btn-failed', '', String((e && e.message) || e));
+            toast(T('varWriteFail') + String((e && e.message) || e), 'warning');
         }
-        await applyFloorVars(id);
     });
     bar.appendChild(b);
     form.prepend(bar);
@@ -861,7 +1031,7 @@ function applyVarBar() {
         if (btn) {
             const auto = s.varAuto !== false;
             const mode = !auto ? T('varModeOff') : (mvuActive() ? T('varModeMvu') : T('varModeFallback'));
-            btn.title = T('varApplyBtn') + '（' + mode + '）';
+            btn.title = T('varApplyBtn') + '：' + T('varReplayTitle') + '（' + mode + '）';
             btn.textContent = T('varApplyBtn') + ((auto && !mvuActive()) ? ' ·' : '');
         }
     } catch (_) {}
@@ -900,12 +1070,26 @@ function renderCoverageTable() {
     const rep = lastReport;
     if (!rep) { box.innerHTML = '<div class="cc-muted">' + escHtml(T('noReport')) + '</div>'; return; }
     const parts = [];
-    parts.push('<table class="cc-tab"><thead><tr><th>' + escHtml(T('colField')) + '</th><th>' + escHtml(T('colDone')) + '</th></tr></thead><tbody>');
+    // 0.11.0：新增第三列「变量是否真的变了」—— 旧表只有「文本写没写」（用户实测：一排 ✅ 但状态栏不动，检查不出来）
+    parts.push('<table class="cc-tab"><thead><tr><th>' + escHtml(T('colField')) + '</th><th>' + escHtml(T('colDone')) + '</th><th>' + escHtml(T('colState')) + '</th></tr></thead><tbody>');
+    const st = rep.state || null;
     for (const f of (rep.required || [])) {
         const ok = (rep.covered || []).indexOf(f.path) >= 0;
-        parts.push('<tr><td>' + escHtml(f.path) + '</td><td>' + (ok ? '✅' : '❌') + '</td></tr>');
+        let mark = '<span class="cc-muted">—</span>';
+        if (st && !st.noBase) {
+            if ((st.advanced || []).indexOf(f.path) >= 0) mark = '✅';
+            else if ((st.stuck || []).indexOf(f.path) >= 0) mark = '<span class="cc-warn" title="' + escHtml(T('stateStuck')) + '">⚠️</span>';
+            else if ((st.same || []).indexOf(f.path) >= 0) mark = '<span class="cc-muted" title="' + escHtml(T('stateSame')) + '">➖</span>';
+            else mark = '<span class="cc-muted" title="' + escHtml(T('stateAbsent')) + '">○</span>';
+        }
+        parts.push('<tr><td>' + escHtml(f.path) + '</td><td>' + (ok ? '✅' : '❌') + '</td><td>' + mark + '</td></tr>');
     }
     parts.push('</tbody></table>');
+    if (st) {
+        parts.push(st.noBase
+            ? ('<div class="cc-line cc-muted">' + escHtml(T('stateNoBase')) + '</div>')
+            : ('<div class="cc-line ' + ((st.stuck || []).length ? 'cc-warn' : 'cc-muted') + '"><b>' + escHtml(T('stateSummary')) + '</b>：' + escHtml(T('stChanged')) + ' ' + (st.advanced || []).length + ' ｜ ' + escHtml(T('stateStuck')) + ' ' + (st.stuck || []).length + ' ｜ ' + escHtml(T('stateAbsent')) + ' ' + (st.absent || []).length + ((st.same || []).length ? (' ｜ ' + escHtml(T('stateSame')) + ' ' + (st.same || []).length) : '') + ((st.stuck || []).length ? escHtml(T('stateStuckWarn')) : '') + '</div>'));
+    }
     if (rep.written && rep.written.length) parts.push('<div class="cc-line"><b>' + escHtml(T('wrotePaths')) + '</b>：' + escHtml(rep.written.join('、')) + '</div>');
     if (rep.unknownPaths && rep.unknownPaths.length) parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('unknownPaths')) + '</b>：' + escHtml(rep.unknownPaths.join('、')) + '</div>');
     if (rep.extraPaths && rep.extraPaths.length) parts.push('<div class="cc-line cc-muted"><b>' + escHtml(T('extraPaths')) + '</b>：' + escHtml(rep.extraPaths.join('、')) + '</div>');
@@ -1081,7 +1265,7 @@ function buildSettingsUi() {
         '<div id="cc-trend" class="cc-trend"></div>',
         '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
         cb('cc-enabled', 'enabled'), cb('cc-inject-prompt', 'injectPrompt'), cb('cc-inject', 'injectAnchor'), cb('cc-repair', 'repair'), cb('cc-stale', 'stale'),
-        cb('cc-var-auto', 'varAuto'), cb('cc-var-barcb', 'varBar'),
+        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-var-barcb', 'varBar'),
         "<button id=\"cc-check\" class=\"menu_button\">" + escHtml(T('btnCheck')) + "</button>",
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         "<button id=\"cc-check-front\" class=\"menu_button\">" + escHtml(T('btnCheckFront')) + "</button>",
@@ -1150,6 +1334,7 @@ function buildSettingsUi() {
     bind('cc-stale', 'notifyStale', true);
     bind('cc-inject-prompt', 'injectPrompt', true);
     bind('cc-var-auto', 'varAuto', true);
+    bind('cc-var-repair', 'varRepair', true);
     bind('cc-var-barcb', 'varBar', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
     bind('cc-bracket-tags', 'fixBracketTags', true);
@@ -1241,6 +1426,12 @@ function exposeApi() {
             scan: (cards) => scanCardCompatibility(cards || (getContext()?.characters || [])),
             invalidate: () => invalidateProfile(),
             changelog: () => showChangelog(),
+            recompute: (o) => recomputeAllFloors(o || {}),
+            varScope: () => varScope(),
+            varHints: () => schemaHintsOfCard(),
+            initVar: () => initVarOfCard(),
+            stateOf: (id, scope) => readStateOf(id, scope),
+            opsOf: (id) => { const m = chat && chat[id]; return (m && typeof m.mes === 'string') ? opsForMessage(m.mes) : []; },
             stats: () => Object.assign({}, stats),
             trend: () => covHistory.slice(),
         };
@@ -1263,7 +1454,7 @@ function exposeApi() {
     // ② 流式：生成结束（hideStopButton 触发），此时 messageId = chat.length-1
     eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } try { const id = chat.length - 1; setTimeout(() => { try { checkPatchApplied(id, { notify: false }); } catch (_) {} }, 2500); setTimeout(() => { try { checkPatchApplied(id); } catch (_) {} }, 7000); } catch (_) {}
     // 0.10.0：MVU 不在（或被关）时自动兜底 —— 自己把本轮补丁应用进变量，状态栏才会动
-    try { if (settings().varAuto !== false && !mvuActive()) { const id = chat.length - 1; setTimeout(() => { try { applyFloorVars(id, { silent: true, toast: false }); } catch (_) {} }, 1800); } } catch (_) {} });
+    try { if (settings().varAuto !== false && !mvuActive() && !settings().compatMode) { setTimeout(() => { try { recomputeAllFloors({ silent: true, toast: false, auto: true }); } catch (_) {} }, 1800); } } catch (_) {} });
     // ③ 渲染后兜底校验
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { verifyRendered(id); } catch (_) {} try { setTimeout(() => { try { checkFrontBlocks(id); } catch (_) {} }, 1500); } catch (_) {} });
     // 0.10.0：变量兜底按钮条（照剧情推进插件：注入 #send_form + 事件/MutationObserver 重注入）
@@ -1279,7 +1470,9 @@ function exposeApi() {
         }
     } catch (_) {}
     try { applyVarBar(); } catch (_) {}
-    eventSource.on(event_types.CHAT_CHANGED, () => { try { invalidateProfile(); applyFont(); lastSeen.clear(); updatePromptInjection(); setTimeout(normalizeRecent, 600); } catch (_) {} });
+    eventSource.on(event_types.CHAT_CHANGED, () => { try { invalidateProfile(); applyFont(); lastSeen.clear(); varRepairTried.clear(); updatePromptInjection(); applyVarBar(); setTimeout(normalizeRecent, 600); } catch (_) {} 
+      // 0.11.0：切聊天后自动跑一次「补丁生效 + 状态级核对」，面板第三列会自己填上；确认没生效就自动修
+      try { setTimeout(() => { try { checkPatchApplied(chat.length - 1, { notify: false }); } catch (_) {} }, 2200); } catch (_) {} });
     eventSource.on(event_types.MESSAGE_SENT, () => { try { updatePromptInjection(); } catch (_) {} });
     try { updatePromptInjection(); } catch (_) {}
     setTimeout(normalizeRecent, 900);

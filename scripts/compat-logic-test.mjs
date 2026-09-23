@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -659,8 +659,122 @@ const rv4 = applyVarOps({ a: { b: 1 } }, [{ op: 'move', from: '/a/b', path: '/a/
 check('④ move 搬移', rv4.state['a']['c'] === 1 && rv4.state['a']['b'] === undefined, rv4.state);
 const scc = parseSetCommands(['_.set("角色.金钱", 100)', '_.add(角色.体力, -10)', '_.assign(角色, 姓名, "小明")', '_.remove(角色.临时)'].join(NL));
 check('⑤ 命令式 _.set/_.add/_.assign/_.remove 解析', scc.length === 4 && scc[0].op === 'replace' && scc[0].value === 100 && scc[1].op === 'delta' && scc[1].value === -10 && scc[2].path === '角色.姓名' && scc[3].op === 'remove', scc);
-check('⑥ 扩展接线（引擎/按钮条/自动兜底/开关/事件重注入）', idxSrc.indexOf('function applyFloorVars') > 0 && idxSrc.indexOf('function ensureVarBar') > 0 && idxSrc.indexOf('cc-var-bar') > 0 && idxSrc.indexOf('function mvuActive') > 0 && idxSrc.indexOf('varAuto') > 0 && idxSrc.indexOf('varBar') > 0 && /GENERATION_ENDED[\s\S]{0,600}applyFloorVars/.test(idxSrc) && /MutationObserver[\s\S]{0,300}cc-var-bar/.test(idxSrc));
+check('⑥ 扩展接线（引擎/按钮条/自动兜底/开关/事件重注入）', idxSrc.indexOf('function applyFloorVars') > 0 && idxSrc.indexOf('function ensureVarBar') > 0 && idxSrc.indexOf('cc-var-bar') > 0 && idxSrc.indexOf('function mvuActive') > 0 && idxSrc.indexOf('varAuto') > 0 && idxSrc.indexOf('varBar') > 0 && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && /MutationObserver[\s\S]{0,300}cc-var-bar/.test(idxSrc));
 check('⑥ 样式里有按钮条', readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8').indexOf('#cc-var-bar') > 0);
+
+console.log('— 夹具 36：幂等重算引擎（0.11.0；正面解决旧 A 路的三个风险）');
+// ① schemaHints：从真实 MVU Zod 写法里抠 _.clamp 与类型（风险 2）
+const schema36 = [
+  'export const Schema = z.object({',
+  '    系统: z.object({',
+  '        剧情天数: z.coerce.number(),',
+  '        时间: z.string(),',
+  '    }),',
+  '    林婉婷: z.object({',
+  '        好感度: z.coerce.number().transform(v => _.clamp(v, 0, 100)),',
+  '        堕落度: z.coerce.number().transform(v => _.clamp(v, 0, 100)),',
+  '        经济: z.object({',
+  '            欠款: z.coerce.number().transform(v => _.clamp(v, 0, 999999)),',
+  '        }),',
+  '    }),',
+  '    标记: z.coerce.boolean(),',
+  '});',
+].join(NL);
+const h36 = schemaHints(schema36);
+const clamp36 = h36.clamps.map((c) => c.path.join('.') + ':' + c.min + ',' + c.max);
+check('① 抠出嵌套路径的 _.clamp（含三层 林婉婷.经济.欠款）', clamp36.indexOf('林婉婷.好感度:0,100') >= 0 && clamp36.indexOf('林婉婷.堕落度:0,100') >= 0 && clamp36.indexOf('林婉婷.经济.欠款:0,999999') >= 0, clamp36);
+check('① 只手收带 _.clamp 的字段（不伪造范围）', h36.clamps.length === 3, h36.clamps.length);
+check('① 类型表：number / string / boolean', (function () { const m = {}; for (const t of h36.types) m[t.path.join('.')] = t.type; return m['系统.剧情天数'] === 'number' && m['系统.时间'] === 'string' && m['标记'] === 'boolean'; })(), h36.types);
+// ② 夹取 + 类型转换（风险 2）
+const c36 = applyVarOps({ 林婉婷: { 好感度: 90, 经济: { 欠款: 100 } }, 系统: { 剧情天数: 1 } }, [{ op: 'delta', path: '/林婉婷/好感度', value: 30 }, { op: 'delta', path: '/系统/剧情天数', value: '2' }], { clamps: h36.clamps });
+check('② delta 超上限被夹到 100（对齐 MVU 的 _.clamp）', c36.state['林婉婷']['好感度'] === 100, c36.state);
+check('② 字符串数字 delta 按现有类型转成数字（对齐 z.coerce）', c36.state['系统']['剧情天数'] === 3, c36.state);
+const c36b = applyVarOps({ 标记: true }, [{ op: 'replace', path: '/标记', value: 'false' }]);
+check('② 布尔字符串按现有类型转布尔', c36b.state['标记'] === false, c36b.state);
+check('② coerce:false 时保持原样（可关）', applyVarOps({ 系统: { 剧情天数: 1 } }, [{ op: 'delta', path: '/系统/剧情天数', value: '2' }], { coerce: false }).state['系统']['剧情天数'] === 1);
+// ③ pathMatches
+check('③ pathMatches：精确 / * 通配一层 / 长度不等不匹配', pathMatches(['林婉婷', '好感度'], ['林婉婷', '好感度']) === true && pathMatches(['林婉婷', '好感度'], ['*', '好感度']) === true && pathMatches(['林婉婷', '好感度'], ['林婉婷']) === false);
+// ④ replayFloorStates：幂等（风险 1 —— 旧 A 路反复累加 delta）
+const floorOps36 = [
+  [],
+  [{ op: 'delta', path: '/角色/钱', value: -20 }],
+  [{ op: 'replace', path: '/角色/体力', value: 40 }],
+  [{ op: 'delta', path: '/角色/钱', value: 5 }, { op: 'replace', path: '/系统/时间', value: '15:00' }],
+];
+const init36 = { 角色: { 钱: 100, 体力: 50 }, 系统: { 时间: '14:00' } };
+const rep36a = replayFloorStates(init36, floorOps36);
+const rep36b = replayFloorStates(init36, floorOps36);
+check('④ 每层给出补丁后的状态（第 2 层 delta 只算一次）', rep36a[1].state['角色']['钱'] === 80 && rep36a[3].state['角色']['钱'] === 85, rep36a.map((x) => x.state['角色']['钱']));
+check('④ 幂等：重放两次结果完全一致（旧 A 路会得到 80 → 75 → 70）', stableStringify(rep36a) === stableStringify(rep36b));
+check('④ 没有补丁的楼层继承上一层状态', stableStringify(rep36a[0].state) === stableStringify(init36));
+check('④ 不改初值对象（纯函数）', init36['角色']['钱'] === 100);
+check('④ 汇总每层 applied / skipped', rep36a[3].applied === 2 && rep36a[1].skipped.length === 0);
+// ⑤ detectVarScope（风险 3）
+check('⑤ all_variables / message 类型 → message（MVU 同款，默认）', detectVarScope('const v = getVariables({ type: "message" }); {{getvar::stat_data}}').scope === 'message');
+check('⑤ character 变量 → character', detectVarScope("getVariables({ type: 'character' })").scope === 'character');
+check('⑤ chat_metadata / getvar 宏 → chat', detectVarScope('chat_metadata.stat_data').scope === 'chat' && detectVarScope('{{getvar::foo}}').scope === 'chat');
+check('⑤ 说不准时默认 message（与 MVU 写在同一处，最安全）', detectVarScope('面板渲染代码').scope === 'message');
+// ⑥ 扩展接线
+check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,3000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
+check('⑥ 试算模式 dryRun：只统计不写（E2E / 排查用）', idxSrc.indexOf('o.dryRun') > 0 && /dryRun: !!o.dryRun/.test(idxSrc));
+check('⑥ 版本号已到 0.11.0', idxSrc.indexOf("const VERSION = '0.11.0'") > 0);
+
+console.log('— 夹具 37：状态级核对（0.11.0；用户实测「一排 ✅ 但状态栏不动，检查不出来」）');
+const prev37 = { 系统: { 时间: '14:00', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: 'user家门口' }, 陈慧兰: { 位置: '公司' } };
+const cur37 = { 系统: { 时间: '14:15', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: '客厅' }, 陈慧兰: { 位置: '公司' } };
+const req37 = [{ path: '系统.时间' }, { path: '系统.日期' }, { path: '林婉婷.外貌.表情' }, { path: '林婉婷.位置' }, { path: '陈慧兰.位置' }];
+const sd37 = stateDiffFields(cur37, prev37, req37, ['系统.时间', '系统.日期', '林婉婷.外貌.表情', '林婉婷.位置']);
+check('① 存储值真的变了 → advanced（系统.时间 / 林婉婷.位置）', sd37.advanced.indexOf('系统.时间') >= 0 && sd37.advanced.indexOf('林婉婷.位置') >= 0, sd37.advanced);
+check('② 文本写了但存储值没变 → stuck（病灶：系统.日期 / 林婉婷.外貌.表情）', sd37.stuck.indexOf('系统.日期') >= 0 && sd37.stuck.indexOf('林婉婷.外貌.表情') >= 0, sd37.stuck);
+check('③ 文本没写也算不出变化 → absent（陈慧兰.位置：母亲本轮没登场，不该误报）', sd37.absent.indexOf('陈慧兰.位置') >= 0, sd37.absent);
+check('④ 三类互斥且不丢字段', (function () { const all = [].concat(sd37.advanced, sd37.stuck, sd37.absent); return all.length === req37.length && new Set(all).size === req37.length; })(), [sd37.advanced.length, sd37.stuck.length, sd37.absent.length]);
+check('⑤ 拿不到 stat_data → noBase（不能瞎报 ✅ / ❌）', stateDiffFields(null, prev37, req37, []).noBase === true);
+check('⑤b 本楼整体已推进时，「写了但值本来就一样」记 same（不是 ⚠️ 病灶）', (function () { const s = stateDiffFields(cur37, prev37, req37, ['系统.时间', '系统.日期', '林婉婷.外貌.表情', '林婉婷.位置'], { applied: true }); return s.same.indexOf('系统.日期') >= 0 && s.same.indexOf('林婉婷.外貌.表情') >= 0 && s.stuck.length === 0 && s.advanced.indexOf('系统.时间') >= 0; })(), 'same');
+check('⑥ 模板组路径逐候选比较（{林婉婷|陈慧兰}.外貌.表情 都没变 → stuck）', (function () { const p = { 林婉婷: { 外貌: { 表情: '平静' } }, 陈慧兰: { 外貌: { 表情: '微笑' } } }; const c = { 林婉婷: { 外貌: { 表情: '平静' } }, 陈慧兰: { 外貌: { 表情: '微笑' } } }; const s = stateDiffFields(c, p, [{ path: '{林婉婷|陈慧兰}.外貌.表情' }], ['{林婉婷|陈慧兰}.外貌.表情']); return s.stuck.length === 1 && s.advanced.length === 0; })(), 'template group');
+check('⑦ valueAtPath 支持点分与斜杠路径，取不到返回 undefined', valueAtPath({ a: { b: 1 } }, 'a.b') === 1 && valueAtPath({ a: { b: 1 } }, '/a/b') === 1 && valueAtPath({ a: { b: 1 } }, 'a.c') === undefined && valueAtPath(null, 'a') === undefined);
+check('⑧ 扩展接线（面板第三列 + 状态行 + 自检里真的算 + 修复提示语）', idxSrc.indexOf('stateDiffFields') > 0 && idxSrc.indexOf("T('colState')") > 0 && idxSrc.indexOf("T('stateSummary')") > 0 && idxSrc.indexOf("T('stateStuckWarn')") > 0 && /checkPatchApplied[\s\S]{0,3000}stateDiffFields/.test(idxSrc));
+check('⑨ 切聊天后自动核对（面板第三列自己填上，没生效就自动修）', /CHAT_CHANGED[\s\S]{0,900}checkPatchApplied/.test(idxSrc) && /CHAT_CHANGED[\s\S]{0,900}normalizeRecent/.test(idxSrc));
+check('⑩ 按钮不再用不存在的 showConfirm（0.10.0 的病灶：点了没反应），改用 ST 的 callGenericPopup + 异常可见', idxSrc.indexOf('showConfirm(') < 0 && idxSrc.indexOf('POPUP_TYPE.CONFIRM') > 0 && idxSrc.indexOf("T('varBusy')") > 0 && /var-btn-failed/.test(idxSrc) && /recomputeAllFloors\(\{ dryRun: true, silent: true, toast: false \}\)/.test(idxSrc));
+check('⑩ same 分类接线（第三列 + 汇总）', idxSrc.indexOf("T('stateSame')") > 0 && idxSrc.indexOf('stateSame') > 0 && /st\.same/.test(idxSrc));
+
+console.log('— 夹具 38：只修「卡住」的楼层（0.11.0；实测「破产后姐姐…」第 3/5/7 楼的真实数据）');
+// 真实数据：InitVar 时间 14:00 / 地点 user家门口；第 3 楼只有 <Analysis> 没有 <JSONPatch>，
+// 但 MVU 自己的「时间流逝」把 系统.时间 推到 14:15；第 5、7 楼的 <JSONPatch> 合法（时间 14:25、地点 user家客厅）
+// 却没被 MVU 应用 —— 状态栏因此一直停在 14:15/user家门口（用户反馈「时间和地点根本就没更新」）。
+// 关键：不能拿 [InitVar] 全量重放写回，否则会把 MVU 算出来的 14:15 回退成 14:00。
+const init38 = { 系统: { 日期: '2025年7月18日', 时间: '14:00', 地点: 'user家门口' }, 林婉婷: { 位置: 'user家门口', 外貌: { 表情: '平静' }, 心情: '平静', 经济: { 现金: 3000 } }, user: { 累计支出_林婉婷: 0 } };
+const s38 = JSON.parse(JSON.stringify(init38));
+s38['系统']['时间'] = '14:15';    // MVU 时间流逝的结果（没有任何补丁记录它）
+const p5 = [
+  { op: 'replace', path: '/系统/时间', value: '14:25' },
+  { op: 'replace', path: '/系统/地点', value: 'user家客厅' },
+  { op: 'replace', path: '/林婉婷/位置', value: 'user家客厅' },
+  { op: 'replace', path: '/林婉婷/心情', value: '满足' },
+  { op: 'replace', path: '/林婉婷/外貌/表情', value: '满足的笑意' },
+  { op: 'delta', path: '/林婉婷/经济/现金', value: -2500 },
+  { op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 },
+];
+const p7 = [
+  { op: 'replace', path: '/系统/时间', value: '14:25' },
+  { op: 'replace', path: '/系统/地点', value: 'user家客厅' },
+  { op: 'replace', path: '/林婉婷/位置', value: 'user家客厅' },
+  { op: 'replace', path: '/林婉婷/心情', value: '深陷肉欲' },
+  { op: 'delta', path: '/user/累计支出_林婉婷', value: 100 },
+];
+// 实测 ST 连 user 楼层也带变量快照（还是旧值）—— 它不许把「已经修好的基线」盖回去
+const stored38 = [null, init38, init38, s38, s38, s38, s38, s38, null];
+const ops38 = [[], [], [], [], [], p5, [], p7, []];
+const plan38 = planFloorFixes(stored38, ops38, init38);
+const wrote38 = plan38.filter((p) => p.write).map((p) => p.index);
+check('① 只修第 5、7 楼（补丁没生效的）；第 3 楼没有补丁、第 1/2 楼没有可修的 → 不动', wrote38.join(',') === '5,7', wrote38);
+check('② 以 MVU 真实值当基线：14:15 的时间流逝被保住（不会被回退成 InitVar 的 14:00）', plan38[5].want['系统']['时间'] === '14:25' && plan38[7].want['系统']['时间'] === '14:25', plan38[7].want['系统']);
+check('③ delta 只加一次：现金 3000 → 500（不是 -2000），第 5 楼累计支出 0 → 2500', plan38[5].want['林婉婷']['经济']['现金'] === 500 && plan38[7].want['林婉婷']['经济']['现金'] === 500 && plan38[5].want['user']['累计支出_林婉婷'] === 2500, [plan38[5].want['林婉婷']['经济'], plan38[5].want['user']]);
+check('④ user 楼层的旧快照不许盖回基线：第 7 楼 = 第 5 楼修完的值再叠加自己的补丁（累计 2500+100=2600，不是 0+100=100）', plan38[7].want['user']['累计支出_林婉婷'] === 2600 && plan38[7].want['林婉婷']['心情'] === '深陷肉欲' && plan38[7].want['林婉婷']['外貌']['表情'] === '满足的笑意', [plan38[7].want['user'], plan38[7].want['林婉婷']]);
+check('⑤ MVU 已应用的楼层（存值变了）标 mvu-applied 且绝不覆盖', (function () { const st = stored38.slice(); st[8] = JSON.parse(JSON.stringify(plan38[7].want)); st[8]['系统']['时间'] = '14:30'; const o8 = ops38.slice(); o8[8] = p7; const pl = planFloorFixes(st, o8, init38); return pl[8].write === false && pl[8].reason === 'mvu-applied'; })(), 'mvu-applied');
+check('⑥ 幂等：把修好的值当存值再跑一遍 → 一个都不写', (function () { const st = stored38.slice(); for (const p of plan38) if (p.write) st[p.index] = p.want; const pl2 = planFloorFixes(st, ops38, init38); return pl2.filter((p) => p.write).length === 0; })());
+check('⑦ MVU 完全不在场（全无存值）→ 退回 [InitVar] 累积，delta 仍只加一次', (function () { const none = [null, null, null, null, null, null, null, null, null]; const pl = planFloorFixes(none, ops38, init38); const w = pl.filter((p) => p.write); return w.length === 2 && w[0].want['林婉婷']['经济']['现金'] === 500 && w[1].want['林婉婷']['经济']['现金'] === 500; })());
+check('⑧ 没有补丁的楼层记 no-ops、不写', plan38[3].ops === 0 && plan38[3].write === false && plan38[3].reason === 'no-ops');
+check('⑨ 扩展接线（引擎用 planFloorFixes / 只写 write 的楼层 / 按钮标题已改口径）', idxSrc.indexOf('planFloorFixes') > 0 && /planFloorFixes\(stored, floorOps/.test(idxSrc) && idxSrc.indexOf('if (!p.write) continue') > 0 && idxSrc.indexOf("varReplayTitle") > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

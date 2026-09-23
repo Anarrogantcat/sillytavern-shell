@@ -941,11 +941,24 @@ export function parseSetCommands(text) {
  * 路径接受 /a/b 与 a.b；父路径不存在就跳过并记账（不猜、不建奇怪的中间层）。
  * @returns {{state:object, applied:string[], skipped:Array<{path:string,reason:string}>}}
  */
-export function applyVarOps(state, ops) {
+export function applyVarOps(state, ops, opts = {}) {
     const out = (state && typeof state === 'object') ? JSON.parse(JSON.stringify(state)) : {};
     const applied = [];
     const skipped = [];
     const segs = (p) => String(p == null ? '' : p).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
+    // 0.11.0：对齐 MVU 的 z.coerce + _.clamp —— 按「现有值类型」强制转换，并按卡的 schema 夹取范围
+    const clampOf = (segsArr, v) => {
+        if (typeof v !== 'number' || !Array.isArray(opts.clamps) || !opts.clamps.length) return v;
+        const rule = opts.clamps.find((r) => pathMatches(segsArr, r.path));
+        if (!rule) return v;
+        return Math.min(Math.max(v, rule.min), rule.max);
+    };
+    const coerceTo = (prev, v) => {
+        if (opts.coerce === false) return v;
+        if (typeof v === 'string' && typeof prev === 'number') { const n = Number(v.trim()); return Number.isFinite(n) ? n : v; }
+        if (typeof v === 'string' && typeof prev === 'boolean' && /^(true|false)$/i.test(v.trim())) return /^true$/i.test(v.trim());
+        return v;
+    };
     const seek = (segsArr, create) => {
         let node = out;
         for (const s of segsArr) {
@@ -967,22 +980,24 @@ export function applyVarOps(state, ops) {
             if (kind === 'replace' || kind === 'add') {
                 const parent = seek(head, false);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
-                parent[last] = op.value;
+                parent[last] = clampOf(path, coerceTo(parent[last], op.value));
             } else if (kind === 'delta') {
                 const parent = seek(head, false);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
                 const cur = parent[last];
-                if (typeof cur !== 'number' || typeof op.value !== 'number') { skipped.push({ path: String(op.path), reason: 'delta 需要两边都是数字' }); continue; }
-                parent[last] = cur + op.value;
+                const dv = coerceTo(cur, op.value);
+                if (typeof cur !== 'number' || typeof dv !== 'number') { skipped.push({ path: String(op.path), reason: 'delta 需要两边都是数字' }); continue; }
+                parent[last] = clampOf(path, cur + dv);
             } else if (kind === 'insert') {
                 const parent = seek(head, true);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不可建' }); continue; }
                 if (Array.isArray(parent)) {
-                    if (last === '-' || /^\d+$/.test(last) === false) parent.push(op.value);
-                    else parent.splice(Number(last), 0, op.value);
+                    const iv2 = clampOf(path, typeof op.value === 'number' ? op.value : coerceTo(0, op.value));
+                    if (last === '-' || /^\d+$/.test(last) === false) parent.push(iv2);
+                    else parent.splice(Number(last), 0, iv2);
                 } else {
                     if (parent[last] !== undefined) { skipped.push({ path: String(op.path), reason: 'insert 目标已存在（用 replace）' }); continue; }
-                    parent[last] = op.value;
+                    parent[last] = clampOf(path, coerceTo(undefined, op.value));
                 }
             } else if (kind === 'remove') {
                 const parent = seek(head, false);
@@ -1004,6 +1019,132 @@ export function applyVarOps(state, ops) {
         } catch (e) { skipped.push({ path: String(op && op.path), reason: String((e && e.message) || e) }); }
     }
     return { state: out, applied: applied, skipped: skipped };
+}
+/**
+ * 0.11.0：从卡片的 MVU Zod schema 源码里抠出「夹取规则」与类型信息（引擎对齐 MVU 的 transform/clamp）。
+ * 只认实际用到的写法：`键: z.coerce.number().transform(v => _.clamp(v, 0, 100))`、`z.number()`、`z.string()`、`z.boolean()`。
+ * @returns {{clamps:Array<{path:string[],min:number,max:number}>, types:Array<{path:string[],type:string}>}}
+ */
+export function schemaHints(scriptText) {
+    const clamps = [], types = [];
+    const lines = String(scriptText || '').split(/\r?\n/);
+    const stack = [];
+    for (const raw of lines) {
+        const line = raw.replace(/\/\/.*$/, '');
+        if (!line.trim()) continue;
+        const indent = line.length - line.replace(/^\s+/, '').length;
+        while (stack.length && indent <= stack[stack.length - 1].indent) stack.pop();
+        const key = line.match(/^\s*([\w\u4e00-\u9fa5$]+)\s*:\s*(.+)$/);
+        if (!key) {
+            if (/^\s*\}/.test(line)) { if (stack.length) stack.pop(); }
+            continue;
+        }
+        const k = key[1];
+        const rest = key[2];
+        const path = stack.map((s) => s.k).concat([k]);
+        if (/z\s*\.\s*object\s*\(/.test(rest)) { stack.push({ indent: indent, k: k }); continue; }
+        if (/z\s*\.\s*record\s*\(/.test(rest)) { continue; }
+        const clamp = rest.match(/_.clamp\(\s*([^,]+),\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
+        if (clamp) clamps.push({ path: path, min: Number(clamp[2]), max: Number(clamp[3]) });
+        if (/z\s*\.\s*(coerce\s*\.\s*)?number\s*\(/.test(rest)) types.push({ path: path, type: 'number' });
+        else if (/z\s*\.\s*(coerce\s*\.\s*)?bool(ean)?\s*\(/.test(rest)) types.push({ path: path, type: 'boolean' });
+        else if (/z\s*\.\s*(coerce\s*\.\s*)?string\s*\(/.test(rest)) types.push({ path: path, type: 'string' });
+    }
+    const uniq = (arr) => { const seen = new Set(); return arr.filter((x) => { const s = x.path.join('.'); if (seen.has(s)) return false; seen.add(s); return true; }); };
+    return { clamps: uniq(clamps), types: uniq(types) };
+}
+
+/** 路径匹配：'林婉婷.关系态度' 命中规则路径 ['林婉婷','关系态度']（也允许规则里带 * 通配一层） */
+export function pathMatches(segs, rulePath) {
+    if (!Array.isArray(segs) || !Array.isArray(rulePath) || segs.length !== rulePath.length) return false;
+    return rulePath.every((r, i) => r === '*' || String(segs[i]) === String(r));
+}
+
+/**
+ * 0.11.0：幂等重放 —— 从初值开始，按楼层顺序逐楼应用补丁，返回每一楼的「补丁后状态」。
+ * 为什么这样就安全：状态是从 InitVar 重算的，同一批补丁重放多少次结果都一样（delta 也只加一次），
+ * 所以 MVU 在场时也能放心自动修，不会二次累加。
+ * @returns {Array<{state:object, applied:number, skipped:Array}>}
+ */
+export function replayFloorStates(initState, floorOpsList, opts) {
+    const out = [];
+    let cur = (initState && typeof initState === 'object') ? initState : {};
+    for (const ops of (floorOpsList || [])) {
+        const r = applyVarOps(cur, ops || [], opts);
+        cur = r.state;
+        out.push({ state: cur, applied: r.applied.length, skipped: r.skipped });
+    }
+    return out;
+}
+
+/**
+ * 0.11.0：逐楼决定「这一楼要不要修、修成什么」。这是引擎的核心，也是实测过的安全策略。
+ *
+ * 为什么不能无脑从 [InitVar] 全量重放写回（本函数存在的原因）：
+ * 真实卡「破产后姐姐和美母和我的性交易」第 3 楼**只有 <Analysis> 没有 <JSONPatch>**，
+ * 但 MVU 自己的「时间流逝」特性把 系统.时间 从 14:00 推到了 14:15。
+ * 靠 [InitVar] 重放根本不知道这 15 分钟，会把第 3/4 楼从 14:15 回退成 14:00 —— 这是写坏数据。
+ * 又因为第 5、7 楼的 <JSONPatch> 完全合法（14 个/12 个操作）却没被 MVU 应用，状态栏卡在 14:15。
+ *
+ * 策略（只修「卡住」的楼层，且以 MVU 的真实值为基线）：
+ *   base      = 该楼之前**当前最新**的真实值（我们刚写的值，或 MVU 存的值；都没有才退回 [InitVar]）
+ *   want      = base 应用本楼补丁
+ *   卡住判据  = 本楼存值与**上一楼原值**一模一样（= 补丁没被应用），或本楼压根没有存值
+ *   写回条件  = 卡住 且 want 与现值不同
+ * 好处：
+ *   ① MVU 已经应用过的楼层**永不覆盖**（存值变了就跳过）；
+ *   ② delta 不会二次累加（base 用的是 MVU 的真实当前值，本楼的 delta 只加这一次）；
+ *   ③ 我们解析不了的方言 / MVU 自算的字段（时间流逝等）**不会回退**，因为基线就是 MVU 的值；
+ *   ④ 幂等：写完再跑一遍，存值已变 → 不再写。
+ * @param {Array<object|null>} stored 每楼存下来的 stat_data（没有就 null）
+ * @param {Array<Array<object>>} ops 每楼解析出的补丁操作
+ * @param {object} initState [InitVar] 初值（MVU 完全不在场时用）
+ * @returns {Array<{index:number, ops:number, write:boolean, want:object|null, applied:number, skipped:Array, reason:string}>}
+ */
+export function planFloorFixes(stored, ops, initState, opts = {}) {
+    const n = (stored || []).length;
+    const out = [];
+    let base = (initState && typeof initState === 'object') ? initState : {};
+    let prevOrig = null;
+    let fixedAny = false;   // 修过任何一楼之后，我们自己写的值就是最新真相，后面「没补丁的楼层」的旧快照不许把它盖回去
+    for (let i = 0; i < n; i++) {
+        const o = (ops && ops[i]) || [];
+        const cur = (stored && stored[i]) || null;
+        const info = { index: i, ops: o.length, write: false, want: null, applied: 0, skipped: [], reason: 'no-ops' };
+        if (o.length) {
+            const r = applyVarOps(base, o, opts);
+            info.want = r.state;
+            info.applied = r.applied.length;
+            info.skipped = r.skipped;
+            const stuck = cur ? (prevOrig ? stableStringify(cur) === stableStringify(prevOrig) : false) : true;
+            if (stuck && stableStringify(cur) !== stableStringify(r.state)) { info.write = true; info.reason = 'stuck'; }
+            else if (stuck) info.reason = 'already-correct';
+            else info.reason = 'mvu-applied';
+            base = info.write ? r.state : (cur || r.state);
+        } else if (cur) {
+            // 没补丁的楼层（含 user 楼层——实测 ST 也会给 user 快照）：
+            // 只有在我们还没修过任何楼层、或者 MVU 自己往前推了（时间流逝等）时才采纳它的快照。
+            const advanced = prevOrig ? stableStringify(cur) !== stableStringify(prevOrig) : false;
+            if (!fixedAny || advanced) base = cur;
+        }
+        if (cur) prevOrig = cur;
+        if (info.write) fixedAny = true;
+        out.push(info);
+    }
+    return out;
+}
+
+/**
+ * 0.11.0：探测模板读的是哪个 scope（写变量时要写到对的地方）。
+ * message（默认，MVU 同款）/ chat / character。
+ * @returns {{scope:'message'|'chat'|'character', reason:string}}
+ */
+export function detectVarScope(text) {
+    const t = String(text || '');
+    if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]message/i.test(t) || /all_variables/.test(t)) return { scope: 'message', reason: 'all_variables / message 变量' };
+    if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]character/i.test(t)) return { scope: 'character', reason: 'character 变量' };
+    if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]chat/i.test(t) || /chat_metadata/.test(t) || /getvar\s*\(/.test(t) || /\{\{\s*getvar::/i.test(t)) return { scope: 'chat', reason: 'chat 变量 / getvar' };
+    return { scope: 'message', reason: '默认（与 MVU 一致）' };
 }
 /** 稳定序列化：键排序后 JSON.stringify，用来比较两份 stat_data 是否等价 */
 export function stableStringify(v) {
@@ -1171,6 +1312,58 @@ export function patchCoverage(text, required) {
         }
     }
     return { total: (required || []).length, covered: covered, missing: missing, written: written, blocks: blocks.length };
+}
+
+/**
+ * 0.11.0：按点分/斜杠路径取 stat_data 里的值（'林婉婷.外貌.表情' 与 '/林婉婷/外貌/表情' 等价）。
+ * 取不到返回 undefined（不抛错）。
+ */
+export function valueAtPath(state, path) {
+    if (!state || typeof state !== 'object') return undefined;
+    const segs = String(path == null ? '' : path).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
+    let node = state;
+    for (const s of segs) {
+        if (node === null || typeof node !== 'object') return undefined;
+        if (!(s in node)) return undefined;
+        node = node[s];
+    }
+    return node;
+}
+
+/**
+ * 0.11.0：状态级核对 —— 「模型写了这条路径」不等于「变量真的变了」。
+ * 用户实测反馈：「面板里 ✅ 一片，状态栏却不更新，检查不出来」。
+ * 旧对照表只看回复文本里有没有这条路径（patchCoverage），不看 MVU 存下来的 stat_data 有没有真的变化，
+ * 所以补丁合法但没应用时它照样打 ✅。本函数把「文本写了」和「存储值变了」拆成两件事。
+ * @param {object} cur  本楼 stat_data（拿不到就传 null）
+ * @param {object} prev 上一楼 stat_data
+ * @param {Array<{path:string}>} required 本卡要求的字段
+ * @param {string[]} covered 本轮文本里写到的路径
+ * @param {{applied?:boolean}} [opts] 本楼整体是否真的推进了（stored 与上一楼不同）。
+ *   推进了却某字段没变 → 只是「写的值本来就是该值」（same），不是病灶；
+ *   整体没推进（补丁没生效）却写了这个字段 → 才是 stuck（⚠️）。
+ * @returns {{advanced:string[], stuck:string[], same:string[], absent:string[], noBase:boolean}}
+ *   advanced = 值真的变了；stuck = 补丁没生效且写了；same = 写了但值本来就一样；absent = 本轮没写
+ */
+export function stateDiffFields(cur, prev, required, covered, opts = {}) {
+    const out = { advanced: [], stuck: [], same: [], absent: [], noBase: !cur || typeof cur !== 'object' };
+    const floorApplied = opts.applied === true;
+    const cov = new Set(covered || []);
+    for (const f of (required || [])) {
+        const path = String((f && f.path) || '');
+        if (!path) continue;
+        const wrote = cov.has(path);
+        let cands = [path];
+        try { const ex = expandTemplateGroups([path]); if (ex && ex.length) cands = ex; } catch (_) {}
+        const defined = cands.some((c) => valueAtPath(cur, c) !== undefined || valueAtPath(prev, c) !== undefined);
+        if (out.noBase) { if (!wrote) out.absent.push(path); continue; }
+        if (!defined) { if (!wrote) out.absent.push(path); continue; }
+        const changed = cands.some((c) => stableStringify(valueAtPath(cur, c)) !== stableStringify(valueAtPath(prev, c)));
+        if (changed) out.advanced.push(path);
+        else if (wrote) { if (floorApplied) out.same.push(path); else out.stuck.push(path); }
+        else out.absent.push(path);
+    }
+    return out;
 }
 
 /** 数据新鲜度：从文本里抠出可比较的字段（第N天 / 日期 / 时刻 / 地点 / 天气） */

@@ -1,4 +1,28 @@
 # 更新日志
+## [0.11.0] - 2026-09-25
+### 修复
+- **「时间和地点根本就没更新」：定位到 MVU 没应用补丁，并给出安全修法**
+  - 离线读聊天 JSONL 得到的事实：`[InitVar]` 是 系统.时间 14:00 / 地点 user家门口；第 3 楼**只有 `<Analysis>` 没有 `<JSONPatch>`**，但 MVU 自己的「时间流逝」把 系统.时间 推到了 **14:15**；第 5、7 楼的 `<JSONPatch>` 完全合法（14 个 / 12 个操作，写的是 时间 14:25、地点 user家客厅）却**根本没被 MVU 应用**，各楼 `stat_data` 一直停在 14:15 / user家门口 → 状态栏不动
+  - 面板以前「检查不出来」：旧对照表只查**回复文本里有没有这条路径**，不看存下来的 `stat_data` 有没有真的变化，所以补丁没生效也照样打 ✅
+- **只修「卡住」的楼层**（新纯函数 `planFloorFixes()`，替代 0.10.0 的朴素兜底）：以 **MVU 的真实快照为基线**逐楼判断 —— 存值与上一楼原值一模一样（= 补丁没被应用）或根本没有存值，才算「卡住」并补应用；存值变过（MVU 已应用）的楼层**永不覆盖**
+  - 为什么不无脑从 `[InitVar]` 全量重放：那样会把 MVU 自己算出的 14:15 回退成 14:00（我们拿不到「时间流逝」那 15 分钟），属于写坏数据。现在解析不了的方言、MVU 自算的字段都不会被回退
+  - `delta` 只加一次：基线就是 MVU 的当前真实值，修完再跑一遍不再写（幂等，实测第二轮 0 写入）
+  - 实测 ST **连 user 楼层也带变量快照**（还是旧值）；修过楼层之后，这些旧快照不许把「已经修好的基线」盖回去（已进夹具）
+- **自动修复**（新开关 `varRepair`，默认开）：`checkPatchApplied` 判定「补丁没生效」后延迟 1.2 秒自动修一次（同一楼只修一次）；MVU 不在场时，只要有个别字段「写了没变」也会修。MVU 在场且整体已生效时不动手，只提示
+- **「点击补应用变量按钮没反应」**（用户实测反馈）：0.10.0 的按钮在 MVU 在场时调用 `showConfirm(...)`，但 **ST 页面里根本没有这个全局函数** → 抛 ReferenceError 被事件回调吞掉，表现就是「点了没反应」。现在：① 先 `dryRun` 试算 —— **没有任何待修楼层就直接弹「所有楼层的补丁都已生效，无需修复」**，点了必有反应；② 确实有要修的才弹 `callGenericPopup(..., POPUP_TYPE.CONFIRM, ...)` 确认（写清待修层数与写回作用域）；③ 整段包 try/catch，异常会弹出来并写日志 `var-btn-failed`
+- 顺带修「状态级核对」把「写的值本来就一样」误报成 ⚠️：本楼整体已推进时记 `➖ 写的值和原来一样`（same），只有整体没推进（补丁没生效）时才算 ⚠️ 病灶
+### 新增
+- **状态级核对**（面板第③组新增第三列 + 状态行）：每行三态 —— **✅ 值真的变了** / **⚠️ 写了但没变（病灶）** / **○ 本轮没写**，并汇总「已变 N ｜ 写了没变 M ｜ 本轮没写 K」；拿不到 `stat_data` 时明确显示「无法核对」，不瞎报
+- **Zod schema 夹取**（风险 2）：`schemaHints()` 从卡的 MVU Zod 源码里抠 `_.clamp(v,min,max)` 与 number/string/boolean 类型；`applyVarOps` 据此夹取区间，并按现有值类型做 `z.coerce` 同款转换（数值字符串 → 数字、布尔字符串 → 布尔），可用 `{ coerce: false }` 关闭
+- **作用域探测**（风险 3）：`detectVarScope()` 从卡的脚本与世界书判断模板读的是 `message` / `chat` / `character` 变量，写回时写到对应作用域（默认 `message`，与 MVU 一致）
+- 「补应用变量」按钮改为**只修没生效的楼层**（不再只补当前楼，也不再全量重放），支持 `{ dryRun: true }` 试算（只统计不写）
+- `window.CardCompat` 新增 `recompute()` / `varScope()` / `varHints()` / `initVar()` / `stateOf()` / `opsOf()`（诊断用）
+- 新增纯函数 `schemaHints()` / `pathMatches()` / `replayFloorStates()` / `planFloorFixes()` / `detectVarScope()` / `stateDiffFields()` / `valueAtPath()`
+### 变更
+- 原「以 [InitVar] 全量重放」保留为纯函数 `replayFloorStates()`（夹具仍在用），但**写回不再使用它** —— 原因见上（会把 MVU 自算字段回退）
+- 夹取与作用域同时接进单楼兜底 `applyFloorVars`（legacy API 保留）
+- 夹具 `scripts/compat-logic-test.mjs` **282 → 323** 项（夹具 36：schema 夹取 / 类型转换 / 路径匹配 / 幂等重放 / 作用域；夹具 37：状态级核对三态、模板组逐候选、`valueAtPath`、接线；夹具 38：用真实第 3/5/7 楼数据验证「只修卡住的楼层」、保住 MVU 时间流逝、delta 只加一次、user 旧快照不盖基线、幂等、无 MVU 回退）
+
 ## [0.10.0] - 2026-09-24
 ### 新增
 - **变量兜底引擎（不依赖 MVU）**：MVU 不在（或被关）时，card-compat 自己当引擎 —— 从角色卡的 `[InitVar]` 条目建初值 → 解析并应用每轮的 `<JSONPatch>`（replace/delta/insert/remove/move）与命令式 `_.set/_.assign/_.add/_.remove` → 用酒馆助手 `updateVariablesWith` 写回该楼变量 → 重渲染该楼；卡自己的状态栏模板（读 `all_variables.stat_data`）随之更新
