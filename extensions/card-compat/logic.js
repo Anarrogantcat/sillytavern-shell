@@ -939,9 +939,10 @@ export function parseSetCommands(text) {
 /**
  * 0.10.0：把 op 列表应用到一份 stat_data 上（不改原对象）。支持 replace / delta / insert / remove / move；
  * 路径接受 /a/b 与 a.b；父路径不存在就跳过并记账（不猜、不建奇怪的中间层）。
+ * @param {boolean} skipDeltas 只跳过 delta（0.12.0 的透支保护会把整楼 delta 都跳掉）
  * @returns {{state:object, applied:string[], skipped:Array<{path:string,reason:string}>}}
  */
-export function applyVarOps(state, ops, opts = {}) {
+function runVarOps(state, ops, opts = {}, skipDeltas = false) {
     const out = (state && typeof state === 'object') ? JSON.parse(JSON.stringify(state)) : {};
     const applied = [];
     const skipped = [];
@@ -974,6 +975,7 @@ export function applyVarOps(state, ops, opts = {}) {
         const kind = String((op && op.op) || '').toLowerCase();
         const path = segs(op && op.path);
         if (!path.length) { skipped.push({ path: String((op && op.path) || ''), reason: '空路径' }); continue; }
+        if (skipDeltas && kind === 'delta') { skipped.push({ path: String(op.path), reason: '整楼 delta 已跳过（防透支保护）' }); continue; }
         const head = path.slice(0, -1);
         const last = path[path.length - 1];
         try {
@@ -1020,6 +1022,57 @@ export function applyVarOps(state, ops, opts = {}) {
     }
     return { state: out, applied: applied, skipped: skipped };
 }
+
+/**
+ * 0.12.0：把一份状态里「变成负数、但初值本来是非负数」的数值字段列出来。
+ * 用来发现两类问题：① 引擎/ MVU 把金额扣成了负数（实测「现金 500 被扣 2500 → -2000」）；
+ * ② 历史楼层里已经写坏的旧值，需要重算修回来。
+ * @returns {string[]} 点分路径，例如 ['林婉婷.经济.现金']
+ */
+export function negativeFields(state, initState) {
+    const out = [];
+    const walk = (node, path) => {
+        if (node == null || typeof node !== 'object') return;
+        for (const k of Object.keys(node)) {
+            const v = node[k];
+            const p = path.concat([k]);
+            if (typeof v === 'number') {
+                if (v < 0) {
+                    const iv = valueAtPath(initState, p.join('.'));
+                    if (typeof iv === 'number' && iv >= 0) out.push(p.join('.'));
+                }
+            } else if (v && typeof v === 'object') walk(v, p);
+        }
+    };
+    if (state && typeof state === 'object') walk(state, []);
+    return out;
+}
+
+/**
+ * 0.12.0：收支保护（实测「破产后姐姐…」的金钱错误）。
+ * 病灶：第 3 楼（无补丁，MVU 自己算的）已经把 欠款 3000→500、累计支出 0→2500 记过一次；
+ * 第 5 楼的补丁又写了 delta 现金 -2500 / delta 累计支出 +2500，且此前 MVU 没应用。
+ * 如果照单全收，现金 500 会被扣成 -2000 —— 明显不可能的数值。
+ *
+ * 规则（可关：{ overdraftGuard: false }）：
+ *   ① 先正常算一遍；
+ *   ② 若结果里出现「初值为非负、结果却变负」的数值字段，就认为**这一楼补丁的算术与真实余额不自洽**
+ *      （模型是按另一套余额算的），于是整楼的 delta 一律不应用，只应用 replace / insert / remove；
+ *   ③ 被拦下的路径记在 guardHit，交给面板/日志提示，绝不静默。
+ * 这样第 5 楼剩下来自 replace 的 时间/地点/心情/表情，金额保持 现金 500 / 累计支出 2500（不重复计费）。
+ * @returns {{state:object, applied:string[], skipped:Array, guardHit:string[]}}
+ */
+export function applyVarOps(state, ops, opts = {}) {
+    let r = runVarOps(state, ops, opts, false);
+    if (opts.overdraftGuard === false) return r;
+    const hit = negativeFields(r.state, state);
+    if (!hit.length) return r;
+    const r2 = runVarOps(state, ops, opts, true);
+    r2.skipped = r2.skipped.concat(hit.map((p) => ({ path: p, reason: '会让数值变成负数 → 整楼 delta 已跳过（防扣款错误）' })));
+    r2.guardHit = hit;
+    return r2;
+}
+
 /**
  * 0.11.0：从卡片的 MVU Zod schema 源码里抠出「夹取规则」与类型信息（引擎对齐 MVU 的 transform/clamp）。
  * 只认实际用到的写法：`键: z.coerce.number().transform(v => _.clamp(v, 0, 100))`、`z.number()`、`z.string()`、`z.boolean()`。
@@ -1099,7 +1152,9 @@ export function replayFloorStates(initState, floorOpsList, opts) {
  * @param {Array<object|null>} stored 每楼存下来的 stat_data（没有就 null）
  * @param {Array<Array<object>>} ops 每楼解析出的补丁操作
  * @param {object} initState [InitVar] 初值（MVU 完全不在场时用）
- * @returns {Array<{index:number, ops:number, write:boolean, want:object|null, applied:number, skipped:Array, reason:string}>}
+ * 0.12.0 追加：若某楼存值里出现了「初值非负、现值却是负数」的字段（实测 现金 -2000），
+ * 就算它「存值变了」，也一律重算修回来（reason = 'negative-fix'）。
+ * @returns {Array<{index:number, ops:number, write:boolean, want:object|null, applied:number, skipped:Array, reason:string, negative?:string[], guardHit?:string[]}>}
  */
 export function planFloorFixes(stored, ops, initState, opts = {}) {
     const n = (stored || []).length;
@@ -1111,21 +1166,31 @@ export function planFloorFixes(stored, ops, initState, opts = {}) {
         const o = (ops && ops[i]) || [];
         const cur = (stored && stored[i]) || null;
         const info = { index: i, ops: o.length, write: false, want: null, applied: 0, skipped: [], reason: 'no-ops' };
+        // 0.12.0：已经写坏的楼层（数值被扣成负数）必须重算修回来 —— 否则「存值变了 = MVU 已应用」会把它当成正常状态放过
+        const bad = negativeFields(cur, initState);
+        if (bad.length) info.negative = bad;
         if (o.length) {
             const r = applyVarOps(base, o, opts);
             info.want = r.state;
             info.applied = r.applied.length;
             info.skipped = r.skipped;
+            if (r.guardHit) info.guardHit = r.guardHit;
             const stuck = cur ? (prevOrig ? stableStringify(cur) === stableStringify(prevOrig) : false) : true;
-            if (stuck && stableStringify(cur) !== stableStringify(r.state)) { info.write = true; info.reason = 'stuck'; }
+            if (bad.length && stableStringify(cur) !== stableStringify(r.state)) { info.write = true; info.reason = 'negative-fix'; }
+            else if (stuck && stableStringify(cur) !== stableStringify(r.state)) { info.write = true; info.reason = 'stuck'; }
             else if (stuck) info.reason = 'already-correct';
             else info.reason = 'mvu-applied';
             base = info.write ? r.state : (cur || r.state);
         } else if (cur) {
-            // 没补丁的楼层（含 user 楼层——实测 ST 也会给 user 快照）：
-            // 只有在我们还没修过任何楼层、或者 MVU 自己往前推了（时间流逝等）时才采纳它的快照。
-            const advanced = prevOrig ? stableStringify(cur) !== stableStringify(prevOrig) : false;
-            if (!fixedAny || advanced) base = cur;
+            if (bad.length && stableStringify(cur) !== stableStringify(base)) {
+                // 没有补丁的楼层（含 user 快照）带着坏数值 → 用当前最新真相覆盖它
+                info.write = true; info.reason = 'negative-fix'; info.want = base;
+            } else {
+                // 没补丁的楼层（含 user 楼层——实测 ST 也会给 user 快照）：
+                // 只有在我们还没修过任何楼层、或者 MVU 自己往前推了（时间流逝等）时才采纳它的快照。
+                const advanced = prevOrig ? stableStringify(cur) !== stableStringify(prevOrig) : false;
+                if (!fixedAny || advanced) base = cur;
+            }
         }
         if (cur) prevOrig = cur;
         if (info.write) fixedAny = true;

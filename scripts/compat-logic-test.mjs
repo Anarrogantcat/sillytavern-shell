@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -717,7 +717,7 @@ check('⑤ 说不准时默认 message（与 MVU 写在同一处，最安全）',
 // ⑥ 扩展接线
 check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,3000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
 check('⑥ 试算模式 dryRun：只统计不写（E2E / 排查用）', idxSrc.indexOf('o.dryRun') > 0 && /dryRun: !!o.dryRun/.test(idxSrc));
-check('⑥ 版本号已到 0.11.0', idxSrc.indexOf("const VERSION = '0.11.0'") > 0);
+check('⑥ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.12.0'") > 0);
 
 console.log('— 夹具 37：状态级核对（0.11.0；用户实测「一排 ✅ 但状态栏不动，检查不出来」）');
 const prev37 = { 系统: { 时间: '14:00', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: 'user家门口' }, 陈慧兰: { 位置: '公司' } };
@@ -775,6 +775,31 @@ check('⑥ 幂等：把修好的值当存值再跑一遍 → 一个都不写', (
 check('⑦ MVU 完全不在场（全无存值）→ 退回 [InitVar] 累积，delta 仍只加一次', (function () { const none = [null, null, null, null, null, null, null, null, null]; const pl = planFloorFixes(none, ops38, init38); const w = pl.filter((p) => p.write); return w.length === 2 && w[0].want['林婉婷']['经济']['现金'] === 500 && w[1].want['林婉婷']['经济']['现金'] === 500; })());
 check('⑧ 没有补丁的楼层记 no-ops、不写', plan38[3].ops === 0 && plan38[3].write === false && plan38[3].reason === 'no-ops');
 check('⑨ 扩展接线（引擎用 planFloorFixes / 只写 write 的楼层 / 按钮标题已改口径）', idxSrc.indexOf('planFloorFixes') > 0 && /planFloorFixes\(stored, floorOps/.test(idxSrc) && idxSrc.indexOf('if (!p.write) continue') > 0 && idxSrc.indexOf("varReplayTitle") > 0);
+
+console.log('— 夹具 39：收支保护 / 金额负数修复（0.12.0；实测「现金 500 被扣 2500 → -2000」）');
+const iv39 = { 系统: { 时间: '14:15' }, 林婉婷: { 经济: { 现金: 500 } }, user: { 累计支出_林婉婷: 2500 } };
+const p39 = [
+  { op: 'replace', path: '/系统/时间', value: '14:25' },
+  { op: 'delta', path: '/林婉婷/经济/现金', value: -2500 },
+  { op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 },
+];
+const r39 = applyVarOps(iv39, p39);
+check('① 会透支的 delta → 整楼 delta 全跳过，replace 照常生效', !!r39.guardHit && r39.guardHit.indexOf('林婉婷.经济.现金') >= 0 && r39.state['林婉婷']['经济']['现金'] === 500 && r39.state['user']['累计支出_林婉婷'] === 2500 && r39.state['系统']['时间'] === '14:25', r39);
+check('① 拦下的路径记账（不静默）', r39.skipped.some((s) => s.reason.indexOf('整楼 delta 已跳过') >= 0), r39.skipped);
+check('① 可关闭：overdraftGuard:false 照旧扣成负数', applyVarOps(iv39, p39, { overdraftGuard: false }).state['林婉婷']['经济']['现金'] === -2000);
+check('① 本来就为负的字段不误伤', (function () { const rr = applyVarOps({ 债务: -100 }, [{ op: 'delta', path: '/债务', value: -50 }]); return !rr.guardHit && rr.state['债务'] === -150; })());
+check('① 正常的扣款不触发（100 - 50 = 50）', (function () { const rr = applyVarOps({ 现金: 100 }, [{ op: 'delta', path: '/现金', value: -50 }]); return !rr.guardHit && rr.state['现金'] === 50; })());
+check('① negativeFields 只挑「初值非负、现值负数」的字段', negativeFields({ a: { b: -1, c: -2 }, d: 3 }, { a: { b: 0 }, d: 0 }).join(',') === 'a.b');
+const bad39 = { 系统: { 时间: '14:25' }, 林婉婷: { 经济: { 现金: -2000 } }, user: { 累计支出_林婉婷: 5000 } };
+const good39 = { 系统: { 时间: '14:15' }, 林婉婷: { 经济: { 现金: 500 } }, user: { 累计支出_林婉婷: 2500 } };
+const plan39 = planFloorFixes([good39, bad39], [[], p39], iv39);
+check('② 坏楼层标 negative-fix 并重算：现金回 500、累计回 2500、时间 14:25', plan39[1].write === true && plan39[1].reason === 'negative-fix' && plan39[1].want['林婉婷']['经济']['现金'] === 500 && plan39[1].want['user']['累计支出_林婉婷'] === 2500 && plan39[1].want['系统']['时间'] === '14:25', plan39[1]);
+check('② 好楼层不动', plan39[0].write === false, plan39[0].reason);
+check('② 幂等：把修好的值当存值再跑 → 0 写入', planFloorFixes([good39, plan39[1].want], [[], p39], iv39).filter((p) => p.write).length === 0);
+check('② 路径全落空会计账（执行层据此宁可不写）', (function () { const pl = planFloorFixes([good39, bad39], [[], [{ op: 'replace', path: '/不存在/字段', value: 1 }]], iv39)[1]; return pl.ops === 1 && pl.skipped.length >= pl.ops; })());
+check('② 不带补丁的 user 快照若带坏值也会被覆盖回最新真相', (function () { const pl = planFloorFixes([good39, bad39, bad39], [[], p39, []], iv39); return pl[2].write === true && pl[2].reason === 'negative-fix'; })());
+check('③ 扩展接线（引擎传 overdraftGuard / 面板开关 / 拦下与修复都写日志提示）', /overdraftGuard: guardOn/.test(idxSrc) && idxSrc.indexOf("cb('cc-overdraft', 'overdraftGuard')") > 0 && idxSrc.indexOf("T('varGuardHit')") > 0 && idxSrc.indexOf("T('varNegFixed')") > 0 && /var-guard/.test(idxSrc) && /var-negative/.test(idxSrc));
+check('③ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.12.0'") > 0);
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);
