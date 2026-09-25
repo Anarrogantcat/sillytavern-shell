@@ -10,13 +10,13 @@
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 49405,
-          "sha1": "b55dc9d16ddfda088a5afe07078ed4a0f461679d"
+          "size": 49601,
+          "sha1": "3a78316e96ca020f6f55cb0d39989c734fca32cd"
         },
         {
           "path": "README.md",
-          "size": 3080,
-          "sha1": "a8401cb4c3dcbb72d4e93ed6486bb99188539e1e"
+          "size": 5532,
+          "sha1": "d3ed97671c2535e06f1594d2f376166c4c228fd8"
         },
         {
           "path": "assets/js-yaml.LICENSE.txt",
@@ -88,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-23T21:43:22.135Z"
+  "generatedAt": "2026-09-25T15:59:52.503Z"
 }

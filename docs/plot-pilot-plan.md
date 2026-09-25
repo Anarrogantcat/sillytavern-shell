@@ -1,7 +1,8 @@
 # 剧情推进器 plot-pilot v0.2 完整方案
 
 > 状态：**方案（未实现）**。本文只描述要做什么、怎么做、怎么验；代码改动从阶段 1 开始按版本号逐个落地。
-> 撰写时间：2026-09-20 ｜ 当前版本：**plot-pilot v0.1.2**（VERSION 常量在 `extensions/plot-pilot/logic.js`）｜ 壳版本 v2.0.4
+> 撰写时间：2026-09-20 ｜ 当前版本：**plot-pilot v0.1.5**（VERSION 常量在 `extensions/plot-pilot/index.js`）｜ 壳版本 **v2.2.13**
+> 【2026-09-25 校准】下面「0. 现状」与阶段版本映射写于 plot-pilot v0.1.2 / 壳 v2.0.4；`0.1.3～0.1.5` 已落地的是**扩展信息卡 + 查看日志 + 信息卡折叠**，方案正文里 F1～F9 的功能（推进目标 / 选项推进 / 快捷键 / 连推 / 联动）**仍未实现**。
 
 ---
 
@@ -32,7 +33,7 @@
 | G6 | **推进是否成功无反馈**：step 没变也不知道 | 无推进前后对比 |
 | G7 | **与 card-compat 无联动**：本地模型 30% 概率漏 `<UpdateVariable>`，推进后变量仍不动 | 两扩展互不感知 |
 | G8 | **按钮位置/外观不可调**：只能固定在发送栏上方 | `ensureBar()` 硬编码 `form.prepend(bar)` |
-| G9 | **面板只有中文** | 与 card-compat 0.2.8 的双语能力不一致 |
+| G9 | **面板只有中文** | 与 card-compat 0.13.2 的双语能力不一致 |
 | G10 | 探测为「无信号」的卡（实测 41/92）只能显示「续写」 | ——（这是设计，非缺陷；但可让 F1 的「指定目标」也对其生效） |
 
 **实测背景（v2.0.2 全量核查）**：92 张卡里强信号 2 张、弱信号 49 张、完全无信号 41 张 —— 所以 v0.2 的所有新功能都必须**对无信号卡优雅降级**（用兜底文案），不能假设卡里一定有蓝图变量。
@@ -57,7 +58,7 @@
 
 ## 2. 分阶段实施
 
-> 版本号规则：patch 最多到 6，所以节奏是 0.1.2 → **0.1.3 → 0.1.4 → 0.1.5 → 0.1.6** →（第三位满 6）→ **0.2.0**。
+> 版本号规则（2026-09-25 校准）：patch **无上限**，所以节奏就是 0.1.2 → **0.1.3 → 0.1.4 → 0.1.5 → 0.1.6 → 0.1.7 …**；只有要加新能力时才进 minor（**0.2.0**）。
 > 每阶段独立可发布，互不阻塞；每阶段结束都要：`logic.js` VERSION + `manifest.json` + `CHANGELOG.md`（扩展级）+ 仓库根 `CHANGELOG.md`（壳版本，因为扩展内容变了）+ `extensions/index.json` 重建 + 夹具全绿。
 
 ### 阶段 1 — v0.1.3：说不清就报错（推进目标 + 队列化）
@@ -117,7 +118,7 @@
 ### 阶段 4 — v0.2.0：联动与外观
 
 **F8 与 card-compat 联动（G7）**
-- 前提：card-compat 0.2.8 已暴露 `window.CardCompat`（`version / guard / coverage / writeBack / mvu()`）。
+- 前提：card-compat **0.13.2** 已暴露 `window.CardCompat`（含 `version / guard / coverage / writeBack / mvu() / stateOf() / recompute()`，完整清单见 `extensions/card-compat/README.md`）。
 - 配置 `prepVarsBeforeAdvance: false`（默认关，涉及一次静默生成，必须用户主动开）：
   - 推进前调用 `CardCompat.coverage(lastId)`；若必更字段未覆盖 → 调 `CardCompat.writeBack(lastId)`（card-compat 内部用 `parseMessage` 写回 MVU）
   - 成功 → log `prep-ok` 后再发推进指令；失败 → 气泡提示「变量没补上，可能仍是空转」但**不阻断**推进（玩家意图优先）
@@ -129,7 +130,7 @@
 - 必须保持「ST 重绘后能被 MutationObserver 补回」的既有行为（`ensureBar` 幂等）。
 
 **F10 面板中英双语（G9）**
-- 照搬 card-compat 0.2.8 的做法：面板文案表 `STRINGS.zh / STRINGS.en` + `lang: 'auto' | 'zh' | 'en'`（auto 跟随 `navigator.language`），面板第一组加语言选择器，切换后重建面板。
+- 照搬 card-compat 0.13.2 的做法：面板文案表 `STRINGS.zh / STRINGS.en` + `lang: 'auto' | 'zh' | 'en'`（auto 跟随 `navigator.language`），面板第一组加语言选择器，切换后重建面板。
 
 **F11 当前/下一个 step 显示**
 - 面板与按钮徽章共用 `currentStepSignal()`：显示「当前 step：X ｜ 下一：Y」，读不到则显示「（未探测到 step）」。
@@ -172,7 +173,7 @@
 | 3 | 同上 | 102 | 连推状态机 「用户插话即中止」「失败即中止」；step 不可比时不误报 |
 | 4 | 同上 | 113 | 无 `window.CardCompat` 时联动项隐藏；中英文案表 key 一一对应 |
 
-CI：`.github/workflows/release.yml` 的夹具步骤已在 v2.0.4 加入 `plot-pilot-test.mjs`，之后每阶段只需保证它绿。
+CI：`.github/workflows/release.yml` 的夹具步骤已在 v2.0.4 加入 `plot-pilot-test.mjs`（当前壳 v2.2.13），之后每阶段只需保证它绿。
 
 ---
 
@@ -193,7 +194,7 @@ CI：`.github/workflows/release.yml` 的夹具步骤已在 v2.0.4 加入 `plot-p
 ## 6. 版本与发布节奏
 
 1. 每阶段一份代码提交：`extensions/plot-pilot` 改动 + 扩展 `CHANGELOG.md` + `manifest.json` 版本 + 仓库根 `CHANGELOG.md` 一节 + `extensions/index.json` 重建 + `package.json` 版本递增（壳版本同步走）。
-2. 壳版本对应：阶段 1 → v2.0.5，阶段 2 → v2.0.6，阶段 3 → v2.1.0，阶段 4 → v2.1.1（遵守 patch ≤ 6 的进位规则）。
+2. 壳版本对应（2026-09-25 按现行规则重算）：阶段 1 → **v2.2.13**（本文档校准版），阶段 2 → v2.2.14，阶段 3 → v2.2.15，阶段 4 → v2.2.16；只有加新能力时才进 minor（`2.3.0`），不要再按「patch ≤ 6」进位。
 3. 每个 tag 推送后由 CI 出 Lite 安装包并发布；已装套壳的用户可经「检查扩展在线更新」拿到扩展，无需重装壳。
 
 ---
@@ -207,6 +208,6 @@ CI：`.github/workflows/release.yml` 的夹具步骤已在 v2.0.4 加入 `plot-p
 - [ ] `Alt+Enter` / `Alt+Shift+Enter` 生效，且在输入框已有文字时不触发。
 - [ ] 连推 ×3：日志出现 3 条 `advance-ok`（或中途 `advance-stalled` 并自动停止），按钮显示进度。
 - [ ] step 没变时出现气泡告警且连推停止；读不到 step 时不告警。
-- [ ] 装上 card-compat 0.2.8 时联动项可见、可开；未装时该项隐藏并说明。
+- [ ] 装上 card-compat 0.13.2 时联动项可见、可开；未装时该项隐藏并说明。
 - [ ] 语言切到 English 后面板文案全英文，切回中文无残留。
 - [ ] `node scripts/plot-pilot-test.mjs` 全绿（113 项），CI 夹具步骤通过。
