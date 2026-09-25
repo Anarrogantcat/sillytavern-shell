@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1355,6 +1355,34 @@ check('63 酒馆助手只作兜底（在 !viaSt 判断之后）', /if \(!viaSt\)
 check('63 走兜底时会记日志（该路不跑卡的正则）', rrFn.indexOf('rerender-fallback') > 0);
 check('63 ST 渲染失败会记日志而不是静默', rrFn.indexOf('rerender-st-failed') > 0);
 check('63 结尾仍补发 nudgeRender（让卡重画前端块）', rrFn.indexOf('nudgeRender(id)') > 0);
+
+console.log('');
+console.log('— 夹具 64：合并必须保类型 / 保结构（0.23.3，用户那张表的真实脏写法）');
+const f64c1 = coerceToShape(0, '1000（预付全套）');
+check('64 数字字段收到「1000（预付全套）」→ 保住数字 1000', f64c1.keep === true && f64c1.value === 1000 && typeof f64c1.value === 'number', f64c1);
+check('64 数字字段收到纯文字 → 拒绝写（保住旧值）', coerceToShape(0, '很多钱').keep === false);
+const f64ChestOld = { 状态: '干净', 总次数: 0, 当次次数: 0 };
+const f64c2 = coerceToShape(f64ChestOld, '干净, 0, 0');
+check('64 对象字段收到扁平「干净, 0, 0」→ 按旧键还原成对象', f64c2.keep === true && f64c2.value && f64c2.value['状态'] === '干净' && f64c2.value['总次数'] === 0 && f64c2.value['当次次数'] === 0, f64c2.value);
+check('64 对象字段收到对不上号的分段 → 拒绝写', coerceToShape({ a: 1, b: 2 }, 'x, y, z').keep === false);
+check('64 标量字段收到对象 → 拒绝写（不把结构写坏）', coerceToShape('旧文字', { x: 1 }).keep === false);
+const f64Prev = { user: { 累计支出_林婉婷: 2500 }, 陈慧兰: { 身体状态: { 嘴巴: { 状态: '干净', 总次数: 0, 当次次数: 0 } } } };
+const f64Parsed = { user: { 累计支出_林婉婷: '1000（预付全套）' }, 陈慧兰: { 身体状态: { 嘴巴: '干净, 0, 0' } } };
+const f64Skip = []; const f64Co = [];
+const f64Merged = mergeStatusTable(f64Prev, f64Parsed, { skipped: f64Skip, coerced: f64Co });
+check('64 合并后 累计支出还是数字（否则 delta 会失效）', typeof f64Merged.user['累计支出_林婉婷'] === 'number' && f64Merged.user['累计支出_林婉婷'] === 1000);
+check('64 合并后 陈慧兰.嘴巴 还是对象', f64Merged['陈慧兰']['身体状态']['嘴巴'] && typeof f64Merged['陈慧兰']['身体状态']['嘴巴'] === 'object');
+check('64 还原与跳过都有记录（面板与弹窗要显示）', f64Co.length === 2 && f64Skip.length === 0, { co: f64Co.length, skip: f64Skip.length });
+const f64Delta = applyVarOps(f64Merged, [{ op: 'delta', path: '/user/累计支出_林婉婷', value: 1000 }], { overdraftGuard: false });
+check('64 合并后 delta 仍可用（钱能继续累加）', f64Delta.state.user['累计支出_林婉婷'] === 2000, f64Delta.skipped);
+const f64Delta2 = applyVarOps(f64Merged, [{ op: 'delta', path: '/陈慧兰/身体状态/嘴巴/总次数', value: 1 }], { overdraftGuard: false });
+check('64 合并后嵌套 delta 仍可用（总次数 0→1）', f64Delta2.state['陈慧兰']['身体状态']['嘴巴']['总次数'] === 1);
+const f64Noise = [];
+mergeStatusTable({}, { 林婉婷: { 位置: '沙发上，依偎在染身边' } }, { skipped: f64Noise });
+check('64 中文逗号文案不会误报「扁平写法」', f64Noise.length === 0, f64Noise);
+const f64Noise2 = [];
+mergeStatusTable({}, { 陈慧兰: { 身体状态: { 嘴巴: '干净, 0, 0' } } }, { skipped: f64Noise2 });
+check('64 真正的扁平元组才会被标记', f64Noise2.length === 1);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

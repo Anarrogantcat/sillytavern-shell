@@ -1033,22 +1033,79 @@ export function parseStatusTable(text, opts) {
     if (!data) return { ok: false, reason: 'parse-failed', tag: found.tag, data: null, issues };
     return { ok: true, reason: 'ok', tag: found.tag, data, issues, chars: cleaned.length };
 }
+/**
+ * 0.23.3：合并时**保住旧值的类型与结构** —— 实测（用户那张表）两种脏写法会毁数据：
+ *   ① `累计支出_林婉婷: 1000（预付全套）` → 旧值是数字，写成字符串后 `delta` 直接失效（「需要两边都是数字」），钱不再累加
+ *   ② `陈慧兰: 嘴巴: 干净, 0, 0`（扁平紧凑行）→ 旧值是对象，写成字符串后 `嘴巴/总次数` 变成「父路径不存在」，该角色身体数据全废
+ * 规则：数字字段只取前导数字（保住 number）；对象字段遇到扁平文本时**按旧对象的键顺位还原**；
+ *       对不上号就**不写**（保留旧值）并记入 skipped —— 宁可少写一个字段，也不能把结构写坏。
+ */
+export function coerceToShape(oldVal, newVal) {
+    if (newVal === undefined) return { keep: false, reason: '值为 undefined' };
+    if (oldVal === undefined || oldVal === null) {
+        // 没有基线：整段照写；但扁平逗号串明显是「省略了键名」的写法，标出来让人看见
+        // 只在**真的像**「省略键名的紧凑元组」时才提示：2~6 段、每段很短、且至少一段是纯数字。
+        // 实测教训：中文逗号在日常文案里到处都是（「沙发上，依偎在染身边」），按逗号判会满屏误报。
+        const flatParts = (typeof newVal === 'string') ? String(newVal).split(/\s*[,，]\s*/) : [];
+        const flat = (flatParts.length >= 2 && flatParts.length <= 6
+            && flatParts.every((p) => p.length > 0 && p.length <= 8)
+            && flatParts.some((p) => /^-?\d+(\.\d+)?$/.test(p)));
+        return { keep: true, value: newVal, note: flat ? '无基线且是扁平写法，按原样写入（后续 delta 可能失效）' : '' };
+    }
+    const oldIsNum = typeof oldVal === 'number';
+    const oldIsObj = typeof oldVal === 'object' && !Array.isArray(oldVal);
+    if (oldIsNum && typeof newVal !== 'number') {
+        const m = /^\s*(-?\d+(?:\.\d+)?)/.exec(String(newVal));
+        if (m) return { keep: true, value: Number(m[1]), coerced: '数字字段去掉了注释文字（原为「' + String(newVal).slice(0, 20) + '」）' };
+        return { keep: false, reason: '数字字段收到非数字值「' + String(newVal).slice(0, 20) + '」，已跳过（保住旧值 ' + oldVal + '）' };
+    }
+    if (oldIsObj && (typeof newVal !== 'object' || newVal === null)) {
+        const parts = String(newVal).split(/\s*[,，]\s*/).filter((x) => x !== '');
+        const keys = Object.keys(oldVal);
+        if (parts.length === keys.length && parts.length >= 2) {
+            const out = {};
+            keys.forEach((k, i) => { const c = coerceToShape(oldVal[k], parts[i]); out[k] = c.keep ? c.value : oldVal[k]; });
+            return { keep: true, value: out, coerced: '扁平写法按旧结构还原（' + keys.join('/') + '）' };
+        }
+        return { keep: false, reason: '对象字段收到扁平文本「' + String(newVal).slice(0, 20) + '」且键数对不上，已跳过（保住旧结构）' };
+    }
+    if (!oldIsObj && newVal && typeof newVal === 'object' && !Array.isArray(newVal)) {
+        return { keep: false, reason: '标量字段收到对象，已跳过（保住旧值）' };
+    }
+    return { keep: true, value: newVal };
+}
+
 /** 把状态表深合并到旧状态上（表里没写的键保留旧值 —— 应对「（省略其余相同状态）」） */
-export function mergeStatusTable(prev, parsed) {
+export function mergeStatusTable(prev, parsed, opts) {
+    const o = opts || {};
+    const skipped = Array.isArray(o.skipped) ? o.skipped : null;
+    const coerced = Array.isArray(o.coerced) ? o.coerced : null;
     const out = (prev && typeof prev === 'object' && !Array.isArray(prev)) ? JSON.parse(JSON.stringify(prev)) : {};
-    const walk = (dst, src) => {
+    const walk = (dst, src, prefix) => {
         if (!src || typeof src !== 'object' || Array.isArray(src)) return dst;
         for (const k of Object.keys(src)) {
             const v = src[k];
             if (v === undefined) continue;
+            const p = prefix ? (prefix + '/' + k) : k;
             if (v && typeof v === 'object' && !Array.isArray(v)) {
-                if (!dst[k] || typeof dst[k] !== 'object' || Array.isArray(dst[k])) dst[k] = {};
-                walk(dst[k], v);
-            } else dst[k] = v;
+                const old = dst[k];
+                if (old !== undefined && (typeof old !== 'object' || Array.isArray(old))) {
+                    if (skipped) skipped.push({ path: p, reason: '标量字段收到对象，已跳过（保住旧值）', from: old, to: v });
+                    continue;
+                }
+                if (!old) dst[k] = {};
+                walk(dst[k], v, p);
+                continue;
+            }
+            const c = coerceToShape(dst[k], v);
+            if (!c.keep) { if (skipped) skipped.push({ path: p, reason: c.reason, from: dst[k], to: v }); continue; }
+            if (c.note && skipped) skipped.push({ path: p, reason: c.note, from: dst[k], to: c.value, warnOnly: true });
+            if (c.coerced && coerced) coerced.push({ path: p, how: c.coerced, to: c.value });
+            dst[k] = c.value;
         }
         return dst;
     };
-    return walk(out, parsed);
+    return walk(out, parsed, '');
 }
 /** 深比较：列出 next 相对 prev 的变化（供面板预览，默认最多 30 条） */
 export function statusTableDiff(prev, next, limit) {
