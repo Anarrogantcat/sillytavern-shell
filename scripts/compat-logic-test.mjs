@@ -795,9 +795,13 @@ const p39 = [
   { op: 'delta', path: '/林婉婷/经济/现金', value: -2500 },
   { op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 },
 ];
+const fhR39old = applyVarOps(iv39, p39, { overdraftMode: 'floor' });
+check('①(旧模式 floor) 会透支的 delta → 整楼 delta 全跳过，replace 照常生效', !!fhR39old.guardHit && fhR39old.guardHit.indexOf('林婉婷.经济.现金') >= 0 && fhR39old.state['林婉婷']['经济']['现金'] === 500 && fhR39old.state['user']['累计支出_林婉婷'] === 2500 && fhR39old.state['系统']['时间'] === '14:25');
+check('①(旧模式 floor) 拦下的路径记账（不静默）', fhR39old.skipped.some((x) => x.reason.indexOf('整楼 delta 已跳过') >= 0), fhR39old.skipped);
 const fhR39 = applyVarOps(iv39, p39);
-check('① 会透支的 delta → 整楼 delta 全跳过，replace 照常生效', !!fhR39.guardHit && fhR39.guardHit.indexOf('林婉婷.经济.现金') >= 0 && fhR39.state['林婉婷']['经济']['现金'] === 500 && fhR39.state['user']['累计支出_林婉婷'] === 2500 && fhR39.state['系统']['时间'] === '14:25', fhR39);
-check('① 拦下的路径记账（不静默）', fhR39.skipped.some((s) => s.reason.indexOf('整楼 delta 已跳过') >= 0), fhR39.skipped);
+check('①(0.27.0 默认 op) 只跳过会透支的那条：现金 500 不动、累计支出照常落地', !!fhR39.guardHit && fhR39.guardHit.indexOf('林婉婷.经济.现金') >= 0 && fhR39.state['林婉婷']['经济']['现金'] === 500 && fhR39.state['user']['累计支出_林婉婷'] === 5000 && fhR39.state['系统']['时间'] === '14:25', fhR39.state);
+check('①(0.27.0 默认 op) 跳过原因写明「只跳过它自己」', fhR39.skipped.some((x) => x.reason.indexOf('只跳过它自己') >= 0), fhR39.skipped);
+
 check('① 可关闭：overdraftGuard:false 照旧扣成负数', applyVarOps(iv39, p39, { overdraftGuard: false }).state['林婉婷']['经济']['现金'] === -2000);
 check('① 本来就为负的字段不误伤', (function () { const rr = applyVarOps({ 债务: -100 }, [{ op: 'delta', path: '/债务', value: -50 }]); return !rr.guardHit && rr.state['债务'] === -150; })());
 check('① 正常的扣款不触发（100 - 50 = 50）', (function () { const rr = applyVarOps({ 现金: 100 }, [{ op: 'delta', path: '/现金', value: -50 }]); return !rr.guardHit && rr.state['现金'] === 50; })());
@@ -805,7 +809,7 @@ check('① negativeFields 只挑「初值非负、现值负数」的字段', neg
 const bad39 = { 系统: { 时间: '14:25' }, 林婉婷: { 经济: { 现金: -2000 } }, user: { 累计支出_林婉婷: 5000 } };
 const good39 = { 系统: { 时间: '14:15' }, 林婉婷: { 经济: { 现金: 500 } }, user: { 累计支出_林婉婷: 2500 } };
 const plan39 = planFloorFixes([good39, bad39], [[], p39], iv39);
-check('② 坏楼层标 negative-fix 并重算：现金回 500、累计回 2500、时间 14:25', plan39[1].write === true && plan39[1].reason === 'negative-fix' && plan39[1].want['林婉婷']['经济']['现金'] === 500 && plan39[1].want['user']['累计支出_林婉婷'] === 2500 && plan39[1].want['系统']['时间'] === '14:25', plan39[1]);
+check('② 坏楼层标 negative-fix 并重算：现金回 500、累计按 0.27.0 口径为 5000（+2500 该落地）、时间 14:25', plan39[1].write === true && plan39[1].reason === 'negative-fix' && plan39[1].want['林婉婷']['经济']['现金'] === 500 && plan39[1].want['user']['累计支出_林婉婷'] === 5000 && plan39[1].want['系统']['时间'] === '14:25', plan39[1]);
 check('② 好楼层不动', plan39[0].write === false, plan39[0].reason);
 check('② 幂等：把修好的值当存值再跑 → 0 写入', planFloorFixes([good39, plan39[1].want], [[], p39], iv39).filter((p) => p.write).length === 0);
 check('② 路径全落空会计账（执行层据此宁可不写）', (function () { const pl = planFloorFixes([good39, bad39], [[], [{ op: 'replace', path: '/不存在/字段', value: 1 }]], iv39)[1]; return pl.ops === 1 && pl.skipped.length >= pl.ops; })());
@@ -1466,6 +1470,25 @@ check('70 当前白名单：状态表一个字都不删', f70a.removed.length ==
 const f70Old = new Set([...KEEP_BLOCKS].filter((x) => x.indexOf('status') !== 0 && x !== '变量表' && x !== '状态表' && x !== '变量列表' && x !== '状态栏'));
 const f70b = stripUndeclaredBlocks(f70Table, { declared: f70Decl, keep: f70Old });
 check('70 去掉表族白名单后复现旧版删除（= 用户看到的现象）', f70b.removed.length === 1 && f70b.removed[0].tag === 'status_current_variables');
+
+console.log('');
+console.log('— 夹具 71：收支保护逐条把关（0.27.0，用户实测回归的修复）');
+const g71st = { 林婉婷: { 经济: { 现金: 500, 欠款: 3000 } }, user: { 累计支出_林婉婷: 0 }, 互动次数: { 林婉婷与user: 0 } };
+const g71ops = [
+    { op: 'delta', path: '/林婉婷/经济/现金', value: -2500 },
+    { op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 },
+    { op: 'delta', path: '/互动次数/林婉婷与user', value: 1 },
+];
+const g71a = applyVarOps(g71st, g71ops, {});
+check('71 逐条把关：对的 delta 照常落地（支出 2500 / 互动 1）', g71a.state.user['累计支出_林婉婷'] === 2500 && g71a.state['互动次数']['林婉婷与user'] === 1, g71a.state);
+check('71 只跳过会变负的那一条（现金保持 500）', g71a.state['林婉婷']['经济']['现金'] === 500 && g71a.skipped.some((x) => x.path === '/林婉婷/经济/现金'));
+check('71 guardHit 记录被跳过的那条（面板要显示）', Array.isArray(g71a.guardHit) && g71a.guardHit.length === 1);
+const g71f = applyVarOps(g71st, g71ops, { overdraftMode: 'floor' });
+check('71 旧行为可复现（整楼丢弃 → 钱完全不更新）', g71f.state.user['累计支出_林婉婷'] === 0 && g71f.state['互动次数']['林婉婷与user'] === 0);
+const g71o = applyVarOps(g71st, g71ops, { overdraftGuard: false });
+check('71 关掉保护时余额会变负（说明保护仍有意义）', g71o.state['林婉婷']['经济']['现金'] === -2000);
+const g71b = applyVarOps(g71st, [{ op: 'delta', path: '/user/累计支出_林婉婷', value: 300 }], {});
+check('71 没有变负风险时全部照常、零跳过', g71b.state.user['累计支出_林婉婷'] === 300 && g71b.skipped.length === 0);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

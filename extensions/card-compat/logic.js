@@ -1553,15 +1553,47 @@ export function negativeFields(state, initState) {
  * @returns {{state:object, applied:string[], skipped:Array, guardHit:string[]}}
  */
 export function applyVarOps(state, ops, opts = {}) {
-    let r = runVarOps(state, ops, opts, false);
-    if (opts.overdraftGuard === false) return r;
-    const hit = negativeFields(r.state, state);
-    if (!hit.length) return r;
-    const r2 = runVarOps(state, ops, opts, true);
-    r2.skipped = r2.skipped.concat(hit.map((p) => ({ path: p, reason: '会让数值变成负数 → 整楼 delta 已跳过（防扣款错误）' })));
-    r2.guardHit = hit;
-    r2.schemaHits = (r.schemaHits || []).concat(r2.schemaHits || []);
-    return r2;
+    const mode = String(opts.overdraftMode || 'op');   // 'op'（0.27.0 默认）= 逐条把关；'floor' = 旧的整楼丢弃
+    const base = (state && typeof state === 'object') ? state : {};
+    if (opts.overdraftGuard === false || mode === 'off') return runVarOps(base, ops, opts, false);
+    if (mode === 'floor') {
+        const r = runVarOps(base, ops, opts, false);
+        const hit = negativeFields(r.state, base);
+        if (!hit.length) return r;
+        const r2 = runVarOps(base, ops, opts, true);
+        r2.skipped = r2.skipped.concat(hit.map((p) => ({ path: p, reason: '会让数值变成负数 → 整楼 delta 已跳过（防扣款错误）' })));
+        r2.guardHit = hit;
+        r2.schemaHits = (r.schemaHits || []).concat(r2.schemaHits || []);
+        return r2;
+    }
+    // 0.27.0（用户实测回归修复）：旧实现是「有一处会变负 → 整楼 delta 全丢」，
+    // 结果把**对的那些 delta 也一起丢了**（实测：delta 现金 -2500 触发保护，连 delta 累计支出 +2500 / 互动次数 +1 都没落地）。
+    // 用户的话是「修复金钱问题之前能更新、之后不能」—— 这个保护就是那个「之后」。
+    // 现在改成**逐条把关**：每条 op 单独试算，只有它自己会把字段算成负数时才丢掉它，其余照常落地。
+    let work = JSON.parse(JSON.stringify(base));
+    const applied = [], skipped = [], guardHit = [], schemaHits = [];
+    let abortedFlag = false, testedTotal = 0;
+    for (const op of (ops || [])) {
+        const one = runVarOps(work, [op], opts, false);
+        testedTotal += (one.tested || 0);
+        const hit = negativeFields(one.state, work);
+        if (hit.length) {
+            guardHit.push.apply(guardHit, hit);
+            skipped.push({ path: String((op && op.path) || ''), reason: '这一条 delta 会让数值变成负数 → 只跳过它自己（其余补丁照常落地）' });
+            continue;
+        }
+        work = one.state;
+        if (one.applied) applied.push.apply(applied, one.applied);
+        if (one.skipped) skipped.push.apply(skipped, one.skipped);
+        if (one.schemaHits) schemaHits.push.apply(schemaHits, one.schemaHits);
+        // JSON Patch 语义：test 失败必须**中止后续 op**（旧实现靠单次遍历自然中止，逐条应用要显式补回来）
+        if (one.aborted) { abortedFlag = true; break; }
+    }
+    const res = { state: work, applied: applied, skipped: skipped, schemaHits: schemaHits, mode: 'op', tested: testedTotal };
+    res.aborted = abortedFlag;   // 旧契约：aborted 始终返回（false 也要有）
+    // 保持旧契约：没触发保护时不返回 guardHit（调用方普遍用 !x.guardHit 判断）
+    if (guardHit.length) res.guardHit = guardHit;
+    return res;
 }
 
 /* ── 0.12.1：MVU Zod schema 静态解析 v2 ──────────────────────────────
