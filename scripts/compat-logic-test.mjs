@@ -1250,5 +1250,13 @@ check('57 上限可自行放宽', moneyCorrection({ amount: 999999, patchText: m
 const mcObjState = { user: { 累计支出_A: 0 }, A: { 现金: { 元: 100 } } };
 check('57 目标字段是对象/非数字 → 不给建议（避免把对象写成数字）', moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/user/累计支出_A","value":3000}]', state: mcObjState }).ok === false);
 
+console.log('');
+console.log('— 夹具 58：资金纠正必须吃「真实补丁格式」（带空格的 pretty JSON，0.21.2 回归）');
+const mpState = { user: { 累计支出_林婉婷: 5000 }, 林婉婷: { 经济: { 现金: 500 } } };
+const mpPretty = '[' + String.fromCharCode(10) + '  { "op": "delta", "path": "/user/累计支出_林婉婷", "value": 3000 },' + String.fromCharCode(10) + '  { "op": "replace", "path": "/系统/时间", "value": "14:50" }' + String.fromCharCode(10) + ']';
+check('58 只给文本（带空格）也能推导出建议', (() => { const r = moneyCorrection({ amount: 3000, patchText: mpPretty, state: mpState }); return r.ok === true && r.actions[0].path === '/林婉婷/经济/现金' && r.actions[0].delta === 3000; })());
+check('58 传已解析 ops 时结果一致（扩展线上走这条）', (() => { const r = moneyCorrection({ amount: 3000, ops: JSON.parse(mpPretty), patchText: mpPretty, state: mpState }); return r.ok === true && r.actions[0].delta === 3000; })());
+check('58 紧凑 JSON（无空格）同样可用', (() => { const r = moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/user/累计支出_林婉婷","value":3000}]', state: mpState }); return r.ok === true; })());
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

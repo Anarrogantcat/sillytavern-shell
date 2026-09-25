@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.21.1';
+const VERSION = '0.21.2';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -710,7 +710,8 @@ function buildReport(messageId, opts) {
             if (report.money && report.money.missingCash) {
                 const mfBlocks2 = extractUpdateBlocks(m.mes);
                 const mfPatch2 = mfBlocks2.map((b) => (b && (b.patchText || b.block)) || '').join('\n');
-                report.fix = moneyCorrection({ amount: report.money.n, patchText: mfPatch2, state: mvuVarsOf(messageId) || null, minAmount: 500 });
+                const mfOps = mfBlocks2.reduce((n, b) => n.concat(parsePatchOps(b.patchText || b.block).ops || []), []);
+                report.fix = moneyCorrection({ amount: report.money.n, ops: mfOps, patchText: mfPatch2, state: mvuVarsOf(messageId) || null, minAmount: 500 });
             }
         } catch (_) {}
         // 0.20.0：资金流体检 —— 正文提到钱、补丁却没落到现金/欠款字段时，把这条摆到面板上

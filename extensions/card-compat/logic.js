@@ -2851,18 +2851,35 @@ export function moneyCorrection(input) {
     const state = i.state;
     if (!state || typeof state !== 'object') return { ok: false, reason: 'no-state', actions: [] };
     // 看这一楼的补丁把「谁的累计支出」加了钱 → 那个人就是收钱的人
+    // 0.21.2 修复：以前用一条紧凑正则去匹配补丁文本，而真实补丁是**带空格的 pretty JSON**（`"op": "delta"`），
+    // 于是永远匹配不到 → 面板只出诊断、不出按钮（用户实测「功能没生效」）。现在优先用**已解析的 ops**。
     const spendDeltas = [];
-    const re = /"op"\s*:\s*"(\w+)"\s*,\s*"path"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*(-?\d+(?:\.\d+)?)/g;
-    let m;
-    while ((m = re.exec(String(i.patchText || '')))) {
-        if (String(m[1]).toLowerCase() !== 'delta') continue;
-        const sp = String(m[2]);
-        const mm = sp.match(/累计支出[_\.\/]?([^\/"\s]+)/);
-        if (!mm) continue;
-        const v = Number(m[3]);
-        if (Number.isFinite(v) && v > 0) spendDeltas.push({ who: mm[1], delta: v });
+    const pushFromOps = (list) => {
+        for (const op of (list || [])) {
+            if (!op) continue;
+            if (String(op.op || '').toLowerCase() !== 'delta') continue;
+            const sp = String(op.path || '');
+            const mm = sp.match(/累计支出[_\.\/]?([^\/"\s]+)/);
+            if (!mm) continue;
+            const v = Number(op.value);
+            if (Number.isFinite(v) && v > 0) spendDeltas.push({ who: mm[1], delta: v });
+        }
+    };
+    pushFromOps(i.ops);
+    if (!spendDeltas.length && i.patchText) {
+        // 兜底：调用方只给了文本时，才退回文本解析（容忍空格）
+        const re2 = /"op"\s*:\s*"(\w+)"\s*,\s*"path"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*(-?\d+(?:\.\d+)?)/g;
+        let m2;
+        while ((m2 = re2.exec(String(i.patchText)))) {
+            if (String(m2[1]).toLowerCase() !== 'delta') continue;
+            const sp2 = String(m2[2]);
+            const mm2 = sp2.match(/累计支出[_\.\/]?([^\/"\s]+)/);
+            if (!mm2) continue;
+            const v2 = Number(m2[3]);
+            if (Number.isFinite(v2) && v2 > 0) spendDeltas.push({ who: mm2[1], delta: v2 });
+        }
     }
-    if (!spendDeltas.length) return { ok: false, reason: 'no-spend-anchor', actions: [] };
+    if (!spendDeltas.length) return { ok: false, reason: 'no-spend-anchor', actions: [] };   // 没有支出锚点 → 推不出「该给谁加钱」
     const known = numericPathsOf(state, 400);
     const actions = [];
     for (const sd of spendDeltas) {
