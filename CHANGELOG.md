@@ -1,5 +1,14 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.17 (2026-09-25) — 审计修复第②b轮：card-compat 0.14.1（命令解析 + 长聊内存 + 误弹）
+
+### 修复
+- **命令式更新解析截断**：`_.set("角色.金钱", Number(基础值))` 旧正则在第一个 `)` 就截断成 `"Number(基础值"`，且 `insert`/`delete`/`move` 不认。改为括号配对 + 顶层逗号切分（实测 8 个命令样例全部正确）
+- **长聊天内存持续增长**：`strictChecked`（存整条消息文本）/ `varFixTriedIds` / `frontAlerted` / `applyAlerted` 无上限 → 统一 400 条上限 + 只存内容指纹 + `CHAT_CHANGED` 清空
+- **换聊天误弹气泡**：`hardFailStreak` 跨聊天复位
+
+### 夹具
+- compat 385/0 ・plot-pilot 57/57（其余同上一轮）
 ## v2.2.16 (2026-09-25) — 审计修复第②轮：card-compat 0.14.0（模板组上限 + 6 处解析/写入 bug）
 
 ### 安全

@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.14.0';
+const VERSION = '0.14.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -247,7 +247,19 @@ function loadYamlLib() {
     }
     return yamlLibPromise;
 }
-const strictChecked = new Map();   // messageId -> 已校验过的文本，避免同一楼层反复解析
+const strictChecked = new Map();   // messageId -> 已校验过的内容指纹，避免同一楼层反复解析
+const SET_CAP = 400;               // 这四个集合原先无上限：长聊天会一直涨（严格校验还存过整条消息文本）
+/** 只保留最近 N 条（Map：按插入顺序丢最旧的键） */
+function capMap(m) { while (m.size > SET_CAP) m.delete(m.keys().next().value); }
+/** Set 版同上 */
+function capSet(s) { while (s.size > SET_CAP) s.delete(s.values().next().value); }
+/** 内容指纹：严格校验原先把整条消息文本存进 Map，长聊天就是几十~上百 MB；这里只留长度+首尾+哈希 */
+function fingerprintOf(s) {
+    const t = String(s || '');
+    let h = 0;
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+    return t.length + ':' + h + ':' + t.slice(0, 24) + ':' + t.slice(-24);
+}
 /** 结构块严格 YAML 校验（真解析）：失败就在面板/日志里报警，不改文本 */
 async function strictCheckMessage(messageId, opts = {}) {
     try {
@@ -259,11 +271,12 @@ async function strictCheckMessage(messageId, opts = {}) {
         const tags = [...(profile.dataTags || []), ...(profile.anchors || [])];
         if (!tags.length) return null;
         if (!tags.some((t) => m.mes.includes('<' + t))) return null;   // 没结构块就不去加载库
-        if (strictChecked.get(messageId) === m.mes && !opts.force) return null;
+        if (strictChecked.get(messageId) === fingerprintOf(m.mes) && !opts.force) return null;
         const lib = await loadYamlLib();
         if (!lib) { stats.yamlStrictSkipped++; log('yaml-strict-skipped', '', 'js-yaml 不可用（assets 加载失败），已跳过严格校验'); renderStats(); return null; }
         const r = strictYamlCheck(m.mes, tags, lib);
-        strictChecked.set(messageId, m.mes);
+        strictChecked.set(messageId, fingerprintOf(m.mes));
+        capMap(strictChecked);
         if (!r.checked) return null;
         if (r.issues.length) {
             stats.yamlStrictFail += r.issues.length;
@@ -394,6 +407,7 @@ async function maybeFixVars(messageId) {
         if (!m || m.is_user || typeof m.mes !== 'string') return null;
         if (extractUpdateBlock(m.mes)) return null;              // 已经有了
         varFixTriedIds.add(messageId);
+    capSet(varFixTriedIds);
         stats.varFixTried++;
         renderStats();
         const prevUser = (() => { try { for (let k = messageId - 1; k >= 0; k--) { const x = chat[k]; if (x && x.is_user && x.mes) return x.mes; } } catch (_) {} return ''; })();
@@ -778,6 +792,7 @@ function checkFrontBlocks(messageId, opts) {
         if (r.level === 'unrendered' || r.level === 'partial' || r.level === 'collapse') {
             if ((!opts || opts.notify !== false) && !frontAlerted.has(messageId)) {
                 frontAlerted.add(messageId);
+            capSet(frontAlerted);
                 log('front-blocks', r.level + ' front=' + r.front + ' rendered=' + r.rendered + ' collapsed=' + r.collapsed, '本楼前端块没渲染出来');
                 toast(T('front_' + r.level), 'warning');
             }
@@ -833,6 +848,7 @@ function checkPatchApplied(messageId, opts) {
         if (r.level === 'not-applied' || r.level === 'no-patch') {
             if ((!opts || opts.notify !== false) && !applyAlerted.has(messageId)) {
                 applyAlerted.add(messageId);
+            capSet(applyAlerted);
                 log('mvu-apply', r.level + ' ops=' + ops, '本轮的变量补丁没有生效（状态栏不会更新）');
                 toast(T('apply_' + r.level), 'warning');
             }
@@ -1623,6 +1639,7 @@ function exposeApi() {
     eventSource.on(event_types.CHAT_CHANGED, () => {
       try {
         invalidateProfile(); applyFont(); lastSeen.clear(); varRepairTried.clear(); updatePromptInjection(); applyVarBar();
+        hardFailStreak = 0; strictChecked.clear(); varFixTriedIds.clear(); frontAlerted.clear(); applyAlerted.clear();  // C14/C23：换聊天清空这些「每楼一条」的集合，避免跨聊天累积与误弹
         cardKey = cardKeyNow();                 // 同步卡标识：同卡换聊天不该走「切卡」分支
         refreshReport(0);                       // 0.13.2：上一张卡的表立刻消失，按当前卡重建
         setTimeout(normalizeRecent, 600);

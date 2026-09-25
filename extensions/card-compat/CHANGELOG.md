@@ -1,5 +1,13 @@
 # 更新日志
 
+## [0.14.1] - 2026-09-25
+## [0.14.1] - 2026-09-25
+
+### 修复
+- **命令式更新解析支持嵌套括号 / 补全命令类型**（`parseSetCommands`）：旧正则 `/_\.(set|assign|add|remove)\(([^)]*)\)/` 遇到 `_.set("角色.金钱", Number(基础值))` 会在第一个 `)` 截断，写出 `"Number(基础值"` 这种坏值；且 `insert`/`delete`/`move` 完全不认。改为**括号配对 + 顶层逗号切分**，支持 `set/assign/add/remove/delete/insert/move`，布尔与 null 也按类型还原
+- **长聊天内存持续增长**：`strictChecked`（还存了整条消息文本）/ `varFixTriedIds` / `frontAlerted` / `applyAlerted` 四份「每楼一条」的集合原先无上限。现在统一 400 条上限（Map 丢最旧键、Set 丢最旧值），严格校验改存**内容指纹**（长度+哈希+首尾片段）而不是整条文本，并在 `CHAT_CHANGED` 时全部清空
+- **换聊天后误弹「连续缺变量块」气泡**：`hardFailStreak` 跨聊天不复位，现已随 `CHAT_CHANGED` 归零
+
 ## [0.14.0] - 2026-09-25
 
 ### 安全 / 稳定性

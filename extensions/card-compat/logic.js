@@ -955,10 +955,45 @@ export function parseInitVar(text) {
  * 0.10.0：解析命令式更新 `_.set(路径, 值)` / `_.assign(路径, 键?, 值)` / `_.add(路径, 增量)` / `_.remove(路径, 键?)`
  * → 统一的 op 列表（MC房子 那类不用 JSONPatch 的卡）。
  */
+const SET_FN_NAMES = new Set(['set', 'assign', 'add', 'remove', 'insert', 'delete', 'move']);
+/** 从 pos 起找与 source[pos] 配对的闭合括号（跳过字符串与转义）；找不到返回 -1 */
+function matchClosing(source, pos) {
+    const open = source[pos], close = open === '(' ? ')' : (open === '{' ? '}' : ']');
+    let depth = 0, q = null, esc = false;
+    for (let i = pos; i < source.length; i++) {
+        const ch = source[i];
+        if (q) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === q) q = null; continue; }
+        if (ch === '"' || ch === "'" || ch === String.fromCharCode(96)) { q = ch; continue; }
+        if (ch === open) depth++;
+        else if (ch === close) { depth--; if (depth === 0) return i; }
+    }
+    return -1;
+}
+/** 顶层逗号切分（括号/引号内的逗号不算） */
+function splitArgs(source) {
+    const out = [];
+    let depth = 0, q = null, esc = false, cur = '';
+    for (let i = 0; i < source.length; i++) {
+        const ch = source[i];
+        if (q) { cur += ch; if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === q) q = null; continue; }
+        if (ch === '"' || ch === "'" || ch === String.fromCharCode(96)) { q = ch; cur += ch; continue; }
+        if (ch === '(' || ch === '{' || ch === '[') { depth++; cur += ch; continue; }
+        if (ch === ')' || ch === '}' || ch === ']') { depth--; cur += ch; continue; }
+        if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; continue; }
+        cur += ch;
+    }
+    if (cur.trim() !== '' || out.length) out.push(cur.trim());
+    return out.filter((s, i, a) => !(s === '' && i === a.length - 1));
+}
+/**
+ * 解析命令式更新（0.14.0 重写：括号配对 + 顶层逗号切分，支持嵌套括号）
+ *   `_.set(路径, 值)` / `_.assign(路径, 键?, 值)` / `_.add(路径, 增量)` / `_.remove|delete(路径[, 键])` / `_.insert(路径, 值)` / `_.move(从, 到)`
+ * 旧实现用 /_\.(set|assign|add|remove)\(([^)]*)\)/ —— `Number(基础值)` 这种嵌套会在第一个 ) 处截断，写出 `"Number(基础值"`。
+ */
 export function parseSetCommands(text) {
     const ops = [];
     const src = String(text || '');
-    const re = /_\s*\.\s*(set|assign|add|remove)\s*\(([^)]*)\)/g;
+    const callRe = /_\s*\.\s*([A-Za-z]+)\s*\(/g;
     let m;
     const clean = (s) => {
         let t = String(s || '').trim();
@@ -966,10 +1001,21 @@ export function parseSetCommands(text) {
         t = t.split(String.fromCharCode(96)).join('');
         return t.trim();
     };
-    const val = (s) => { const t = clean(s); return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : t; };
-    while ((m = re.exec(src))) {
-        const fnName = m[1].toLowerCase();
-        const args = m[2].split(',').map((s) => s.trim()).filter((s) => s !== '');
+    const val = (s) => {
+        const t = clean(s);
+        if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+        if (/^(true|false)$/i.test(t)) return /^true$/i.test(t);
+        if (t === 'null') return null;
+        return t;
+    };
+    while ((m = callRe.exec(src))) {
+        const fnName = String(m[1]).toLowerCase();
+        if (!SET_FN_NAMES.has(fnName)) continue;
+        const openIdx = callRe.lastIndex - 1;
+        const closeIdx = matchClosing(src, openIdx);
+        if (closeIdx < 0) break;
+        const args = splitArgs(src.slice(openIdx + 1, closeIdx));
+        callRe.lastIndex = closeIdx + 1;
         const path = clean(args[0]);
         if (!path) continue;
         if (fnName === 'set') ops.push({ op: 'replace', path: path, value: val(args[1]) });
@@ -977,7 +1023,9 @@ export function parseSetCommands(text) {
         else if (fnName === 'assign') {
             if (args.length >= 3) ops.push({ op: 'replace', path: path + '.' + clean(args[1]), value: val(args[2]) });
             else ops.push({ op: 'insert', path: path, value: val(args[1]) });
-        } else ops.push({ op: 'remove', path: path + (args[1] ? '.' + clean(args[1]) : '') });
+        } else if (fnName === 'insert') ops.push({ op: 'insert', path: path, value: val(args[1]) });
+        else if (fnName === 'move') ops.push({ op: 'move', from: path, path: clean(args[1]) });
+        else ops.push({ op: 'remove', path: path + (args[1] ? '.' + clean(args[1]) : '') });
     }
     return ops;
 }
