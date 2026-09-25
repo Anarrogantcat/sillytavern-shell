@@ -2590,3 +2590,33 @@ export function isPlaceholderAt(state, path) {
     }
     return false;
 }
+
+/* ── 0.16.2：连续硬失败统计（纯函数，便于夹具） ─────────────────────
+ * data-missing / varfix-invalid / yaml-strict-fail / undeclared-block-stripped 原先只进面板日志，
+ * 用户看不到 →「状态栏不动却什么提示都没有」。这里只算「同类连续几次」，弹不弹由调用方决定。
+ */
+export const FAIL_CATS = ['data', 'varfix', 'yaml', 'undeclared'];
+export function emptyFailStreak() { const o = {}; for (const k of FAIL_CATS) o[k] = 0; return o; }
+/**
+ * 记录一次硬失败。
+ * @param {object} st 计数对象（会被就地修改）
+ * @param {string} cat 类别（不在 FAIL_CATS 里则忽略）
+ * @param {number} now 时间戳
+ * @param {{lastAt?:number, cooldownMs?:number, threshold?:number}} [opts]
+ * @returns {{streak:number, alert:boolean, reason:string}}
+ */
+export function noteFailure(st, cat, now, opts = {}) {
+    const out = { streak: 0, alert: false, reason: '' };
+    if (!st || FAIL_CATS.indexOf(cat) < 0) { out.reason = 'unknown-cat'; return out; }
+    const threshold = Number(opts.threshold) > 0 ? Number(opts.threshold) : 3;
+    const cooldown = Number(opts.cooldownMs) > 0 ? Number(opts.cooldownMs) : 10 * 60 * 1000;
+    // 同类连续：只加自己，其它类别清零（换一种失败说明前一种已经过去）
+    for (const k of FAIL_CATS) if (k !== cat) st[k] = 0;
+    st[cat] = (Number(st[cat]) || 0) + 1;
+    out.streak = st[cat];
+    if (out.streak < threshold) { out.reason = 'below-threshold'; return out; }
+    if ((Number(now) || 0) - (Number(opts.lastAt) || 0) <= cooldown) { out.reason = 'cooling-down'; return out; }
+    out.alert = true;
+    out.reason = 'alerted';
+    return out;
+}

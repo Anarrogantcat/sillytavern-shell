@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.16.1';
+const VERSION = '0.16.2';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -55,6 +55,11 @@ const recent = [];
 const covHistory = [];            // P2 ⑥ 覆盖度历史（最多 40 条）
 const lastSeen = new Map();  // messageId -> 上次守护后的文本（续写会改写同一条消息，文本变了就要再守护一次）
 let hardFailStreak = 0;           // P1 ③ 连续缺变量块的楼层数
+// 0.16.2：把「只进日志」的几类硬失败做成可见化 —— 同类连续 3 楼才弹一次（10 分钟冷却），并记进面板
+const failTrace = [];              // 最近 20 条硬失败 { t, cat, tag }
+const failStreak = emptyFailStreak();   // 同类连续计数（换类别即清零），算法在 logic.js 的 noteFailure
+const failAlerted = new Map();     // cat -> 上次提醒时间（防重复弹）
+const strippedByFloor = new Map(); // messageId -> { tags, chars }（未声明块，供对照表按楼层显示）
 let lastToastAt = 0;
 let mvuExtraLogged = false;
 
@@ -82,7 +87,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -116,7 +121,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -524,11 +529,41 @@ function checkNudgeApplied(messageId) {
         log('nudge-missed', '第' + messageId + '层', '补发事件后前端块仍未渲染：酒馆助手可能改了渲染方式 → 刷新页面，或用面板第④组的「兼容模式」');
     } catch (_) {}
 }
+const FAIL_CAT_MAP = { 'data-missing': 'data', 'varfix-invalid': 'varfix', 'yaml-strict-fail': 'yaml', 'block-yaml-issue': 'yaml', 'undeclared-block-stripped': 'undeclared' };
 function log(type, tag, extra) {
+    const cat = FAIL_CAT_MAP[type];
+    if (cat) { failTrace.push({ t: Date.now(), cat: cat, tag: String(tag || '').slice(0, 40) }); while (failTrace.length > 20) failTrace.shift(); trackFailure(cat, String(tag || '')); }
     recent.unshift({ t: new Date().toLocaleTimeString(), type: type, tag: tag, extra: extra || '' });
     if (recent.length > 40) recent.pop();
     renderStats();
     if (settings()?.logActions) console.debug('[card-compat] ' + type + ' ' + tag + ' ' + (extra || ''));
+}
+/**
+ * 0.16.2：同类硬失败连续 3 楼 → 弹一次提示（10 分钟冷却，跨楼层计数）。
+ * 原先 data-missing / varfix-invalid / yaml-strict-fail 只写进面板日志，用户看不到，
+ * 表现为「状态栏不动但什么提示都没有」。这里只做只读统计 + 一次提示，不触碰写入路径。
+ */
+function trackFailure(cat, tag) {
+    if (!cat) return false;
+    try { if (settings() && settings().toastOnFail === false) return false; } catch (_) { return false; }
+    // 0.16.2：判定抽到 logic.js 的 noteFailure（夹具和运行时同一份实现，避免只在测里对）
+    const r = noteFailure(failStreak, cat, Date.now(), { threshold: 3, cooldownMs: 10 * 60 * 1000, lastAt: failAlerted.get(cat) || 0 });
+    const streak = r.streak;
+    const now = Date.now();
+    if (r.alert) {
+        failAlerted.set(cat, now);
+        const label = T('fail_' + cat) || cat;
+        const floorNo = (chat && chat.length) ? chat.length : 0;
+        toast(label + T('failTimes', { n: streak }) + (floorNo ? ((langOf() === 'en' ? ' (floor ' : '（第') + floorNo + (langOf() === 'en' ? ')' : ' 楼）')) : ''), 'warning');
+        logSilent('fail-visible', cat, '连续 ' + streak + ' 楼「' + label + '」，已提示一次（10 分钟内不重复）');
+    }
+    return true;
+}
+/** 记日志但不参与失败统计（可见化自身用它，否则会自己触发自己） */
+function logSilent(type, tag, extra) {
+    recent.unshift({ t: new Date().toLocaleTimeString(), type: type, tag: tag, extra: extra || '' });
+    if (recent.length > 40) recent.pop();
+    renderStats();
 }
 function applyFont() {
     const s = settings() || {};
@@ -576,6 +611,7 @@ function buildReport(messageId, opts) {
         try { const ctx = getContext(); const ch = ctx && ctx.characters && ctx.characters[ctx.characterId]; cardName = (ch && ch.name) || ''; } catch (_) {}
         const report = { id: messageId, card: cardName, required: req, covered: [], missing: req.map((f) => f.path), written: [], blocks: 0, unknownPaths: [], extraPaths: [] };
         lastReport = report;                      // 先挂上，后面 log() 触发的渲染就不会再画旧表
+        try { report.stripped = strippedByFloor.get(messageId) || null; } catch (_) {}
         if (req.length && hasBlock) {
             const cov = coverageByProtocol(m.mes, req, profile.protocol);
             lastCoverage = cov;
@@ -673,6 +709,8 @@ function guardMessage(messageId, { rerender = true } = {}) {
             base = sr.text;
             changed = true;
             stats.blocksStripped += sr.removed.length;
+            strippedByFloor.set(messageId, { tags: sr.removed.map((r) => r.tag), chars: sr.removed.reduce((a, b) => a + b.chars, 0) });
+            while (strippedByFloor.size > 200) strippedByFloor.delete(strippedByFloor.keys().next().value);
             log('undeclared-block-stripped', sr.removed.map((r) => r.tag).join(','), '共 ' + sr.removed.reduce((a, b) => a + b.chars, 0) + ' 字（本卡未声明，会以原文裸露）');
         }
         if (sr.unclosed.length) {
@@ -1281,6 +1319,7 @@ function renderCoverageTable() {
             ? ('<div class="cc-line cc-muted">' + escHtml(T('stateNoBase')) + '</div>')
             : ('<div class="cc-line ' + ((st.stuck || []).length ? 'cc-warn' : 'cc-muted') + '"><b>' + escHtml(T('stateSummary')) + '</b>：' + ((st.pending || []).length ? (escHtml(T('stPending')) + ' ' + st.pending.length + ' ｜ ') : '') + escHtml(T('stChanged')) + ' ' + (st.advanced || []).length + ' ｜ ' + escHtml(T('stateStuck')) + ' ' + (st.stuck || []).length + ' ｜ ' + escHtml(T('stateAbsent')) + ' ' + (st.absent || []).length + ((st.same || []).length ? (' ｜ ' + escHtml(T('stateSame')) + ' ' + (st.same || []).length) : '') + ((st.stuck || []).length ? escHtml(T('stateStuckWarn')) : '') + '</div>'));
     }
+    if (rep.stripped && rep.stripped.tags && rep.stripped.tags.length) parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('undeclaredRow')) + '</b>：' + escHtml(rep.stripped.tags.join('、')) + '（' + rep.stripped.chars + ' 字，本卡未声明，已按设置清理）</div>');
     if (rep.written && rep.written.length) parts.push('<div class="cc-line"><b>' + escHtml(T('wrotePaths')) + '</b>：' + escHtml(rep.written.join('、')) + '</div>');
     if (rep.unknownPaths && rep.unknownPaths.length) parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('unknownPaths')) + '</b>：' + escHtml(rep.unknownPaths.join('、')) + '</div>');
     if (rep.extraPaths && rep.extraPaths.length) parts.push('<div class="cc-line cc-muted"><b>' + escHtml(T('extraPaths')) + '</b>：' + escHtml(rep.extraPaths.join('、')) + '</div>');
@@ -1312,6 +1351,13 @@ function renderStats() {
     if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
         ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ 格式标签缺 ' + stats.formatMissing + ' ｜ 括号修复 ' + stats.bracketFixed + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
         (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
+    // 0.16.2：连续硬失败可见化（只列还在连续中的类别；计数跨楼层，换类别即清零）
+    const failsBox = document.getElementById('cc-fails');
+    if (failsBox) {
+        const hot = Object.keys(failStreak).filter((k) => failStreak[k] > 0).map((k) => (T('fail_' + k) || k) + ' ×' + failStreak[k]);
+        failsBox.textContent = hot.length ? (T('failRow') + '：' + hot.join(' ｜ ')) : '';
+        failsBox.className = 'cc-line ' + (Object.keys(failStreak).some((k) => failStreak[k] >= 3) ? 'cc-warn' : 'cc-muted');
+    }
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
     const trendBox = document.getElementById('cc-trend');
@@ -1554,6 +1600,7 @@ function buildSettingsUi() {
         "<button id=\"cc-check-front\" class=\"menu_button\">" + escHtml(T('btnCheckFront')) + "</button>",
         '<div id="cc-front" class="cc-line cc-muted"></div>',
         '<div id="cc-apply" class="cc-line cc-muted"></div>',
+        '<div id="cc-fails" class="cc-line cc-muted"></div>',
         '</details>',
         '<details class="cc-grp"><summary>② ' + escHtml(T('secBlocks')) + '</summary>',
         cb('cc-fix-quotes', 'fixQuotes'), cb('cc-bracket-tags', 'fixBracketTags'), cb('cc-quote-scalars', 'quoteScalars'), cb('cc-yaml-structure', 'fixYamlStructure'), cb('cc-yaml-strict', 'yamlStrict'), cb('cc-strip-undeclared', 'stripUndeclared'),
@@ -1762,7 +1809,7 @@ function exposeApi() {
     eventSource.on(event_types.CHAT_CHANGED, () => {
       try {
         invalidateProfile(); applyFont(); lastSeen.clear(); varRepairTried.clear(); updatePromptInjection(); applyVarBar();
-        hardFailStreak = 0; strictChecked.clear(); varFixTriedIds.clear(); frontAlerted.clear(); applyAlerted.clear();  // C14/C23：换聊天清空这些「每楼一条」的集合，避免跨聊天累积与误弹
+        hardFailStreak = 0; strictChecked.clear(); varFixTriedIds.clear(); frontAlerted.clear(); applyAlerted.clear(); failTrace.length = 0; for (const k of Object.keys(failStreak)) failStreak[k] = 0; failAlerted.clear(); strippedByFloor.clear();  // C14/C23：换聊天清空这些「每楼一条」的集合，避免跨聊天累积与误弹
         cardKey = cardKeyNow();                 // 同步卡标识：同卡换聊天不该走「切卡」分支
         refreshReport(0);                       // 0.13.2：上一张卡的表立刻消失，按当前卡重建
         setTimeout(normalizeRecent, 600);

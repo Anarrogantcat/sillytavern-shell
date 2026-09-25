@@ -1,5 +1,14 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.26 (2026-09-25) — card-compat 0.16.2：硬失败可见化 + 未声明块并进对照表
+
+### 新增
+- **硬失败不再只躺在日志里**：`data-missing` / `varfix-invalid` / `yaml-strict-fail` / `block-yaml-issue` / `undeclared-block-stripped` 同类**连续 3 楼**弹一次气泡（10 分钟冷却）；面板新增「连续失败」行实时显示各类别连续次数（≥3 转警告色）
+- 判定抽成纯函数 `emptyFailStreak()` / `noteFailure()`（`logic.js`），夹具与运行时同一实现
+- **未声明块进对照表**：第③组下方显示「本卡未声明的块（已清理）：标签（N 字）」，按楼层记账（上限 200 楼）
+
+### 夹具
+- compat **435/0**（新增夹具 47，10 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 67 ・toolbox 16
 ## v2.2.25+doc2 (2026-09-25) — AGENTS.md v2：把「本体」明确为 ST 本体，并新增路径台账与适配层规则
 
 ### 新增

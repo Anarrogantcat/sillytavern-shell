@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -17,31 +17,31 @@ const c1 = buildProfile({ regex_scripts: [
 ]});
 check('锚点=StatusPlaceHolderImpl', c1.anchors.join() === 'StatusPlaceHolderImpl', c1.anchors);
 check('数据块=UpdateVariable', c1.dataTags.join() === 'UpdateVariable', c1.dataTags);
-const r1 = guardText('正文内容。', c1, { injectAnchor: true, anchorStyle: 'self' });
-check('缺失时补自闭合锚点', r1.text.includes('<StatusPlaceHolderImpl/>') && r1.actions.some(a => a.type === 'anchor-injected'), r1);
-const r1b = guardText('正文内容。', c1, { injectAnchor: false });
-check('未开兜底时不改文本', r1b.text === '正文内容。' && r1b.actions.some(a => a.type === 'anchor-missing'));
-check('数据块缺失只报警、不伪造', r1b.actions.some(a => a.type === 'data-missing') && !/UpdateVariable>\S/.test(r1b.text));
+const fhR1 = guardText('正文内容。', c1, { injectAnchor: true, anchorStyle: 'self' });
+check('缺失时补自闭合锚点', fhR1.text.includes('<StatusPlaceHolderImpl/>') && fhR1.actions.some(a => a.type === 'anchor-injected'), fhR1);
+const fhR1b = guardText('正文内容。', c1, { injectAnchor: false });
+check('未开兜底时不改文本', fhR1b.text === '正文内容。' && fhR1b.actions.some(a => a.type === 'anchor-missing'));
+check('数据块缺失只报警、不伪造', fhR1b.actions.some(a => a.type === 'data-missing') && !/UpdateVariable>\S/.test(fhR1b.text));
 
 console.log('— 夹具 2：<StatusBar> 型卡（未闭合修复）');
 const c2 = buildProfile({ regex_scripts: [{ scriptName: '三年的水/状态栏', findRegex: '<StatusBar>([\\s\\S]*?)<\\/StatusBar>', placement: [2], replaceString: '<div>bar</div>' }] });
-const r2 = guardText('正文。\n<StatusBar>日期: 2025-01-01 没有闭合', c2, { repairClosure: true });
-check('未闭合→自动补 </StatusBar>', r2.text.trimEnd().endsWith('</StatusBar>') && r2.actions.some(a => a.type === 'anchor-close-repaired'), r2);
+const fhR2 = guardText('正文。\n<StatusBar>日期: 2025-01-01 没有闭合', c2, { repairClosure: true });
+check('未闭合→自动补 </StatusBar>', fhR2.text.trimEnd().endsWith('</StatusBar>') && fhR2.actions.some(a => a.type === 'anchor-close-repaired'), fhR2);
 
 console.log('— 夹具 3：卡自带「隐藏状态栏」脚本时不得注入');
 const c3 = buildProfile({ regex_scripts: [
     { scriptName: 'AI隐藏状态栏', findRegex: '<StatusBar>[\\s\\S]*?<\\/StatusBar>', placement: [2], replaceString: '' },
 ]});
 check('只有剥除脚本 → hideTargets 含 StatusBar', c3.hideTargets.includes('StatusBar'), c3);
-const r3 = guardText('正文。', c3, { injectAnchor: true, anchorStyle: 'pair' });
-check('只有剥除脚本时不注入', !r3.text.includes('<StatusBar') && !r3.actions.some(a => a.type === 'anchor-injected'), r3);
+const fhR3 = guardText('正文。', c3, { injectAnchor: true, anchorStyle: 'pair' });
+check('只有剥除脚本时不注入', !fhR3.text.includes('<StatusBar') && !fhR3.actions.some(a => a.type === 'anchor-injected'), fhR3);
 const c3b = buildProfile({ regex_scripts: [
     { scriptName: 'AI隐藏状态栏', findRegex: '<StatusBar>[\\s\\S]*?<\\/StatusBar>', placement: [2], replaceString: '' },
     { scriptName: '状态栏', findRegex: '<StatusBar>([\\s\\S]*?)<\\/StatusBar>', placement: [2], replaceString: '<div>bar</div>' },
 ]});
 check('剥除+渲染并存 → 仍视为锚点', c3b.injectableAnchors.includes('StatusBar'), c3b);
-const r3b = guardText('正文。', c3b, { injectAnchor: true, anchorStyle: 'pair' });
-check('并存时应当补锚点', r3b.text.includes('<StatusBar>'), r3b);
+const fhR3b = guardText('正文。', c3b, { injectAnchor: true, anchorStyle: 'pair' });
+check('并存时应当补锚点', fhR3b.text.includes('<StatusBar>'), fhR3b);
 
 console.log('— 夹具 4：数据新鲜度');
 const t1 = '地点: 家 天气: 晴 第 1 天 2025年7月18日 14:00';
@@ -316,23 +316,23 @@ const broken21 = [
   '    - "2. 选项二"',
   '</Status_block>',
 ].join(NL);
-const r21 = repairYamlStructure(broken21, ['Status_block']);
-check('修出 3 处：两个列表项下沉 + 一处逗号并回', r21.fixes.length === 3 && r21.fixes.filter((f) => f.kind === 'list-inline-demote').length === 2 && r21.fixes.some((f) => f.kind === 'trailing-text-merged'), r21.fixes);
-check('行内标量下沉为「名字」子键', r21.text.includes('    - 用户:') && r21.text.includes('        名字: "👤 涂山清璃 "') && !r21.text.includes('- 用户: "'), r21.text.split(NL).slice(3, 8));
-check('逗号后的文字并回引号内', r21.text.includes('穿搭: "长裙堆叠。衬衫由于贴合而产生褶皱。"'), r21.text);
-check('普通字符串列表项不动', r21.text.includes('    - "1. 选项一"'));
-const r21b = repairYamlStructure('<T>' + NL + '  - 用户: "A"' + NL + '      名字: "B"' + NL + '      行动: "C"' + NL + '</T>', ['T']);
-check('兄弟键已有名字类键 → 只删冗余标量', r21b.text.includes('- 用户:') && !r21b.text.includes('- 用户: "A"') && r21b.fixes[0].kind === 'list-inline-drop', r21b);
+const fhR21 = repairYamlStructure(broken21, ['Status_block']);
+check('修出 3 处：两个列表项下沉 + 一处逗号并回', fhR21.fixes.length === 3 && fhR21.fixes.filter((f) => f.kind === 'list-inline-demote').length === 2 && fhR21.fixes.some((f) => f.kind === 'trailing-text-merged'), fhR21.fixes);
+check('行内标量下沉为「名字」子键', fhR21.text.includes('    - 用户:') && fhR21.text.includes('        名字: "👤 涂山清璃 "') && !fhR21.text.includes('- 用户: "'), fhR21.text.split(NL).slice(3, 8));
+check('逗号后的文字并回引号内', fhR21.text.includes('穿搭: "长裙堆叠。衬衫由于贴合而产生褶皱。"'), fhR21.text);
+check('普通字符串列表项不动', fhR21.text.includes('    - "1. 选项一"'));
+const fhR21b = repairYamlStructure('<T>' + NL + '  - 用户: "A"' + NL + '      名字: "B"' + NL + '      行动: "C"' + NL + '</T>', ['T']);
+check('兄弟键已有名字类键 → 只删冗余标量', fhR21b.text.includes('- 用户:') && !fhR21b.text.includes('- 用户: "A"') && fhR21b.fixes[0].kind === 'list-inline-drop', fhR21b);
 const clean21 = '<T>' + NL + '状态栏:' + NL + '  用户列表:' + NL + '    - 用户:' + NL + '        名字: "X"' + NL + '</T>';
 check('本来就合法的块一处都不动', repairYamlStructure(clean21, ['T']).fixes.length === 0);
 check('块外正文不动', repairYamlStructure('正文 - 用户: "X"' + NL, ['T']).fixes.length === 0);
 let jsyaml21 = null;
 try { jsyaml21 = (await import('js-yaml')).default; } catch (_) {}
 if (jsyaml21) {
-  const inner21 = (t) => t.replace('<Status_block>', '').replace('</Status_block>', '');
+  const innefhR21 = (t) => t.replace('<Status_block>', '').replace('</Status_block>', '');
   let before21 = 'ok';
-  try { jsyaml21.load(inner21(broken21)); } catch (_) { before21 = 'fail'; }
-  const p21 = jsyaml21.load(inner21(r21.text));
+  try { jsyaml21.load(innefhR21(broken21)); } catch (_) { before21 = 'fail'; }
+  const p21 = jsyaml21.load(innefhR21(fhR21.text));
   const u21 = p21['状态栏']['用户列表'][0]['用户'];
   check('js-yaml 端到端：修复前解析失败', before21 === 'fail', before21);
   check('修复后 用户列表[0].用户 是对象且带名字（卡的契约）', !!u21 && typeof u21 === 'object' && typeof u21['名字'] === 'string' && typeof u21['行动'] === 'string', u21);
@@ -546,15 +546,15 @@ console.log('— 夹具 29：不许把变量补丁当「未声明块」删掉（
 const decl29 = new Set(['UpdateVariable', 'StatusBar']);
 const st29 = (txt) => stripUndeclaredBlocks(txt, { declared: decl29, keep: KEEP_BLOCKS });
 const nestedPatch = '<UpdateVariable>' + NL + '<JSONPatch>[{"op":"replace","path":"/a","value":1}]</JSONPatch>' + NL + '</UpdateVariable>';
-const r29a = st29(nestedPatch);
-check('① 嵌套的 <JSONPatch> 不会被删（实测 67/74 张卡中招）', r29a.text === nestedPatch && r29a.removed.length === 0, r29a);
+const fhR29a = st29(nestedPatch);
+check('① 嵌套的 <JSONPatch> 不会被删（实测 67/74 张卡中招）', fhR29a.text === nestedPatch && fhR29a.removed.length === 0, fhR29a);
 const alonePatch = '<JSONPatch>[{"op":"replace","path":"/a","value":1}]</JSONPatch>';
 check('② 独立的 <JSONPatch> 也保留（KEEP_BLOCKS）', st29(alonePatch).text === alonePatch);
 const innerUnknown = '<UpdateVariable>' + NL + '<DeltaPatch>[1]</DeltaPatch>' + NL + '</UpdateVariable>';
 check('③ 声明块里的未知子标签也保留（通用嵌套保护）', st29(innerUnknown).text === innerUnknown && st29(innerUnknown).removed.length === 0);
 const echo = '<world_setting>' + NL + '一大段设定原文' + NL + '</world_setting>' + NL + '正文';
-const r29d = st29(echo);
-check('④ 世界书回显仍然被清理（原有功能没被削弱）', r29d.removed.length === 1 && r29d.removed[0].tag === 'world_setting' && r29d.text.indexOf('一大段设定原文') < 0, r29d);
+const fhR29d = st29(echo);
+check('④ 世界书回显仍然被清理（原有功能没被削弱）', fhR29d.removed.length === 1 && fhR29d.removed[0].tag === 'world_setting' && fhR29d.text.indexOf('一大段设定原文') < 0, fhR29d);
 check('⑤ 自创标签仍然被清理', st29('<status_block>x</status_block>').removed.length === 1);
 const halfOpen = '<konatan_planning~>半截块';
 check('⑥ 未声明但没闭合 → 只报告不删', (function () { const r = st29(halfOpen); return r.text === halfOpen && r.unclosed.join(',') === 'konatan_planning~'; })());
@@ -732,15 +732,15 @@ check('⑥ 版本号已到 0.12.0', versionWired());
 
 console.log('— 夹具 37：状态级核对（0.11.0；用户实测「一排 ✅ 但状态栏不动，检查不出来」）');
 const prev37 = { 系统: { 时间: '14:00', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: 'user家门口' }, 陈慧兰: { 位置: '公司' } };
-const cur37 = { 系统: { 时间: '14:15', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: '客厅' }, 陈慧兰: { 位置: '公司' } };
+const cufhR37 = { 系统: { 时间: '14:15', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: '客厅' }, 陈慧兰: { 位置: '公司' } };
 const req37 = [{ path: '系统.时间' }, { path: '系统.日期' }, { path: '林婉婷.外貌.表情' }, { path: '林婉婷.位置' }, { path: '陈慧兰.位置' }];
-const sd37 = stateDiffFields(cur37, prev37, req37, ['系统.时间', '系统.日期', '林婉婷.外貌.表情', '林婉婷.位置']);
+const sd37 = stateDiffFields(cufhR37, prev37, req37, ['系统.时间', '系统.日期', '林婉婷.外貌.表情', '林婉婷.位置']);
 check('① 存储值真的变了 → advanced（系统.时间 / 林婉婷.位置）', sd37.advanced.indexOf('系统.时间') >= 0 && sd37.advanced.indexOf('林婉婷.位置') >= 0, sd37.advanced);
 check('② 文本写了但存储值没变 → stuck（病灶：系统.日期 / 林婉婷.外貌.表情）', sd37.stuck.indexOf('系统.日期') >= 0 && sd37.stuck.indexOf('林婉婷.外貌.表情') >= 0, sd37.stuck);
 check('③ 文本没写也算不出变化 → absent（陈慧兰.位置：母亲本轮没登场，不该误报）', sd37.absent.indexOf('陈慧兰.位置') >= 0, sd37.absent);
 check('④ 三类互斥且不丢字段', (function () { const all = [].concat(sd37.advanced, sd37.stuck, sd37.absent); return all.length === req37.length && new Set(all).size === req37.length; })(), [sd37.advanced.length, sd37.stuck.length, sd37.absent.length]);
 check('⑤ 拿不到 stat_data → noBase（不能瞎报 ✅ / ❌）', stateDiffFields(null, prev37, req37, []).noBase === true);
-check('⑤b 本楼整体已推进时，「写了但值本来就一样」记 same（不是 ⚠️ 病灶）', (function () { const s = stateDiffFields(cur37, prev37, req37, ['系统.时间', '系统.日期', '林婉婷.外貌.表情', '林婉婷.位置'], { applied: true }); return s.same.indexOf('系统.日期') >= 0 && s.same.indexOf('林婉婷.外貌.表情') >= 0 && s.stuck.length === 0 && s.advanced.indexOf('系统.时间') >= 0; })(), 'same');
+check('⑤b 本楼整体已推进时，「写了但值本来就一样」记 same（不是 ⚠️ 病灶）', (function () { const s = stateDiffFields(cufhR37, prev37, req37, ['系统.时间', '系统.日期', '林婉婷.外貌.表情', '林婉婷.位置'], { applied: true }); return s.same.indexOf('系统.日期') >= 0 && s.same.indexOf('林婉婷.外貌.表情') >= 0 && s.stuck.length === 0 && s.advanced.indexOf('系统.时间') >= 0; })(), 'same');
 check('⑥ 模板组路径逐候选比较（{林婉婷|陈慧兰}.外貌.表情 都没变 → stuck）', (function () { const p = { 林婉婷: { 外貌: { 表情: '平静' } }, 陈慧兰: { 外貌: { 表情: '微笑' } } }; const c = { 林婉婷: { 外貌: { 表情: '平静' } }, 陈慧兰: { 外貌: { 表情: '微笑' } } }; const s = stateDiffFields(c, p, [{ path: '{林婉婷|陈慧兰}.外貌.表情' }], ['{林婉婷|陈慧兰}.外貌.表情']); return s.stuck.length === 1 && s.advanced.length === 0; })(), 'template group');
 check('⑦ valueAtPath 支持点分与斜杠路径，取不到返回 undefined', valueAtPath({ a: { b: 1 } }, 'a.b') === 1 && valueAtPath({ a: { b: 1 } }, '/a/b') === 1 && valueAtPath({ a: { b: 1 } }, 'a.c') === undefined && valueAtPath(null, 'a') === undefined);
 check('⑧ 扩展接线（面板第三列 + 状态行 + 自检里真的算 + 修复提示语）', idxSrc.indexOf('stateDiffFields') > 0 && idxSrc.indexOf("T('colState')") > 0 && idxSrc.indexOf("T('stateSummary')") > 0 && idxSrc.indexOf("T('stateStuckWarn')") > 0 && /checkPatchApplied[\s\S]{0,3000}stateDiffFields/.test(idxSrc));
@@ -794,9 +794,9 @@ const p39 = [
   { op: 'delta', path: '/林婉婷/经济/现金', value: -2500 },
   { op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 },
 ];
-const r39 = applyVarOps(iv39, p39);
-check('① 会透支的 delta → 整楼 delta 全跳过，replace 照常生效', !!r39.guardHit && r39.guardHit.indexOf('林婉婷.经济.现金') >= 0 && r39.state['林婉婷']['经济']['现金'] === 500 && r39.state['user']['累计支出_林婉婷'] === 2500 && r39.state['系统']['时间'] === '14:25', r39);
-check('① 拦下的路径记账（不静默）', r39.skipped.some((s) => s.reason.indexOf('整楼 delta 已跳过') >= 0), r39.skipped);
+const fhR39 = applyVarOps(iv39, p39);
+check('① 会透支的 delta → 整楼 delta 全跳过，replace 照常生效', !!fhR39.guardHit && fhR39.guardHit.indexOf('林婉婷.经济.现金') >= 0 && fhR39.state['林婉婷']['经济']['现金'] === 500 && fhR39.state['user']['累计支出_林婉婷'] === 2500 && fhR39.state['系统']['时间'] === '14:25', fhR39);
+check('① 拦下的路径记账（不静默）', fhR39.skipped.some((s) => s.reason.indexOf('整楼 delta 已跳过') >= 0), fhR39.skipped);
 check('① 可关闭：overdraftGuard:false 照旧扣成负数', applyVarOps(iv39, p39, { overdraftGuard: false }).state['林婉婷']['经济']['现金'] === -2000);
 check('① 本来就为负的字段不误伤', (function () { const rr = applyVarOps({ 债务: -100 }, [{ op: 'delta', path: '/债务', value: -50 }]); return !rr.guardHit && rr.state['债务'] === -150; })());
 check('① 正常的扣款不触发（100 - 50 = 50）', (function () { const rr = applyVarOps({ 现金: 100 }, [{ op: 'delta', path: '/现金', value: -50 }]); return !rr.guardHit && rr.state['现金'] === 50; })());
@@ -1089,6 +1089,27 @@ const phReq = [{ path: '陈慧兰.位置' }, { path: '陈慧兰.外貌.发型' }
 const phDiff = stateDiffFields(phCur, JSON.parse(JSON.stringify(phCur)), phReq, []);
 check('㊻ 未登场/未描述 进 pending 而不是 absent', phDiff.pending.length === 2 && phDiff.absent.indexOf('陈慧兰.位置') < 0, phDiff);
 check('㊻ 正常值仍走 absent（真缺才报）', phDiff.absent.indexOf('林婉婷.位置') >= 0, phDiff.absent);
+
+console.log('');
+console.log('— 夹具 47：连续硬失败可见化（0.16.2）');
+const ff1 = emptyFailStreak();
+check('㊼ 空计数含四个类别且全为 0', FAIL_CATS.every((k) => ff1[k] === 0) && FAIL_CATS.length === 4);
+const ffR1 = noteFailure(ff1, 'data', 1000000, { threshold: 3 });
+const ffR2 = noteFailure(ff1, 'data', 1001000, { threshold: 3 });
+check('㊼ 同类连续计数 1 → 2', ffR1.streak === 1 && ffR2.streak === 2);
+check('㊼ 未到阈值不提醒', ffR1.alert === false && ffR2.alert === false && ffR2.reason === 'below-threshold');
+const ffR3 = noteFailure(ff1, 'data', 1002000, { threshold: 3 });
+check('㊼ 第 3 次触发提醒', ffR3.streak === 3 && ffR3.alert === true);
+const ffR4 = noteFailure(ff1, 'data', 1003000, { threshold: 3, lastAt: 1002000, cooldownMs: 600000 });
+check('㊼ 冷却期内不再提醒（但计数继续涨）', ffR4.alert === false && ffR4.reason === 'cooling-down' && ffR4.streak === 4);
+const ffR5 = noteFailure(ff1, 'data', 2000000, { threshold: 3, lastAt: 1002000, cooldownMs: 600000 });
+check('㊼ 冷却过后可再提醒', ffR5.alert === true);
+noteFailure(ff1, 'data', 3000000, {});
+const ffR6 = noteFailure(ff1, 'yaml', 3001000, {});
+check('㊼ 换成另一类失败 → 自己从 1 开始、旧类别清零', ffR6.streak === 1 && ff1.data === 0 && ff1.yaml === 1);
+const ffR7 = noteFailure(ff1, '不存在', 3002000, {});
+check('㊼ 未知类别被忽略（不污染计数）', ffR7.alert === false && ffR7.reason === 'unknown-cat' && ff1.yaml === 1);
+check('㊼ 传入空对象不崩', noteFailure(null, 'data', 1, {}).alert === false);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

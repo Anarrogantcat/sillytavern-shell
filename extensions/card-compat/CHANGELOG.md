@@ -1,5 +1,23 @@
 # 更新日志
 
+## [0.16.2] - 2026-09-25
+
+### 新增
+- **硬失败可见化**：`data-missing`（面板数据缺失）、`varfix-invalid`（自动补变量失败）、`yaml-strict-fail` / `block-yaml-issue`（结构块 YAML 解析失败）、`undeclared-block-stripped`（本卡未声明的块）原先**只写进面板日志** —— 用户的感受是「状态栏不动，却什么提示都没有」。现在：
+  - 同类失败**连续 3 楼** → 弹一次气泡，写明类别与楼层；**10 分钟冷却**，不会连续轰炸
+  - 面板新增「连续失败」一行（`#cc-fails`），实时列出还在连续中的类别 × 次数；≥3 时整行转警告色
+  - 切聊天时计数清零（与 `C14/C23` 的其它「每楼一条」集合一起重置）
+  - 判定抽成 `logic.js` 的纯函数 `emptyFailStreak()` / `noteFailure()` —— **夹具与运行时共用同一份实现**，避免「只在测试里对」
+  - `noteFailure` 语义：同类连续（换类别即清零旧类别）、未到阈值不提醒、冷却期内只涨计数不提醒、冷却过后可再提醒、未知类别忽略
+- **未声明块并进对照表**：`stripUndeclaredBlocks` 每楼的移除结果按 `messageId` 记账（`strippedByFloor`，上限 200 楼防长聊累积），第③组「本卡要求 vs 本轮实际」下方新增一行「本卡未声明的块（已清理）：标签（N 字…）」
+
+### 说明
+- 新增文案键：`failRow` / `undeclaredRow` / `fail_data|fail_varfix|fail_yaml|fail_undeclared` / `failTimes`（中英双语）
+- 只做只读统计与提示，**未触碰任何写变量路径**
+
+### 夹具
+- `scripts/compat-logic-test.mjs` 新增「夹具 47」（10 条）：426 → **435** 项
+
 ## [0.16.1] - 2026-09-25
 
 ### 修复
