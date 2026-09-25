@@ -52,9 +52,10 @@ jobs:
           $remoteMain = (git ls-remote origin refs/heads/main).Split()[0]
           # 只有两种情况允许回提交：本次 tag 就是 main 顶端，或 HEAD 恰好是 main 之上多出来的那一个自愈提交。
           # 旧判定只看「main 是 HEAD 的祖先」，tag 打在别的分支提交上时会把 main 静默推进过去。
-          $canPush = ($headSha -eq $remoteMain) -or (($baseSha -eq $remoteMain) -and ($staged.Count -gt 0))
-          if (-not $canPush) { Write-Error 'main 与本次 tag 不一致（或已被别人推进），放弃自动回提交'; exit 1 }
           if ($headSha -eq $remoteMain) { Write-Host 'main 已是本次提交，无需回提交'; exit 0 }
+          # main 已领先或被别人推进：清单以本次 tag 树的 --check 为准（上面已通过），这里只是没法回提交，不该把整次发版打掉
+          if ($baseSha -ne $remoteMain) { Write-Host 'warning: main 已被推进，跳过自动回提交（不影响本次发布）'; exit 0 }
+          if ($staged.Count -le 0) { Write-Host 'warning: 无待提交内容，跳过回提交（不影响本次发布）'; exit 0 }
           git -c 'http.https://github.com/.extraheader=' push 'https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git' HEAD:main
           if ($LASTEXITCODE -ne 0) { Write-Error '回提交失败（检查仓库 secret GH_TOKEN 是否有 contents:write）'; exit 1 }
           $after = (git ls-remote origin refs/heads/main).Split()[0]
