@@ -18,6 +18,17 @@
 #cc-panel .cc-tab { width: 100%; border-collapse: collapse; font-size: 1em; }
 /* 0.17.0：符号图例 —— 每个符号是什么意思直接印在面板上 */
 /* 0.18.0（UI 优化）：统计从一长串 ｜ 改成芯片组 + 能看的趋势条 */
+/* 0.22.0：插件总开关置顶 —— 显眼一点，用户一眼能关掉整个插件 */
+#cc-panel .cc-master {
+    margin: 2px 0 8px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .22);
+}
+#cc-panel .cc-master .cc-ok { color: #66bb6a; font-style: normal; }
+#cc-panel .cc-master .cc-bad { color: #ef5350; font-style: normal; }
+
 #cc-panel .cc-chips {
     display: flex;
     flex-wrap: wrap;

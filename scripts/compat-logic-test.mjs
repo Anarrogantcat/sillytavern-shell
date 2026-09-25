@@ -1274,5 +1274,21 @@ check('59 还原后 3 条 op 全部落地（旧版会全被跳过）', wpApplied
 check('59 值确实变了（时间/支出/互动次数）', wpApplied.state['系统']['时间'] === '14:30' && wpApplied.state['user']['累计支出_林婉婷'] === 1500 && wpApplied.state['互动次数']['林婉婷与user'] === 1);
 check('59 valueAtPath 也认包裹路径', valueAtPath(wpState, '${/系统/时间}') === '14:00');
 
+console.log('');
+console.log('— 夹具 60：插件总开关 + 功能开关（0.22.0）');
+const swSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('60 两个功能开关有默认值（moneyCheck / moneyFix 默认开）', /moneyCheck:\s*true,/.test(swSrc) && /moneyFix:\s*true,/.test(swSrc));
+const swKeys = ['switchTitle', 'switchOn', 'switchOff', 'moneyCheck', 'moneyFix', 'moneyFixOff'];
+check('60 开关文案中英各一', swKeys.every((k) => (swSrc.split(k + ": '").length - 1) === 2), swKeys.filter((k) => (swSrc.split(k + ": '").length - 1) !== 2));
+check('60 总开关放在面板最上面（cc-enabled 出现在 cc-stats 之前）', swSrc.indexOf("id=\"cc-enabled\"") > 0 && swSrc.indexOf("id=\"cc-enabled\"") < swSrc.indexOf("id=\"cc-stats\""));
+check('60 总开关只有一个实例（不会出现两个同 id 的 checkbox）', (swSrc.split("id=\"cc-enabled\"").length - 1) === 1);
+check('60 两个功能开关都绑定了 input 事件', swSrc.indexOf("bind('cc-money-check', 'moneyCheck', true)") > 0 && swSrc.indexOf("bind('cc-money-fix', 'moneyFix', true)") > 0);
+check('60 资金计算受 moneyCheck 控制（关闭就不算）', swSrc.indexOf('sMoney.moneyCheck !== false') > 0 || (swSrc.split('sMoney.moneyCheck !== false').length - 1) >= 1);
+check('60 资金纠正按钮受 moneyFix 控制', swSrc.indexOf('sMoney.moneyFix !== false') > 0);
+check('60 写入函数里也有开关兜底（开关关了直接拒绝写）', /function applyMoneyFix[\s\S]{0,240}moneyFix === false/.test(swSrc));
+check('60 状态文字随开关更新（renderStats 里写 cc-master-state）', swSrc.indexOf("getElementById('cc-master-state')") > 0);
+const swCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+check('60 总开关样式限定在 #cc-panel 内', (swCss.split('.cc-master').length - 1) === (swCss.split('#cc-panel .cc-master').length - 1));
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.21.3';
+const VERSION = '0.22.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -39,6 +39,8 @@ const DEFAULTS = {
     autoFixVars: false,     // 模型漏输出变量块时自动补一次（静默生成，只补补丁；默认关，避免意外调用 API）
     autoFixVarsMaxChars: 6000,
     pathWarn: true,        // 补丁路径白名单校验（只提示，不改写）
+    moneyCheck: true,      // 0.22.0：资金流体检 + 账目对账（关掉则完全不计算、不显示）
+    moneyFix: true,        // 0.22.0：资金纠正按钮（写入前确认、可撤销）
     mvuVerify: true,       // 用 MVU 的 parseMessage 试解析本轮变量块（能提前发现「块在但解析不了」）
     toastOnFail: true,     // 连续多楼缺变量块 → 弹一次气泡
     profileTtlMs: 60000,   // 角色卡档案缓存时长（P1 ④）
@@ -87,7 +89,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限', fontWarn: '注意：这两项会覆盖「所有角色卡自己的状态栏样式」（每张卡的美化都不同）。只在你确实觉得字太小时才开；开着时状态栏可能与卡的设计不一致。默认关闭。',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', stVersion: '版本', stFixes: '修正', stRerender: '重渲染', stAnchor: '补锚点', stClose: '补闭合', stDataMiss: '数据块缺失', stStale: '未更新告警', stDup: '重复锚点合并', stBlocks: '未声明块清理', stUnclosed: '未闭合块', stForeign: '串卡标签', stCover: '上轮覆盖', stMissing: '缺字段', stMvuFail: 'MVU 失败', stYamlStrict: 'YAML 严格失败', stWrapped: '路径包裹还原', stWrappedTip: '模型把补丁路径写成 ${/a/b} / {{/a/b}} 时会被还原成 /a/b；旧版这种 op 会整条静默跳过（数据不更新的常见原因）', stOk: '正常', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', moneyWarn: '资金流体检', moneyWarnBody: '正文出现 {n} 元，但本楼补丁里没有任何「现金/欠款/钱包/资产/余额」字段（{hint}）—— 钱动了吗？模型可能漏写，可在 MVU 面板补一条 replace。', moneyHintFlow: '只有支出/收入记账', moneyHintNone: '完全没写资金字段', ledgerWarn: '资金对账不一致', ledgerWarnTail: '（模型打算写的金额与账本实际变化对不上，可能是某楼补丁被跳过、或有别的机制改过变量）', moneyFixOffer: '正文出现 {n} 元，但本楼补丁没写现金字段。按卡的规则（累计支出_X = X 收到的钱）可以补一条：', moneyFixBtn: '给 {who} 加 {delta} 现金（{path}）', moneyUndoBtn: '撤销上次修正', moneyFixNoBase: '拿不到该楼的变量基线，无法安全修正', moneyFixWriteFail: '写回失败（TavernHelper 写入接口不可用？）', moneyUndoNone: '没有可撤销的修正', moneyUndoOk: '已撤销上一次资金修正', moneyFixBadTarget: '目标字段不是数字，拒绝代写（避免把对象/文本写成数字）', moneyFixConfirm: '确认写入这条资金修正？（会立即改该楼变量，可在面板点「撤销上次修正」回退）', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', stVersion: '版本', stFixes: '修正', stRerender: '重渲染', stAnchor: '补锚点', stClose: '补闭合', stDataMiss: '数据块缺失', stStale: '未更新告警', stDup: '重复锚点合并', stBlocks: '未声明块清理', stUnclosed: '未闭合块', stForeign: '串卡标签', stCover: '上轮覆盖', stMissing: '缺字段', stMvuFail: 'MVU 失败', stYamlStrict: 'YAML 严格失败', stWrapped: '路径包裹还原', stWrappedTip: '模型把补丁路径写成 ${/a/b} / {{/a/b}} 时会被还原成 /a/b；旧版这种 op 会整条静默跳过（数据不更新的常见原因）', stOk: '正常', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', moneyWarn: '资金流体检', moneyWarnBody: '正文出现 {n} 元，但本楼补丁里没有任何「现金/欠款/钱包/资产/余额」字段（{hint}）—— 钱动了吗？模型可能漏写，可在 MVU 面板补一条 replace。', moneyHintFlow: '只有支出/收入记账', moneyHintNone: '完全没写资金字段', switchTitle: '插件总开关', switchOn: '运行中', switchOff: '已停用（不守护、不修文本、不写变量）', moneyCheck: '资金流体检与对账', moneyFix: '资金纠正按钮（写入前确认、可撤销）', moneyFixOff: '资金纠正已在面板关闭', ledgerWarn: '资金对账不一致', ledgerWarnTail: '（模型打算写的金额与账本实际变化对不上，可能是某楼补丁被跳过、或有别的机制改过变量）', moneyFixOffer: '正文出现 {n} 元，但本楼补丁没写现金字段。按卡的规则（累计支出_X = X 收到的钱）可以补一条：', moneyFixBtn: '给 {who} 加 {delta} 现金（{path}）', moneyUndoBtn: '撤销上次修正', moneyFixNoBase: '拿不到该楼的变量基线，无法安全修正', moneyFixWriteFail: '写回失败（TavernHelper 写入接口不可用？）', moneyUndoNone: '没有可撤销的修正', moneyUndoOk: '已撤销上一次资金修正', moneyFixBadTarget: '目标字段不是数字，拒绝代写（避免把对象/文本写成数字）', moneyFixConfirm: '确认写入这条资金修正？（会立即改该楼变量，可在面板点「撤销上次修正」回退）', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', covTrendNone: '还没有覆盖度记录（发几条消息后这里会出现趋势条）', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -121,7 +123,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size', fontWarn: 'Note: these two override EVERY card\'s own status-bar styling (each card is themed differently). Only turn them on if the text really is too small; while on, the status bar may disagree with the card design. Default off.',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', stVersion: 'version', stFixes: 'fixes', stRerender: 'rerenders', stAnchor: 'anchors', stClose: 'closures', stDataMiss: 'data missing', stStale: 'stale', stDup: 'dup anchors', stBlocks: 'blocks stripped', stUnclosed: 'unclosed', stForeign: 'foreign tags', stCover: 'coverage', stMissing: 'missing', stMvuFail: 'MVU failures', stYamlStrict: 'YAML strict fails', stWrapped: 'paths unwrapped', stWrappedTip: 'patch paths written as ${/a/b} or {{/a/b}} are unwrapped to /a/b; older builds silently skipped those ops (a common cause of "data not updating")', stOk: 'OK', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', moneyWarn: 'Money-flow check', moneyWarnBody: 'the reply mentions {n} (currency) but this floor patched no cash/debt/wallet field ({hint}) - did the money actually move? The model may have skipped it; add a replace op in the MVU panel.', moneyHintFlow: 'only expense/income counters', moneyHintNone: 'no money field at all', ledgerWarn: 'Money ledger mismatch', ledgerWarnTail: ' (the amount the model planned to write differs from what the ledger actually recorded - a patch may have been skipped, or something else changed the variables)', moneyFixOffer: 'the reply mentions {n} but this floor patched no cash field. Per the card rule (spend counter = money received) we can add:', moneyFixBtn: 'Give {who} +{delta} cash ({path})', moneyUndoBtn: 'Undo last fix', moneyFixNoBase: 'no variable baseline for this floor; refusing to patch blindly', moneyFixWriteFail: 'write-back failed (TavernHelper write API unavailable?)', moneyUndoNone: 'nothing to undo', moneyUndoOk: 'Last money fix undone', moneyFixBadTarget: 'target field is not a number; refusing to write', moneyFixConfirm: 'Apply this money fix? (writes the floor variables now; use Undo last fix to revert)', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', stVersion: 'version', stFixes: 'fixes', stRerender: 'rerenders', stAnchor: 'anchors', stClose: 'closures', stDataMiss: 'data missing', stStale: 'stale', stDup: 'dup anchors', stBlocks: 'blocks stripped', stUnclosed: 'unclosed', stForeign: 'foreign tags', stCover: 'coverage', stMissing: 'missing', stMvuFail: 'MVU failures', stYamlStrict: 'YAML strict fails', stWrapped: 'paths unwrapped', stWrappedTip: 'patch paths written as ${/a/b} or {{/a/b}} are unwrapped to /a/b; older builds silently skipped those ops (a common cause of "data not updating")', stOk: 'OK', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', moneyWarn: 'Money-flow check', moneyWarnBody: 'the reply mentions {n} (currency) but this floor patched no cash/debt/wallet field ({hint}) - did the money actually move? The model may have skipped it; add a replace op in the MVU panel.', moneyHintFlow: 'only expense/income counters', moneyHintNone: 'no money field at all', switchTitle: 'Master switch', switchOn: 'running', switchOff: 'disabled (no guarding / text edits / variable writes)', moneyCheck: 'Money-flow check and ledger audit', moneyFix: 'Money fix button (confirm + undo)', moneyFixOff: 'Money fix is switched off in the panel', ledgerWarn: 'Money ledger mismatch', ledgerWarnTail: ' (the amount the model planned to write differs from what the ledger actually recorded - a patch may have been skipped, or something else changed the variables)', moneyFixOffer: 'the reply mentions {n} but this floor patched no cash field. Per the card rule (spend counter = money received) we can add:', moneyFixBtn: 'Give {who} +{delta} cash ({path})', moneyUndoBtn: 'Undo last fix', moneyFixNoBase: 'no variable baseline for this floor; refusing to patch blindly', moneyFixWriteFail: 'write-back failed (TavernHelper write API unavailable?)', moneyUndoNone: 'nothing to undo', moneyUndoOk: 'Last money fix undone', moneyFixBadTarget: 'target field is not a number; refusing to write', moneyFixConfirm: 'Apply this money fix? (writes the floor variables now; use Undo last fix to revert)', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', covTrendNone: 'No coverage history yet (send a few replies)', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -636,6 +638,7 @@ const moneyFixStack = [];   // { at, floor, path, delta, before }
 /** 应用一条资金纠正（返回是否写入） */
 function applyMoneyFix(messageId, path, delta) {
     try {
+        if ((settings() || {}).moneyFix === false) { toast(T('moneyFixOff'), 'info'); return false; }
         const scope = varScope();
         const before = readStateOf(messageId, scope.scope);
         if (!before) { toast(T('moneyFixNoBase'), 'warning'); return false; }
@@ -703,22 +706,24 @@ function buildReport(messageId, opts) {
         const report = { id: messageId, card: cardName, required: req, covered: [], missing: req.map((f) => f.path), written: [], blocks: 0, unknownPaths: [], extraPaths: [] };
         lastReport = report;                      // 先挂上，后面 log() 触发的渲染就不会再画旧表
         try { report.stripped = strippedByFloor.get(messageId) || null; } catch (_) {}
+        // 0.22.0：资金体检/对账/纠正都受面板开关控制（moneyCheck / moneyFix）
+        const sMoney = settings() || {};
         // 0.20.0：资金账目对账 —— 最近 12 层「模型打算写的金额」vs「账本实际变化」
-        try { report.ledger = moneyLedgerCheck(messageId); } catch (_) {}
+        try { if (sMoney.moneyCheck !== false) report.ledger = moneyLedgerCheck(messageId); } catch (_) {}
         // 0.21.0：能纠正的才给「应用」按钮（规则明确 = 有 累计支出_X 锚点且能找到对应现金路径）
         try {
             if (report.money && report.money.missingCash) {
                 const mfBlocks2 = extractUpdateBlocks(m.mes);
                 const mfPatch2 = mfBlocks2.map((b) => (b && (b.patchText || b.block)) || '').join('\n');
                 const mfOps = mfBlocks2.reduce((n, b) => n.concat(parsePatchOps(b.patchText || b.block).ops || []), []);
-                report.fix = moneyCorrection({ amount: report.money.n, ops: mfOps, patchText: mfPatch2, state: mvuVarsOf(messageId) || null, minAmount: 500 });
+                if (sMoney.moneyFix !== false) report.fix = moneyCorrection({ amount: report.money.n, ops: mfOps, patchText: mfPatch2, state: mvuVarsOf(messageId) || null, minAmount: 500 });
             }
         } catch (_) {}
         // 0.20.0：资金流体检 —— 正文提到钱、补丁却没落到现金/欠款字段时，把这条摆到面板上
         try {
             const mfBlocks = extractUpdateBlocks(m.mes);
             const mfPatch = mfBlocks.map((b) => (b && (b.patchText || b.block)) || '').join('\n');
-            report.money = moneyFlowHint(m.mes, mfPatch, { minAmount: 500 });
+            if (sMoney.moneyCheck !== false) report.money = moneyFlowHint(m.mes, mfPatch, { minAmount: 500 });
         } catch (_) {}
         if (req.length && hasBlock) {
             const cov = coverageByProtocol(m.mes, req, profile.protocol);
@@ -1538,6 +1543,13 @@ function renderStats() {
         failsBox.textContent = hot.length ? (T('failRow') + '：' + hot.join(' ｜ ')) : '';
         failsBox.className = 'cc-line ' + (Object.keys(failStreak).some((k) => failStreak[k] >= 3) ? 'cc-warn' : 'cc-muted');
     }
+    // 0.22.0：总开关状态一眼可见
+    const ms = document.getElementById('cc-master-state');
+    if (ms) {
+        const on = (settings() || {}).enabled !== false;
+        ms.textContent = on ? ('· ' + T('switchOn')) : ('· ' + T('switchOff'));
+        ms.className = on ? 'cc-ok' : 'cc-bad';
+    }
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
     renderTrend();
@@ -1778,11 +1790,13 @@ function buildSettingsUi() {
     wrap.innerHTML = [
         '<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧩 ' + escHtml(T('title')) + ' v' + VERSION + '</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>',
         '<div class="inline-drawer-content">',
+        // 0.22.0：把「插件总开关」提到面板最上面（原先埋在 ① 组里，用户找不到），并显示运行状态
+        '<label class="checkbox_label cc-master"><input type="checkbox" id="cc-enabled"><span><b>' + escHtml(T('switchTitle')) + '</b> <i id="cc-master-state"></i></span></label>',
         '<div id="cc-stats" class="cc-stats"></div>',
         '<div id="cc-trend" class="cc-trend"></div>',
         '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
-        cb('cc-enabled', 'enabled'), cb('cc-inject-prompt', 'injectPrompt'), cb('cc-inject', 'injectAnchor'), cb('cc-repair', 'repair'), cb('cc-stale', 'stale'),
-        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-overdraft', 'overdraftGuard'), cb('cc-schema-guard', 'schemaGuard'), cb('cc-var-barcb', 'varBar'),
+        cb('cc-inject-prompt', 'injectPrompt'), cb('cc-inject', 'injectAnchor'), cb('cc-repair', 'repair'), cb('cc-stale', 'stale'),
+        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-overdraft', 'overdraftGuard'), cb('cc-schema-guard', 'schemaGuard'), cb('cc-var-barcb', 'varBar'), cb('cc-money-check', 'moneyCheck'), cb('cc-money-fix', 'moneyFix'),
         "<button id=\"cc-check\" class=\"menu_button\">" + escHtml(T('btnCheck')) + "</button>",
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         "<button id=\"cc-check-front\" class=\"menu_button\">" + escHtml(T('btnCheckFront')) + "</button>",
@@ -1858,6 +1872,8 @@ function buildSettingsUi() {
     bind('cc-overdraft', 'overdraftGuard', true);
     bind('cc-schema-guard', 'schemaGuard', true);
     bind('cc-var-barcb', 'varBar', true);
+    bind('cc-money-check', 'moneyCheck', true);
+    bind('cc-money-fix', 'moneyFix', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
     bind('cc-bracket-tags', 'fixBracketTags', true);
     bind('cc-quote-scalars', 'quoteScalars', true);
