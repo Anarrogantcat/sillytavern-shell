@@ -1,5 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.23 (2026-09-25) — card-compat 0.16.0：「复制本卡诊断」把面板事实收成一段结论
+
+### 新增
+- 体检分组新增 **「复制本卡诊断」**：一键产出一段可复制的文本 —— 结论 / 协议 / 能力 / 规则 / Zod 结构 / 本轮判定 / 状态核对 / 守护统计 / 最近动作，末尾自动归纳「它现在在做什么」并给出下一步（启用被禁用的渲染正则、点补应用变量、去 MVU 重演、检查 YAML 等）。纯逻辑函数 `diagnosisReportText()` / `diagnosisActions()`，不碰写数据路径
+- `profileOf()` 补 `bookCount` / `disabledViews` 两个诊断字段；面板中英双语同步
+
+### 夹具
+- compat **418/0**（新增夹具 45，9 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 67 ・toolbox 16
 ## v2.2.22 (2026-09-25) — 修 CI：main 被推进时不再把整次发版打掉
 
 ### 修复

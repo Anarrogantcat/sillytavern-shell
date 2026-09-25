@@ -2474,3 +2474,85 @@ export function isStale(prevText, curText) {
     const same = keys.filter(k => a[k] === b[k]);
     return { stale: same.length === keys.length, compared: keys.length, same: same.length, fields: { prev: a, cur: b } };
 }
+
+
+/* ── 0.16.0：把面板里散落的诊断收成一段「可复制的结论」 ─────────────────
+ * 面板本来就有协议/规则数/Zod 摘要/本轮补丁/状态级核对/未声明块这些事实，但用户要自己拼起来才能回答
+ * 「这张卡到底为什么不动」。这个纯函数只做归纳：事实 → 一句结论 + 建议动作。不改任何数据。
+ */
+const DIAG_VERDICT = {
+    ok: '守护 + 校验可用',
+    'guard-only': '只能守护（本卡没有变量块）',
+    'no-rules': '有变量块但抽不到更新规则',
+    'read-only': '协议只读（能读不能写回）',
+    'format-only': '只有格式标签（仅提醒）',
+    'helper-only': '靠酒馆助手脚本渲染',
+    plain: '纯正文卡（无需处理）',
+    'dyn-bar': '动态状态栏（前端渲染）',
+};
+/** 生成「本卡诊断」文本：输入全是已知事实，输出给人看/贴给卡作者的一段话 */
+export function diagnosisReportText(input) {
+    const i = input || {};
+    const prof = i.profile || {};
+    const proto = i.protocol || {};
+    const hints = i.schemaHints || {};
+    const counts = (a) => ({
+        clamp: (a.clamps || []).length, bound: (a.bounds || []).length, type: (a.types || []).length,
+        enums: (a.enums || []).length, default: (a.defaults || []).length, object: (a.objects || []).length,
+        int: (a.ints || []).length, catch: (a.catches || []).length, round: (a.rounds || []).length,
+    });
+    const c = counts(hints);
+    const L = [];
+    L.push('=== card-compat 本卡诊断 v' + String(i.version || '?') + ' ===');
+    L.push('时间：' + new Date(i.at || Date.now()).toLocaleString());
+    L.push('角色卡：' + String(i.card || '（未选择）') + '（第 ' + String(i.floor == null ? '-' : i.floor) + ' 楼）');
+    L.push('壳/宿主：' + String(i.host || '未知') + ' ｜ 语言：' + String(i.lang || '?'));
+    L.push('');
+    L.push('【结论】' + (DIAG_VERDICT[i.verdict] || String(i.verdict || '未知')) + (i.ruleStyle ? '（无规则原因：' + i.ruleStyle + '）' : ''));
+    L.push('【变量协议】' + String(proto.id || 'none') + (proto.canWriteBack ? '（可写回）' : '（不可写回）'));
+    L.push('【能力】锚点 ' + (prof.anchors || []).length + ' ｜ 数据块 ' + (prof.dataTags || []).length + ' ｜ 隐藏目标 ' + (prof.hideTargets || []).length + ' ｜ 其它标签 ' + (prof.rawTags || []).length + ' ｜ 酒馆助手脚本 ' + (prof.helperCount || 0));
+    L.push('【规则】可抽路径 ' + String(i.required || 0) + ' 条 ｜ 白名单 ' + String(i.allowed || 0) + ' 条' + (i.ruleStyle ? ' ｜ 未抽到原因 ' + i.ruleStyle : ''));
+    L.push('【世界书】条目 ' + String(i.book || 0) + ' ｜ 作用域 ' + String((i.scope && i.scope.scope) || 'message') + '（' + String((i.scope && i.scope.reason) || '') + '）');
+    const zod = '夹取' + c.clamp + ' 范围' + c.bound + ' 类型' + c.type + ' 枚举' + c.enums + ' 默认值' + c.default + ' 对象' + c.object + ' 整数' + c.int + ' catch' + c.catch + ' 取整' + c.round;
+    L.push('【Zod 结构】' + zod + ' ｜ 无法离线校验 ' + ((hints.unverifiable || []).length));
+    if (i.thisFloor) {
+        const t = i.thisFloor;
+        L.push('【本轮】判定 ' + String(t.verdict || '-') + ' ｜ 数据块 ' + String(t.blocks || 0) + ' ｜ 路径 命中 ' + String(t.covered || 0) + '/' + String(t.total || 0));
+    }
+    if (i.state) {
+        L.push('【状态核对】真的变了 ' + (i.state.advanced || []).length + ' ｜ 写了没变 ' + (i.state.stuck || []).length + ' ｜ 值本来就一样 ' + (i.state.same || []).length + ' ｜ 本轮没写 ' + (i.state.absent || []).length + (i.state.noBase ? '（拿不到 stat_data）' : ''));
+    }
+    if (i.guards) L.push('【守护】' + String(i.guards) + ' ｜ 未声明块删除 ' + String(i.removed || 0) + ' ｜ YAML 修复 ' + String(i.yamlFixes || 0));
+    if (i.floors) L.push('【变量兜底】已补应用 ' + String(i.floors.written || 0) + ' 层 ｜ 跳过 ' + String(i.floors.skipped || 0) + ' 层 ｜ 收支保护命中 ' + String(i.floors.guard || 0) + ' ｜ Zod 拦下 ' + String(i.floors.schema || 0));
+    const recent = i.recent || [];
+    if (recent.length) {
+        L.push('');
+        L.push('【最近动作】');
+        for (const r of recent.slice(-8)) L.push('  - ' + String(r));
+    }
+    L.push('');
+    L.push('【它现在在做什么】');
+    for (const a of diagnosisActions(i)) L.push('  - ' + a);
+    return L.join(String.fromCharCode(10));
+}
+/** 事实 → 建议动作（顺序 = 先做最可能见效的） */
+export function diagnosisActions(input) {
+    const i = input || {};
+    const prof = i.profile || {};
+    const hints = i.schemaHints || {};
+    const out = [];
+    const logText = (i.recent || []).join(' ');
+    if (i.verdict === 'plain') return ['纯正文卡：不需要变量守护，面板里可关掉提醒'];
+    if (!(prof.anchors || []).length) out.push('本卡没有锚点：状态栏只能靠卡自己的前端渲染，本扩展不会补占位符');
+    if ((i.disabledViews || 0) > 0 && (i.disabledUncovered || 0) > 0) out.push('有被禁用的渲染正则且没有同类启用项（常见原因：导入时被批量禁用）→ 去酒馆助手/正则面板启用');
+    if (i.verdict === 'no-rules') out.push('有变量块但抽不到规则：规则可能写在世界书的散文里或 schema 脚本里 → 面板「兼容性体检」可看原因分类');
+    if (hints.unverifiable && hints.unverifiable.length) out.push('本卡有 ' + hints.unverifiable.length + ' 处无法离线校验的约束（transform/refine）：只应用可静态校验的部分，剩下的靠模型自己写对');
+    if ((i.schemaFails || 0) > 0) out.push('有写入被 Zod 结构拦下 ' + i.schemaFails + ' 次：看日志 var-schema 的具体路径，多半是模型写了类型不符的值');
+    if (logText.indexOf('yaml-strict-fail') >= 0 || logText.indexOf('block-yaml-issue') >= 0) out.push('结构块 YAML 解析失败：数据可能显示不全，用面板「严格校验当前楼层」定位那一行');
+    const st = i.state || {};
+    if (st.stuck && st.stuck.length) out.push('有 ' + st.stuck.length + ' 个字段「补丁写了但变量没变」：可能是 MVU 没应用 → 面板点「补应用变量」，或去 MVU 面板「重演楼层」');
+    if (st.noBase) out.push('拿不到 stat_data：MVU 可能没在运行 / 未初始化 → 先确认 MVU 已加载');
+    if ((i.guards || 0) > 0 && !out.length) out.push('本轮正常：守护动作 ' + i.guards + ' 次，没有发现异常');
+    if (!out.length) out.push('没有发现明显问题');
+    return out;
+}

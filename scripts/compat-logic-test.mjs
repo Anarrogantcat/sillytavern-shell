@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1049,6 +1049,32 @@ check('⑰ move 缺 from 被拒', validatePatchBlock('[{"op":"move","path":"/a/b
 check('⑰ 未知 op 被拒', validatePatchBlock('[{"op":"frobnicate","path":"/a"}]').ok === false);
 check('⑰ 合法的 move 仍通过', validatePatchBlock('[{"op":"move","from":"/a/b","path":"/c/d"}]').ok === true);
 check('⑰ delta/insert 是自家语法，不能被判非法', validatePatchBlock('[{"op":"delta","path":"/a","value":1}]').ok === true);
+
+console.log('');
+console.log('— 夹具 45：本卡诊断报告（0.16.0）');
+const diagIn = {
+    version: '0.16.0', at: Date.now(), card: '测试卡', floor: 12, host: '1.18.0', lang: 'zh', verdict: 'ok',
+    profile: { anchors: ['StatusPlaceHolderImpl'], dataTags: ['UpdateVariable'], hideTargets: [], rawTags: [], helperCount: 2 },
+    protocol: { id: 'mvu', canWriteBack: true },
+    required: 49, allowed: 60, book: 12, scope: { scope: 'message', reason: 'message 变量' },
+    schemaHints: { clamps: [1], bounds: [], types: [1], enums: [], defaults: [], objects: [1], ints: [], catches: [], rounds: [], unverifiable: [{ path: ['a'] }] },
+    disabledViews: 14, disabledUncovered: 1,
+    thisFloor: { verdict: '补丁没生效', blocks: 1, covered: 30, total: 49 },
+    state: { advanced: ['系统.时间'], stuck: ['林婉婷.关系态度'], same: [], absent: ['user.现金'], noBase: false },
+    guards: 3, removed: 1, yamlFixes: 2, floors: { written: 2, skipped: 1, guard: 1, schema: 3 }, schemaFails: 3,
+    recent: ['12:00:02 var-stuck [2 字段] 写了但存储值没变', '12:00:03 yaml-strict-fail [B] 解析失败：xxx'],
+};
+const diagTxt = diagnosisReportText(diagIn);
+check('㊺ 诊断报告含结论/协议/规则/状态核对段', ['【结论】', '【变量协议】', '【规则】', '【状态核对】'].every((s) => diagTxt.indexOf(s) >= 0));
+check('㊺ 诊断报告带卡名与楼层（便于贴给卡作者）', diagTxt.indexOf('测试卡') >= 0 && diagTxt.indexOf('第 12 楼') >= 0);
+check('㊺ 空输入不崩且仍是字符串', typeof diagnosisReportText({}) === 'string' && diagnosisReportText({}).length > 0);
+const diagActs = diagnosisActions(diagIn);
+check('㊺ 有「写了但没变」时给出补应用/MVU 重演建议', diagActs.some((a) => /补应用变量|重演楼层/.test(a)), diagActs);
+check('㊺ 有被禁用渲染正则时提示去启用', diagActs.some((a) => /渲染正则/.test(a)));
+check('㊺ 有无法离线校验约束时如实说明', diagActs.some((a) => /无法离线校验/.test(a)));
+check('㊺ 无问题时给「没有发现明显问题」而不是空数组', diagnosisActions({ verdict: 'ok', profile: {} }).length > 0);
+check('㊺ 纯正文卡只给一条「无需处理」', diagnosisActions({ verdict: 'plain', profile: {} }).length === 1);
+check('㊺ no-rules 时提示去体检看原因分类', diagnosisActions({ verdict: 'no-rules', profile: {} }).some((a) => /兼容性体检/.test(a)));
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
