@@ -1,5 +1,24 @@
 # 更新日志
 
+## [0.26.0] - 2026-09-25
+
+### 新增：渲染体检（运行时判定「卡的正则为什么不生效」）
+
+**为什么需要它**：这个问题**只靠文件看不出来**。我读了 ST 本体的渲染链路（只读，没改）：
+- ST 应用卡内正则只有一处：`public/script.js:1809` → `getRegexedString(mes, 位置, { isMarkdown: true, depth })`
+- 是否跑某个脚本由 `regex/engine.js:334-380` 与 `:108-133` 这几条决定：正则扩展未被禁用 / `disabled !== true` / `markdownOnly && isMarkdown` / `placement` 含 `AI_OUTPUT` / **`character_allowed_regex` 含本卡 `avatar`（全等比较）**
+- 酒馆助手**不是**元凶：它 import 的就是 ST 那个 `messageFormatting`（`displayed_message.ts:67/149`），走同一条链路
+
+**所以新增「渲染体检」**（发送栏按钮，结果自动复制）：逐条打印**实际值** ——
+① 正则扩展是否被禁用 ② 卡内脚本与其启用状态 ③ 当前卡 `avatar` ④ **是否在 `character_allowed_regex` 里**（不在就列出「名字相近的条目」与长度对比，用于抓 Unicode 归一化/大小写差异）⑤ 酒馆助手渲染开关 ⑥ **近 3 条消息的 DOM**：锚点是否裸露、`UpdateVariable` 是否裸露、状态栏是否已画出。
+
+第 ④ 条是重点：ST 是 `character_allowed_regex.includes(avatar)` **全等比较**，差一个字符就**整卡脚本静默不跑且不报错**。
+第 ⑥ 条用来区分「正则没跑」与「跑了但渲染器没采用」。
+
+### 夹具
+- 新增「夹具 68」（8 条）：逐条判定在位 / 全等比较 / 相近条目 / DOM 判定 / 复制与日志 / 中英文案 / 样式限定
+- `scripts/compat-logic-test.mjs`：575 → **583** 项
+
 ## [0.25.1] - 2026-09-25
 
 ### 修复：把「非 YAML 的块」从 YAML 校验与修复里彻底排除（连楼误报 + 潜在改写 JSONPatch）

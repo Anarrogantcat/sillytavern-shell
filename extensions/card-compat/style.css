@@ -148,5 +148,11 @@
     color: #81c784;
 }
 #cc-var-bar .ccv-btn.ccv-restore:hover { background: rgba(102, 187, 106, .16); }
+/* 0.26.0：渲染体检按钮 */
+#cc-var-bar .ccv-btn.ccv-health {
+    border-color: rgba(144, 202, 249, .55);
+    color: #90caf9;
+}
+#cc-var-bar .ccv-btn.ccv-health:hover { background: rgba(144, 202, 249, .16); }
 #cc-var-bar .ccv-btn:hover { background: rgba(0, 229, 255, .16); }
 #cc-var-bar .ccv-btn:active { transform: scale(.97); }

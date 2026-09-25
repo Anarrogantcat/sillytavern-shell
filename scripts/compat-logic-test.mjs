@@ -1430,5 +1430,18 @@ check('67 判定表正确', isNonYamlTag('UpdateVariable') === true && isNonYaml
 const f67Src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
 check('67 面板侧改用过滤后的标签列表', f67Src.indexOf('function yamlTagsOf') > 0 && (f67Src.split('yamlTagsOf(').length - 1) >= 4);
 
+console.log('');
+console.log('— 夹具 68：渲染体检（0.26.0，只靠文件看不出的运行时判定）');
+const hSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('68 有 renderHealth 且逐条对照 ST 的判定条件', hSrc.indexOf('function renderHealth') > 0 && hSrc.indexOf('character_allowed_regex') > 0);
+check('68 检查 1：正则扩展是否被禁用', hSrc.indexOf('disabledExtensions') > 0 && hSrc.indexOf('正则扩展被禁用') > 0);
+check('68 检查 4：avatar 与允许列表全等比较（大小写/归一化差异会被抓出来）', /allow\.indexOf\(avatar\)/.test(hSrc));
+check('68 会列出「名字相近的条目」便于肉眼比对', hSrc.indexOf('名字相近的条目') > 0);
+check('68 读 DOM 判断锚点是否裸露（区分「渲染器没跑正则」）', hSrc.indexOf('mes_text') > 0 && hSrc.indexOf('裸露锚点') > 0);
+check('68 发送栏有体检按钮且结果会复制 + 记日志', hSrc.indexOf('cc-var-health') > 0 && hSrc.indexOf('render-health') > 0 && hSrc.indexOf('navigator.clipboard') > 0);
+check("68 体检文案中英各一", hSrc.split("healthBtn: '").length - 1 === 2);
+const hCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+check('68 体检按钮配色限定 #cc-var-bar 内', (hCss.split('.ccv-health').length - 1) === (hCss.split('#cc-var-bar .ccv-btn.ccv-health').length - 1));
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
