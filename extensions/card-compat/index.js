@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.13.2';
+const VERSION = '0.14.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -856,6 +856,8 @@ function thApi() { try { return window.TavernHelper || window.Tavernhelper || nu
 function mvuActive() {
     try {
         if (settings().varAuto === false) return false;
+        // 与 mvuApi() 同口径：MVU 在 iframe 内运行时是挂在 window.parent 上的（只认 window.MVU/Mvu 会把「在场」误判成「不在场」→ 自动兜底与 MVU 抢写、delta 二次累加）
+        if (mvuApi()) return true;
         if (typeof window.MVU !== 'undefined' || typeof window.Mvu !== 'undefined') return true;
         const ctx = getContext();
         const ch = ctx && ctx.characters && ctx.characters[ctx.characterId];
@@ -890,7 +892,14 @@ function writeStateOf(id, statData, scope) {
         const th = thApi();
         const opt = scopeOpts(scope, id);
         if (th && typeof th.updateVariablesWith === 'function') { th.updateVariablesWith((v) => { v.stat_data = statData; return v; }, opt); return true; }
-        if (th && typeof th.replaceVariables === 'function') { th.replaceVariables({ stat_data: statData }, opt); return true; }
+        // 回退：replaceVariables 是「整体替换变量表」——只传 stat_data 会把 display_data/delta_data/initialized_lorebooks 等一起抹掉（且不可逆）
+        // 所以先取全量、只改 stat_data、再写回；连 getVariables 都没有就宁可不写
+        if (th && typeof th.replaceVariables === 'function' && typeof th.getVariables === 'function') {
+            const cur = th.getVariables(opt) || {};
+            const next = (cur && typeof cur === 'object' && !Array.isArray(cur)) ? Object.assign({}, cur, { stat_data: statData }) : { stat_data: statData };
+            th.replaceVariables(next, opt);
+            return true;
+        }
     } catch (e) { log('var-write-failed', '', String((e && e.message) || e)); }
     return false;
 }

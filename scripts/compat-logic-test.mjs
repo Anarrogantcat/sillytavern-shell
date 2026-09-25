@@ -264,6 +264,17 @@ const ops18 = parsePatchOps('<JSONPatch>[{"op":"replace","path":"/a"}]</JSONPatc
 check('多个 JSONPatch 片段全部解析', ops18.ops.length === 2 && ops18.frags === 2, ops18);
 check('单片段解析仍正确', parsePatchOps('<JSONPatch>[{"op":"replace","path":"/a"}]</JSONPatch>').ops.length === 1, parsePatchOps('<JSONPatch>[{"op":"replace","path":"/a"}]</JSONPatch>').ops.length);
 console.log('— 夹具 19：入口顺序回归（0.2.6/0.2.7 的清理逻辑被插错函数）');
+// 版本断言不再写死具体数字（每升一次版本夹具就红一次，已踩过）：从 manifest 读当前版本，再校验代码里的 VERSION 与它一致
+function manifestVersion() {
+    try {
+        const raw = readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8');
+        return JSON.parse(raw).version;
+    } catch (_) { return null; }
+}
+function versionWired() {
+    const v = manifestVersion();
+    return !!v && idxSrc.indexOf("const VERSION = '" + v + "'") > 0;
+}
 const idxSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
 const gStart = idxSrc.indexOf('function guardMessage(');
 const sStart = idxSrc.indexOf('async function strictCheckMessage(');
@@ -717,7 +728,7 @@ check('⑤ 说不准时默认 message（与 MVU 写在同一处，最安全）',
 // ⑥ 扩展接线
 check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,3000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
 check('⑥ 试算模式 dryRun：只统计不写（E2E / 排查用）', idxSrc.indexOf('o.dryRun') > 0 && /dryRun: !!o.dryRun/.test(idxSrc));
-check('⑥ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.2'") > 0);
+check('⑥ 版本号已到 0.12.0', versionWired());
 
 console.log('— 夹具 37：状态级核对（0.11.0；用户实测「一排 ✅ 但状态栏不动，检查不出来」）');
 const prev37 = { 系统: { 时间: '14:00', 日期: '2025年7月18日' }, 林婉婷: { 外貌: { 表情: '平静' }, 位置: 'user家门口' }, 陈慧兰: { 位置: '公司' } };
@@ -799,7 +810,7 @@ check('② 幂等：把修好的值当存值再跑 → 0 写入', planFloorFixes
 check('② 路径全落空会计账（执行层据此宁可不写）', (function () { const pl = planFloorFixes([good39, bad39], [[], [{ op: 'replace', path: '/不存在/字段', value: 1 }]], iv39)[1]; return pl.ops === 1 && pl.skipped.length >= pl.ops; })());
 check('② 不带补丁的 user 快照若带坏值也会被覆盖回最新真相', (function () { const pl = planFloorFixes([good39, bad39, bad39], [[], p39, []], iv39); return pl[2].write === true && pl[2].reason === 'negative-fix'; })());
 check('③ 扩展接线（引擎传 overdraftGuard / 面板开关 / 拦下与修复都写日志提示）', /overdraftGuard: guardOn/.test(idxSrc) && idxSrc.indexOf("cb('cc-overdraft', 'overdraftGuard')") > 0 && idxSrc.indexOf("T('varGuardHit')") > 0 && idxSrc.indexOf("T('varNegFixed')") > 0 && /var-guard/.test(idxSrc) && /var-negative/.test(idxSrc));
-check('③ 版本号已到 0.12.0', idxSrc.indexOf("const VERSION = '0.13.2'") > 0);
+check('③ 版本号已到 0.12.0', versionWired());
 
 console.log('— 夹具 40：Zod 结构静态解析 v2（0.13.0；实测「破产后姐姐…」的真实 schema）');
 const REAL_SCHEMA = [
@@ -953,7 +964,7 @@ check('⑤ prefault 默认值补齐：只补 undefined，不覆盖已有值', (f
 check('⑤ schemaGuard:false 时完全不校验（安全阀）', (function () { const r = applyVarOps(b41, [{ op: 'replace', path: '/系统/时间', value: 123 }], Object.assign({}, o41, { schemaGuard: false })); return r.state['系统']['时间'] === 123 && r.schemaHits.length === 0; })());
 check('⑥ planFloorFixes 把 schemaHits 带出来（面板可显示）', (function () { const stored = [{ 系统: { 时间: '14:00' } }, { 系统: { 时间: '14:00' } }]; const ops = [[], [{ op: 'replace', path: '/系统/时间', value: 123 }]]; const pl = planFloorFixes(stored, ops, { 系统: { 时间: '14:00' } }, o41); return (pl[1].schemaHits || []).length === 1; })());
 check('⑦ 扩展接线（schemaGuard 开关 / 面板摘要行 / var-schema 日志 / 全量 hints 传入引擎）', idxSrc.indexOf("cb('cc-schema-guard', 'schemaGuard')") > 0 && idxSrc.indexOf('renderSchemaLine') > 0 && idxSrc.indexOf("'var-schema'") > 0 && /types: hints.types/.test(idxSrc) && /objects: hints.objects/.test(idxSrc) && /defaults: hints.defaults/.test(idxSrc) && /bounds: hints.bounds/.test(idxSrc));
-check('⑧ 版本号已到 0.13.0', idxSrc.indexOf("const VERSION = '0.13.2'") > 0);
+check('⑧ 版本号已到 0.13.0', versionWired());
 
 console.log('— 夹具 42：语料实测补的规则（别名内联 / z.array 元素 / .int() / .catch() / transform 白名单）');
 const S42 = [
@@ -989,7 +1000,7 @@ check('④ 无法离线校验的约束在「写变量这一刻」也提示（不
 check('⑤ 切卡后不再沿用上一张卡的表（0.13.2）：buildReport / refreshReport / watchCard 接线', idxSrc.indexOf('function buildReport(') > 0 && idxSrc.indexOf('function refreshReport(') > 0 && idxSrc.indexOf('function watchCard(') > 0 && idxSrc.indexOf('let cardKey =') > 0 && idxSrc.indexOf('setInterval(watchCard') > 0 && idxSrc.indexOf('refreshReport(0);') > 0 && idxSrc.indexOf('cardKey = cardKeyNow();') > 0);
 check('⑤ 报表头写明「本卡」并处理无规则卡；buildReport 里先挂 lastReport 再 log', idxSrc.indexOf("T('reportCard')") > 0 && idxSrc.indexOf("T('noRequired')") > 0 && idxSrc.indexOf('lastReport = report;') > 0 && idxSrc.indexOf('for (let i = total - 1; i >= 0; i--) { if (chat[i] && !chat[i].is_user)') > 0);
 check('⑤ 报表行去重（同路径只渲染一次）', idxSrc.indexOf('const seenRow = new Set();') > 0 && idxSrc.indexOf('if (!f || seenRow.has(f.path)) continue;') > 0);
-check('⑤ 版本号已到 0.13.2', idxSrc.indexOf("const VERSION = '0.13.2'") > 0);
+check('⑤ 版本号已到 0.13.2', versionWired());
 
 console.log('');
 console.log('结果: pass=' + pass + ' fail=' + fail);

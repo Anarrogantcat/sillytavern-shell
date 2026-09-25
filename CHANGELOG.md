@@ -1,5 +1,24 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.16 (2026-09-25) — 审计修复第②轮：card-compat 0.14.0（模板组上限 + 6 处解析/写入 bug）
+
+### 安全
+- **套壳主线程可被一张卡卡死**：card-compat 的 `expandTemplateGroups` 是指数级展开，实测 **8 组 `{a|b|…}`（每组 10 备选）= 1 亿条**（6 组 = 100 万条 / 454ms、7 组 = 210 万条 / 1654ms），而它在 `profileOf()` 里、**打开聊天就会跑**。现在加硬上限 `TPL_EXPAND_CAP = 2000`（实测同样的输入 2ms 返回 2000 条），超限截断并记 `expandStats.truncated`。见 `extensions/card-compat/CHANGELOG.md` 的 0.14.0
+
+### 修复（都在 card-compat 0.14.0，逐条实测见扩展 CHANGELOG）
+- 回退写变量用 `replaceVariables` 整体替换 → 静默清空 `display_data`/`delta_data` 等（旧 TavernHelper）；改为先取全量只改 `stat_data`
+- `mvuActive()` 不认 `window.parent.Mvu` → 与 MVU 抢写、delta 二次累加；改为复用 `mvuApi()`
+- JSONPatch `move` 先删源再验目标 → 目标不可建时源值丢失；改为先建后删
+- `parsePatchOps` 取首个 `[` 到末个 `]` → 块内方括号说明（`（说明：[已更新]）`、`分析[1]:`）让整段补丁被丢弃；改为括号配对 + 优先取对象数组
+- `guardBlockYaml` 加双引号不转义反斜杠 → `C:\new` 被 YAML 解析成换行；反斜杠一起转义
+- 前缀标签：`<Update` 命中 `<UpdateVariable>`、`</Status` 破坏 `</StatusBar>`；改词边界
+- 变量块抽取大小写敏感（`<updatevariable>` 协议算 MVU 却抽不到）；两处改大小写不敏感
+
+### 变更
+- 本轮**只改扩展，壳代码未动**；壳版本号 +1 是项目惯例（每次内容更新都留痕）。扩展走自己的在线更新通道：推 `main` + 重建 `extensions/index.json` 后，已装用户下次启动即比对到 0.14.0
+
+### 夹具
+- compat 385/0 ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16（全绿）；本轮为 7 个新反例各做了独立探针验证，尚未固化成夹具（列入第 ④ 轮）
 ## v2.2.15 (2026-09-25) — 安全补测：`dataRoot` 与 `serverPath` 走同一套校验
 
 ### 安全

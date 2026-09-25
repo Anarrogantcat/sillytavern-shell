@@ -1,5 +1,21 @@
 # 更新日志
-## [0.13.2] - 2026-09-25
+
+## [0.14.0] - 2026-09-25
+
+### 安全 / 稳定性
+- **模板组展开加硬上限（`TPL_EXPAND_CAP = 2000`）**：`expandTemplateGroups` 是指数级的 —— 实测 8 组 `{a|b|…}`（每组 10 备选）会产出 **1 亿条**、把主线程卡死（6 组 = 100 万条 / 454ms、7 组 = 210 万条 / 1654ms）。它由 `profileOf()` 在**打开聊天时**调用，等于「导入一张写了多组模板的卡就能卡死套壳」。现在超限截断并记 `expandStats.truncated`
+
+### 修复
+- **回退写变量会清空同作用域其它键**（`index.js · writeStateOf`）：TavernHelper 没有 `updateVariablesWith` 时走 `replaceVariables({stat_data})`，而它是「整体替换变量表」—— 会把 `display_data` / `delta_data` / `initialized_lorebooks` 一起抹掉，然后 `return true` 并弹「变量已补应用」。改为**先 getVariables 取全量、只改 stat_data、再写回**；连 `getVariables` 都没有就宁可不写
+- **`mvuActive()` 与 `mvuApi()` 口径不一致**：MVU 在 iframe 内运行时挂在 `window.parent`（`mvuApi()` 认、`mvuActive()` 不认）→ 自动兜底会在 MVU 在场时接管，delta 二次累加。现在 `mvuActive()` 先复用 `mvuApi()`
+- **JSONPatch `move` 先删源再验目标**：目标建不出来时源值已经丢了却只记一条 `skipped`。改为先 `seek(head,true)` 成功再删源
+- **补丁块里出现方括号说明就整段丢弃**：`parsePatchOps` 原先取首个 `[` 到末个 `]`，`（说明：[已更新]）`、`分析[1]:` 这类写法会让 `JSON.parse` 失败。改为**括号配对扫描候选 + 优先取「元素全是对象」的数组**，字符串内的 `[` `]` 不受影响
+- **YAML 自动加引号不转义反斜杠**：`guardBlockYaml` 把 `路径: C:\new # 重要` 改成双引号标量时只转义了 `"`，YAML 会把 `\n` 解释成换行 → 内容被静默改写。现在反斜杠一起转义
+- **前缀标签误补闭合 / 破坏合法闭合**：`<Update` 用 `includes` 会命中 `<UpdateVariable>`；修畸形闭合的 `(?!>)` 会把合法的 `</StatusBar>` 改成 `</Status>Bar>`。两处都改成词边界判定
+- **变量块抽取大小写敏感**：`<updatevariable>` 在 `detectVariableProtocol` 里算 MVU、在抽取里却抽不到 —— 补丁既不被应用也不告警。两处抽取改为大小写不敏感，与 `DATA_RE` 同口径
+
+### 夹具
+- compat 385/0（未新增断言）；`ext-deploy-test` 需要先 `node scripts/ext-index.mjs` 重建清单（版本号变了）## [0.13.2] - 2026-09-25
 ### 修复
 - **切换角色卡后，面板第③组仍显示上一张卡的对照表**（用户实测截图）：`lastReport` 只在 `guardMessage` 里「本卡有规则 **且** 本楼有 `<UpdateVariable>`」时才重建；切到新卡后如果它最后一条 assistant 消息没有变量块（或本卡没有可解析规则），旧报表就永远留在面板上
   - 抽出 `buildReport(messageId)`：**不管有没有变量块都建表**（没有块就是「这些字段本轮都没更新」），并在开头就把 `lastReport` 换成新表，`log()` 触发的重绘不会再画到旧表

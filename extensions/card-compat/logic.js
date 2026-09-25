@@ -121,7 +121,12 @@ const TPL_RE = new RegExp('\\' + D + '?\\{([^}]+)\\}');
  *   系统.模板组(日期|时间) → 系统.日期 / 系统.时间
  * @returns {string[]} 去重后的展开结果（保序）
  */
+/** 展开上限：多组 {a|b} 是指数级的（实测 8 组 ×10 = 1 亿条、主线程直接卡死），超过就截断并记账 */
+export const TPL_EXPAND_CAP = 2000;
+/** 上一次展开是否被上限截断（调用方可用于提示；纯函数不改其它行为） */
+export const expandStats = { truncated: 0 };
 export function expandTemplateGroups(values, maxRounds = 8) {
+    expandStats.truncated = 0;
     let pool = (values || []).map((v) => String(v ?? ''));
     for (let round = 0; round < (Number(maxRounds) || 8); round++) {
         let changed = false;
@@ -130,12 +135,18 @@ export function expandTemplateGroups(values, maxRounds = 8) {
             const mm = TPL_RE.exec(v);
             if (!mm) { next.push(v); continue; }
             changed = true;
-            for (const alt of mm[1].split(/[|｜]/)) next.push(v.slice(0, mm.index) + alt.trim() + v.slice(mm.index + mm[0].length));
+            let stopped = false;
+            for (const alt of mm[1].split(/[|｜]/)) {
+                if (next.length >= TPL_EXPAND_CAP) { stopped = true; break; }
+                next.push(v.slice(0, mm.index) + alt.trim() + v.slice(mm.index + mm[0].length));
+            }
+            if (stopped) { expandStats.truncated++; break; }
         }
         pool = next;
-        if (!changed) break;
+        if (!changed || expandStats.truncated) break;
     }
-    return [...new Set(pool)];
+    const out = [...new Set(pool)];
+    return out.length > TPL_EXPAND_CAP ? out.slice(0, TPL_EXPAND_CAP) : out;
 }
 
 /** 抽出补丁里的 JSONPatch 数组（支持一条回复里的多个 <JSONPatch> 片段） */
@@ -156,13 +167,41 @@ export function parsePatchOps(blockOrPatch) {
     if (!frags.length) frags.push(raw);
     const ops = [];
     for (const frag of frags) {
-        let t = String(frag);
-        const o = t.indexOf('['), c = t.lastIndexOf(']');
-        if (o >= 0 && c > o) t = t.slice(o, c + 1);
-        t = t.trim();
-        if (!t) continue;
-        let arr = null;
-        try { arr = JSON.parse(t); } catch (e) { problems.push('JSON 解析失败: ' + String((e && e.message) || e).slice(0, 80)); continue; }
+        const frag2 = String(frag);
+        // 按括号配对逐个试「平衡的 JSON 数组」：原先取首个 [ 到末个 ]，块内任何说明文字（如「（说明：[已更新]）」）都会让 JSON.parse 失败、整段补丁被丢弃；
+        // 现在遇到非 JSON 的括号候选（例如「分析[1]:」）会继续往后找下一个候选。
+        const cands = [];
+        {
+            let from = 0;
+            while (cands.length < 20) {
+                const st = frag2.indexOf('[', from);
+                if (st < 0) break;
+                let depth = 0, inStr = false, esc = false, end = -1;
+                for (let k = st; k < frag2.length; k++) {
+                    const ch = frag2[k];
+                    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+                    if (ch === '"') { inStr = true; continue; }
+                    if (ch === '[') depth++;
+                    else if (ch === ']') { depth--; if (depth === 0) { end = k; break; } }
+                }
+                if (end < 0) break;
+                cands.push(frag2.slice(st, end + 1));
+                from = end + 1;
+            }
+        }
+        if (!cands.length) cands.push(String(frag));
+        // 优先取「元素全是对象」的候选（[1] 这类说明性方括号会被跳过），退而取第一个能解析的数组
+        let arr = null, fallback = null, lastErr = null;
+        for (const c of cands) {
+            try {
+                const a = JSON.parse(c.trim());
+                if (!Array.isArray(a)) continue;
+                if (!fallback) fallback = a;
+                if (a.every((x) => x && typeof x === 'object' && !Array.isArray(x))) { arr = a; break; }
+            } catch (e) { lastErr = e; }
+        }
+        if (!arr) arr = fallback;
+        if (!arr) { problems.push('JSON 解析失败: ' + String((lastErr && lastErr.message) || '没有可解析的 JSON 数组').slice(0, 80)); continue; }
         if (!Array.isArray(arr)) { problems.push('不是数组'); continue; }
         for (const el of arr) {
             if (!el || typeof el !== 'object') { problems.push('元素不是对象'); continue; }
@@ -177,12 +216,13 @@ export function extractUpdateBlocks(text) {
     const s = String(text || '');
     const out = [];
     let i = 0;
+    const lc = s.toLowerCase();
     while (true) {
-        const a = s.indexOf('<UpdateVariable', i);
+        const a = lc.indexOf('<updatevariable', i);
         if (a < 0) break;
         const gt = s.indexOf('>', a);
         if (gt < 0) break;
-        const b = s.indexOf('</UpdateVariable>', gt);
+        const b = lc.indexOf('</updatevariable>', gt);
         if (b < 0) { out.push({ block: s.slice(a), patchText: '' }); break; }
         const block = s.slice(a, b + '</UpdateVariable>'.length);
         const pa = block.indexOf('<JSONPatch>'), pb = block.indexOf('</JSONPatch>');
@@ -481,8 +521,11 @@ export function guardText(text, profile, opts = {}) {
 
     // 1) 数据块：绝不改动内容，只在「开标签存在但未闭合」时补结束标签
     for (const tag of profile.dataTags || []) {
-        const opened = out.includes('<' + tag);
-        const closed = out.includes('</' + tag + '>');
+        // 词边界：<Update 不能用 includes 判定（会把 <UpdateVariable> 也算命中），闭合同理（</Status> 不能在 </StatusBar> 里命中）
+        const openRe = new RegExp('<' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[\\s/>])');
+        const closeRe = new RegExp('</' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[\\s>])');
+        const opened = openRe.test(out);
+        const closed = closeRe.test(out);
         if (opened && !closed && opts.repairClosure !== false) {
             out = out.trimEnd() + '\n</' + tag + '>';
             actions.push({ type: 'data-close-repaired', tag });
@@ -665,7 +708,8 @@ export function guardBlockYaml(text, tags, opts = {}) {
                 const alreadyQuoted = first === '"' || first === "'" || first === '|' || first === '>' || first === '[' || first === '{' || first === '-';
                 if (quoteScalars && !alreadyQuoted && (val.includes(': ') || val.includes(' #') || val.endsWith(':'))) {
                     fixes.push({ tag, kind: 'quote-scalar', key });
-                    return m[1] + m[2] + ':' + gap + '"' + val.split('"').join('\\"') + '"';
+                    // 反斜杠必须一起转义：YAML 双引号里 "C:\new" 会被解析成换行
+                    return m[1] + m[2] + ':' + gap + '"' + val.split('\\').join('\\\\').split('"').join('\\"') + '"';
                 }
                 if (first === '"' && !/"[ \t]*$/.test(val)) issues.push({ tag, key, reason: '引号开了没闭合（不敢自动改）' });
                 return line;
@@ -707,9 +751,10 @@ export function strictYamlCheck(text, tags, yamlLib) {
 /** 从一个回复里抽出变量更新块（<UpdateVariable>…</UpdateVariable>）；不用正则，避免多层转义 */
 export function extractUpdateBlock(text) {
     const s = String(text || '');
-    const a = s.indexOf('<UpdateVariable');
+    const lc = s.toLowerCase();
+    const a = lc.indexOf('<updatevariable');
     if (a < 0) return null;
-    const b = s.indexOf('</UpdateVariable>', a);
+    const b = lc.indexOf('</updatevariable>', a);
     if (b < 0) return null;
     const block = s.slice(a, b + '</UpdateVariable>'.length);
     const pa = block.indexOf('<JSONPatch>');
@@ -756,7 +801,8 @@ export function normalizeMalformedClosings(text, tags) {
     let out = String(text ?? '');
     const fixed = [];
     for (const tag of tags || []) {
-        const re = new RegExp('</' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?!>)', 'g');
+        // 只在「标签名后跟空白/行尾」时才算缺 > 的畸形闭合；原 (?!>) 会把合法的 </StatusBar> 改成 </Status>Bar>
+        const re = new RegExp('</' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[\\s]|$)', 'g');
         if (re.test(out)) { out = out.replace(re, '</' + tag + '>'); fixed.push(tag); }
     }
     return { text: out, fixed };
@@ -1073,9 +1119,10 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
                 const val = src[fLast];
                 const ck = check(path, val, val, op.path);
                 if (!ck.ok) continue;
-                delete src[fLast];
+                // 先确认目标可建再删源：原先先 delete 再 seek，目标建不出来时源值已经没了，却只记一条 skipped
                 const dst = seek(head, true);
                 if (!dst) { skipped.push({ path: String(op.path), reason: 'move 目标不可建' }); continue; }
+                delete src[fLast];
                 dst[last] = clampOf(path, ck.v);
             } else { skipped.push({ path: String(op.path), reason: '未知 op ' + kind }); continue; }
             applied.push(String(op.path));
