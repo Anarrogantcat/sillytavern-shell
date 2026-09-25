@@ -2810,3 +2810,64 @@ export function moneyLedgerDrift(rows) {
     }
     return { checked: checked, mismatches: mismatches };
 }
+
+/* ── 0.21.0：资金纠正（不只诊断） ───────────────────────────────────
+ * 用户的第 3 问：「咱们的插件不能纠正吗？只能诊断？」
+ * 能纠正，而且卡里本来就有现成的授权 —— 「累计支出_X」正是卡设计的「user 付了多少钱」账本；
+ * 「该给谁加多少钱」就是「谁的累计支出增加了多少」。所以规则明确的情况下可以**算出**该补什么，
+ * 不需要猜方向。剩下的情况（无累计支出锚点、金额<门槛、路径已被写）一律**只诊断不代写**。
+ */
+/** 全部 stat_data 里的数值路径（用于找「钱相关的候选字段」） */
+function numericPathsOf(state, limit) {
+    const out = [];
+    const walk = (node, prefix) => {
+        if (out.length > (limit || 400)) return;
+        if (!node || typeof node !== 'object') return;
+        for (const k of Object.keys(node)) {
+            const v = node[k];
+            const p = prefix ? (prefix + '/' + k) : k;
+            if (typeof v === 'number') out.push(p);
+            else if (v && typeof v === 'object' && !Array.isArray(v)) walk(v, p);
+        }
+    };
+    walk(state, '');
+    return out;
+}
+/**
+ * 生成「资金纠正」建议：只在规则明确时给出可直接应用的补丁。
+ * 规则（与那张卡的写法一致）：`/user/累计支出_<角色>` 的增量 = 该角色这一轮收到的钱。
+ * @param {{amount:number, text:string, patchText:string, state:object, minAmount?:number}} input
+ * @returns {{ok:boolean, reason:string, actions:Array<{label:string, path:string, delta:number}>}}
+ */
+export function moneyCorrection(input) {
+    const i = input || {};
+    const amount = Number(i.amount) || 0;
+    const min = Number(i.minAmount) > 0 ? Number(i.minAmount) : 500;
+    if (amount < min) return { ok: false, reason: 'amount-too-small', actions: [] };
+    const paths = moneyPathsIn(i.patchText || '');
+    if (paths.some((p) => MONEY_CASH_RE.test(p))) return { ok: false, reason: 'cash-path-present', actions: [] };
+    const state = i.state;
+    if (!state || typeof state !== 'object') return { ok: false, reason: 'no-state', actions: [] };
+    // 看这一楼的补丁把「谁的累计支出」加了钱 → 那个人就是收钱的人
+    const spendDeltas = [];
+    const re = /"op"\s*:\s*"(\w+)"\s*,\s*"path"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*(-?\d+(?:\.\d+)?)/g;
+    let m;
+    while ((m = re.exec(String(i.patchText || '')))) {
+        if (String(m[1]).toLowerCase() !== 'delta') continue;
+        const sp = String(m[2]);
+        const mm = sp.match(/累计支出[_\.\/]?([^\/"\s]+)/);
+        if (!mm) continue;
+        const v = Number(m[3]);
+        if (Number.isFinite(v) && v > 0) spendDeltas.push({ who: mm[1], delta: v });
+    }
+    if (!spendDeltas.length) return { ok: false, reason: 'no-spend-anchor', actions: [] };
+    const known = numericPathsOf(state, 400);
+    const actions = [];
+    for (const sd of spendDeltas) {
+        const cashPath = known.find((p) => p.indexOf(sd.who + '/') === 0 && /(现金|钱包|余额)/.test(p));
+        if (!cashPath) continue;
+        actions.push({ label: sd.who, path: '/' + cashPath, delta: sd.delta, who: sd.who });
+    }
+    if (!actions.length) return { ok: false, reason: 'no-cash-path', actions: [] };
+    return { ok: true, reason: 'suggested', actions: actions };
+}

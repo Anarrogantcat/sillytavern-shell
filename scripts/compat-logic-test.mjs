@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1228,6 +1228,18 @@ check('55 落地正确的层不误报（#9/#11）', ledger.mismatches.every((m) 
 check('55 replace 型金额也能算差值（prev 30 → 50 = +20）', (() => { const r = moneyLedgerDrift([{ floor: 1, ops: [{ op: 'replace', path: '/林婉婷/关系态度', value: 50 }], stored: 50, prevStored: 30, prevState: { 林婉婷: { 关系态度: 30 } } }]); return r.mismatches.length === 0; })());
 check('55 没有计划金额的层不参与对账（不制造噪音）', (() => { const r = moneyLedgerDrift([{ floor: 1, ops: [{ op: 'replace', path: '/系统/时间', value: '15:00' }], stored: 8000, prevStored: 8000 }]); return r.checked === 0 && r.mismatches.length === 0; })());
 check('55 空输入不崩', moneyLedgerDrift(null).mismatches.length === 0);
+
+console.log('');
+console.log('— 夹具 56：资金纠正建议（0.21.0，从「只能诊断」到「能补」）');
+const mcState = { user: { 累计支出_林婉婷: 5000 }, 林婉婷: { 经济: { 现金: 500, 欠款: 500 } } };
+const mcPatch11 = '[{"op":"delta","path":"/user/累计支出_林婉婷","value":3000}]';
+const mc1 = moneyCorrection({ amount: 3000, patchText: mcPatch11, state: mcState, minAmount: 500 });
+check('56 有累计支出锚点 → 给出「给林婉婷加 3000 现金」', mc1.ok === true && mc1.actions.length === 1 && mc1.actions[0].path === '/林婉婷/经济/现金' && mc1.actions[0].delta === 3000, mc1);
+check('56 补丁里已有现金路径 → 不给建议（不重复补）', moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/林婉婷/经济/现金","value":3000}]', state: mcState }).ok === false);
+check('56 金额低于门槛 → 不给建议', moneyCorrection({ amount: 100, patchText: mcPatch11, state: mcState }).ok === false);
+check('56 没有 累计支出 锚点 → 不给建议（不猜方向）', moneyCorrection({ amount: 3000, patchText: '[{"op":"replace","path":"/系统/时间","value":"15:00"}]', state: mcState }).reason === 'no-spend-anchor');
+check('56 找不到对应角色的现金路径 → 不给建议', moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/user/累计支出_不存在的人","value":3000}]', state: mcState }).ok === false);
+check('56 没有变量基线 → 拒绝代写', moneyCorrection({ amount: 3000, patchText: mcPatch11, state: null }).reason === 'no-state');
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
