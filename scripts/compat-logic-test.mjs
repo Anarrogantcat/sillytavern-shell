@@ -1241,5 +1241,14 @@ check('56 没有 累计支出 锚点 → 不给建议（不猜方向）', moneyC
 check('56 找不到对应角色的现金路径 → 不给建议', moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/user/累计支出_不存在的人","value":3000}]', state: mcState }).ok === false);
 check('56 没有变量基线 → 拒绝代写', moneyCorrection({ amount: 3000, patchText: mcPatch11, state: null }).reason === 'no-state');
 
+console.log('');
+console.log('— 夹具 57：资金纠正的安全边界（0.21.1）');
+const mcCapState = { user: { 累计支出_A: 0 }, A: { 现金: 100 } };
+const mcBig = '[{"op":"delta","path":"/user/累计支出_A","value":999999}]';
+check('57 金额超过上限（默认 10 万）→ 不给建议，防解析错误写入离谱金额', moneyCorrection({ amount: 999999, patchText: mcBig, state: mcCapState }).reason === 'delta-too-large');
+check('57 上限可自行放宽', moneyCorrection({ amount: 999999, patchText: mcBig, state: mcCapState, maxDelta: 2000000 }).ok === true);
+const mcObjState = { user: { 累计支出_A: 0 }, A: { 现金: { 元: 100 } } };
+check('57 目标字段是对象/非数字 → 不给建议（避免把对象写成数字）', moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/user/累计支出_A","value":3000}]', state: mcObjState }).ok === false);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

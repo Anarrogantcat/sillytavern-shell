@@ -2844,6 +2844,8 @@ export function moneyCorrection(input) {
     const amount = Number(i.amount) || 0;
     const min = Number(i.minAmount) > 0 ? Number(i.minAmount) : 500;
     if (amount < min) return { ok: false, reason: 'amount-too-small', actions: [] };
+    const cap = Number(i.maxDelta) > 0 ? Number(i.maxDelta) : 100000;   // 单次修正上限：防解析错误导致写入离谱金额
+    if (amount > cap) return { ok: false, reason: 'delta-too-large', actions: [] };
     const paths = moneyPathsIn(i.patchText || '');
     if (paths.some((p) => MONEY_CASH_RE.test(p))) return { ok: false, reason: 'cash-path-present', actions: [] };
     const state = i.state;
@@ -2864,7 +2866,8 @@ export function moneyCorrection(input) {
     const known = numericPathsOf(state, 400);
     const actions = [];
     for (const sd of spendDeltas) {
-        const cashPath = known.find((p) => p.indexOf(sd.who + '/') === 0 && /(现金|钱包|余额)/.test(p));
+        const whoPrefix = sd.who + '/';
+        const cashPath = known.find((p) => p.indexOf(whoPrefix) === 0 && /(现金|钱包|余额|存款)/.test(p) && !/(现金|钱包|余额|存款)[\/]/.test(p.slice(whoPrefix.length)));
         if (!cashPath) continue;
         actions.push({ label: sd.who, path: '/' + cashPath, delta: sd.delta, who: sd.who });
     }
