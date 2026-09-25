@@ -1181,5 +1181,19 @@ check('52 keys 里的条目名同样受保护（大小写不敏感）', bsKey.re
 const bsDeclared = stripUndeclaredBlocks(bsText, { declared: ['世界设定'], keep: KEEP_BLOCKS });
 check('52 卡自己声明的标签仍走原路径（不报未声明）', bsDeclared.removed.length === 1 && bsDeclared.removed[0].tag === 'status_block');
 
+console.log('');
+console.log('— 夹具 53：面板字号必须有可读下限（0.19.1 UI）');
+const fcCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const fcRoot = (fcCss.match(/#cc-panel\s*\{([\s\S]*?)\}/) || [])[1] || '';
+check('53 面板根字号带 max() 可读下限', /font-size:\s*max\(\s*13\.5px/.test(fcRoot));
+const fcRules = [...fcCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] })).filter((r) => /^#cc-panel\b/.test(r.sel));
+const fcBase = Math.max(13.5, 13 * 1.1);   // 假设 ST 根字号 13px + --cc-font 默认 1.1em
+const fcSmall = [];
+for (const r of fcRules) { const m = r.body.match(/font-size:\s*([^;]+);/); if (!m) continue; const v = m[1].trim(); if (/inherit|max\(/.test(v)) continue; const px = /px$/.test(v) ? parseFloat(v) : (/em$/.test(v) ? fcBase * parseFloat(v) : null); if (px != null && px < 13) fcSmall.push(r.sel.replace(/\s+/g, ' ').slice(0, 40) + '=' + px.toFixed(1) + 'px'); }
+check('53 面板内没有低于 13px 的字号（含 ST 界面偏小时）', fcSmall.length === 0, fcSmall);
+const fcSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('53 panelFont 默认值 ≥ 1.1', /panelFont:\s*1\.1,/.test(fcSrc));
+check('53 --cc-font 注入带 1.1 兜底', /panelFont\) \|\| 1\.1/.test(fcSrc));
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

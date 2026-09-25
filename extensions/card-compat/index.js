@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.19.0';
+const VERSION = '0.19.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -22,7 +22,7 @@ const DEFAULTS = {
     notifyStale: true,
     logActions: true,
     injectPrompt: true,
-    panelFont: 1,        // 面板字号倍率（1 / 1.15 / 1.3）
+    panelFont: 1.1,      // 面板字号倍率（默认 1.1；1 / 1.15 / 1.3 可选）—— 0.19.1 起默认调大，原为 1
     dedupeAnchor: true,  // 续写追加出重复的自闭合锚点时自动合并
     scanRecent: 5,       // 启动/切聊天时自动规范化最近 N 楼（0=关闭）
     fixSmartQuotes: true, // 结构块内「英文引号开头 + 中文引号结尾」自动修（实测会让 YAML 解析失败）
@@ -1290,7 +1290,8 @@ let varBarTimer = null;
 function applyPanelFont() {
     try {
         const el = document.getElementById('cc-panel');
-        if (el) el.style.setProperty('--cc-font', String(settings().panelFont || 1) + 'em');
+        // 0.19.1：默认 1.1（原 1 → 偏小），并且外面套 max(13.5px, …) 下限；用户已有设置值则沿用
+        if (el) el.style.setProperty('--cc-font', String(Number(settings().panelFont) || 1.1) + 'em');
     } catch (_) {}
 }
 /** 启动/切聊天时扫描最近 N 楼：把「成对块 + 自闭合占位符」这类历史消息也规范化 */

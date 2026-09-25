@@ -1,5 +1,15 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.32 (2026-09-25) — card-compat 0.19.1：面板字号加可读下限（默认调大一档）
+
+### 变更
+- `#cc-panel` 根字号改为 `max(13.5px, var(--cc-font, 1em))`：ST 界面字号偏小时，面板不再跟着缩到看不清
+- `panelFont` 默认 **1 → 1.1**；面板内写死的 `12px/13px/15px` 与 `.9/.92/.95em` 统一改成相对值
+- 实测（ST 根字号 13px + 默认 1.1em）：面板文字全部落在 **14.0–17.2px**，没有低于 13px 的规则
+- 只改 `#cc-panel` 作用域，**未触碰卡的状态栏美化**；夹具 53（4 条）锁住这几条不变量
+
+### 夹具
+- compat **468/0**（新增夹具 53，4 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 67 ・toolbox 16
 ## v2.2.31+doc (2026-09-25) — roadmap 收口：删掉伪「待做」，plot-pilot 标注冻结
 
 ### 变更
