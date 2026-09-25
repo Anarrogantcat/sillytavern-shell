@@ -1,5 +1,16 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.24 (2026-09-25) — 扩展在线更新加退避重试（治「哈希不符（该源内容可能过期）」）
+
+### 修复
+- **实测现象**：套壳里点「检查扩展在线更新」报 `失败: card-compat(校验不符（该源内容可能过期）：哈希不符: CHANGELOG.md; 哈希不符: index.js; 哈希不符: logic.js)`，而同一时刻用 curl 从 raw.githubusercontent 取到的文件与 `index.json` 的 sha1 **完全一致** —— 说明是**源侧瞬时故障**（实测还看到 LICENSE 那个文件被返回 0 字节），单次失败就会让整个更新判断为「源过期」，用户侧表现为拿不到更新
+- 修法：`httpGetText` / `httpGetBinary` 改为**同一 URL 重试 2 次（间隔 400ms / 900ms）**的带退避取件，并显式带上 `Accept-Encoding: identity`（避免压缩响应在个别运行时下未被解压，导致 sha1 无谓不符）。重试语义已用注入式假 fetch 验证：前两次失败、第三次成功 → 返回内容；一直失败 → 恰好在第 3 次后抛错
+
+### 变更
+- 三个包版本号递增；card-compat 0.16.0 / plot-pilot 0.2.2 内容不变
+
+### 夹具
+- 与 v2.2.23 相同：compat 418/0 ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 67 ・toolbox 16
 ## v2.2.23 (2026-09-25) — card-compat 0.16.0：「复制本卡诊断」把面板事实收成一段结论
 
 ### 新增

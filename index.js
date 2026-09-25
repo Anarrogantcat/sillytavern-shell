@@ -583,27 +583,37 @@ function deployBundledExtensions(reason) {
     }
 }
 
-/** HTTP 取文本：优先用 Electron 的 net（会跟随系统代理），退回全局 fetch；20 秒超时 */
-async function httpGetText(url) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 20000);
-    try {
-        const res = (net && typeof net.fetch === 'function') ? await net.fetch(url, { signal: ctrl.signal }) : await fetch(url, { signal: ctrl.signal });
-        if (!res || !res.ok) throw new Error('HTTP ' + (res ? res.status : '?'));
-        return await res.text();
-    } finally { clearTimeout(timer); }
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 带退避的取件重试（2.2.24）：实测 raw.githubusercontent 偶发返回 0 字节/陈旧内容，
+ * 单次失败就会让整个「在线更新」报「哈希不符（该源内容可能过期）」—— 而源其实是好的。
+ * 这里对同一 URL 重试两次（间隔 400ms / 900ms），让瞬时故障自愈。
+ */
+async function httpFetchWithRetry(url, timeoutMs, asBinary, tries = 3) {
+    let lastErr = null;
+    for (let i = 0; i < tries; i++) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+            // 显式要求不压缩：避免压缩响应在个别运行时下没被解压，导致 sha1 校验无谓失败
+            const init = { signal: ctrl.signal, headers: { 'Accept-Encoding': 'identity' } };
+            const res = (net && typeof net.fetch === 'function') ? await net.fetch(url, init) : await fetch(url, init);
+            if (!res || !res.ok) throw new Error('HTTP ' + (res ? res.status : '?'));
+            return asBinary ? Buffer.from(await res.arrayBuffer()) : await res.text();
+        } catch (err) {
+            lastErr = err;
+            if (i < tries - 1) await sleepMs(400 * (i + 1) + (i ? 100 : 0));
+        } finally { clearTimeout(timer); }
+    }
+    throw lastErr || new Error('取件失败');
 }
 
+/** HTTP 取文本：优先用 Electron 的 net（会跟随系统代理），退回全局 fetch；20 秒超时 */
+function httpGetText(url) { return httpFetchWithRetry(url, 20000, false); }
+
 /** HTTP 取二进制（图片/字体等；扩展自带二进制资源时走这条） */
-async function httpGetBinary(url) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 30000);
-    try {
-        const res = (net && typeof net.fetch === 'function') ? await net.fetch(url, { signal: ctrl.signal }) : await fetch(url, { signal: ctrl.signal });
-        if (!res || !res.ok) throw new Error('HTTP ' + (res ? res.status : '?'));
-        return Buffer.from(await res.arrayBuffer());
-    } finally { clearTimeout(timer); }
-}
+function httpGetBinary(url) { return httpFetchWithRetry(url, 30000, true); }
 
 /**
  * 扩展「在线更新」：拉 extensions/index.json → 比版本 → 下载 + 校验 sha1 → 落地。
