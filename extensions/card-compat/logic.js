@@ -2591,6 +2591,7 @@ export function diagnosisReportText(input) {
     if (i.state) {
         L.push('【状态核对】真的变了 ' + (i.state.advanced || []).length + ' ｜ 写了没变 ' + (i.state.stuck || []).length + ' ｜ 值本来就一样 ' + (i.state.same || []).length + ' ｜ 本轮没写 ' + (i.state.absent || []).length + (i.state.noBase ? '（拿不到 stat_data）' : ''));
     }
+    if (i.money && i.money.missingCash) L.push('【资金流】正文出现 ' + i.money.n + '（元）但本楼补丁没有任何现金/欠款字段 → 钱可能没动（模型漏写，可在 MVU 面板补 replace）');
     if (i.guards) L.push('【守护】' + String(i.guards) + ' ｜ 未声明块删除 ' + String(i.removed || 0) + ' ｜ YAML 修复 ' + String(i.yamlFixes || 0));
     if (i.floors) L.push('【变量兜底】已补应用 ' + String(i.floors.written || 0) + ' 层 ｜ 跳过 ' + String(i.floors.skipped || 0) + ' 层 ｜ 收支保护命中 ' + String(i.floors.guard || 0) + ' ｜ Zod 拦下 ' + String(i.floors.schema || 0));
     const recent = i.recent || [];
@@ -2685,4 +2686,127 @@ export function noteFailure(st, cat, now, opts = {}) {
     out.alert = true;
     out.reason = 'alerted';
     return out;
+}
+
+/* ── 0.20.0：资金流体检 ───────────────────────────────────────────
+ * 起因（用户实测）：给了林婉婷 3000 现金，状态栏里她的「现金」没变。
+ * 查了原始数据：模型这一楼只写了 `/user/累计支出_林婉婷 +3000`，**根本没写任何 /…/现金** 的 op ——
+ * 所以不是写回失败，是模型漏写。这类漏写以前只能靠人肉逐行看 JSONPatch 才发现。
+ * 这里做的是「只在真有资金动作时提醒」：金额 ≥ 门槛 且 补丁里没有任何资金类路径 → 报出来并给出可复制的补丁。
+ */
+const MONEY_CASH_RE = /(现金|欠款|钱包|资产|资金|余额|存款)/;
+const MONEY_FLOW_RE = /(支出|收入|花费|消费|付款|支付)/;
+/**
+ * 从文本里抠金额。两手准备：
+ * ① ASCII 数字 + 单位（`3000现金` / `1,200 元`）
+ * ② 汉字数字 + 千/百/万/亿（`三千块` / `五百元` / `两万`）—— 实测模型常在正文里写汉字金额。
+ * 明确不做的事：不猜「一些钱」「很多钱」这类模糊表达（宁缺勿滥，避免噪音）。
+ */
+export function moneyAmountOf(text) {
+    const s = String(text == null ? '' : text);
+    const unit = '(?:元|块钱|块|现金|人民币|RMB)';
+    const ascii = s.match(new RegExp('(\\d[\\d,]{2,})\\s*' + unit));
+    if (ascii) {
+        const n = Number(ascii[1].replace(/,/g, ''));
+        if (Number.isFinite(n)) return n;
+    }
+    const CN = { '零': 0, '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+    const SCALE = { '十': 10, '百': 100, '千': 1000, '万': 10000, '亿': 100000000 };
+    // 两种形态：① 万/亿 当量词（`两万块` 里的「万」本身就是量级）② 单位或明确的收付语境
+    const cn = s.match(/([零一两二三四五六七八九][零一两二三四五六七八九十百千万亿]*[万亿])(?:块钱|块|元|现金|人民币|RMB|钱|款)/)
+        || s.match(/([零一两二三四五六七八九十百千万亿]{1,8})\s*(?:元|块钱|块|现金|人民币|RMB|钱|款|费用|金额|给|付|花|收|拿|递|塞|赏|借|还)/);
+    if (!cn) return null;
+    let total = 0, section = 0, num = 0, seen = false;
+    for (const ch of cn[1]) {
+        if (CN[ch] !== undefined) { num = CN[ch]; seen = true; continue; }
+        const sc = SCALE[ch];
+        if (sc === undefined) continue;
+        seen = true;
+        if (sc >= 10000) { total = (total + (section + (num || 1)) * sc); section = 0; } else section += (num || 1) * sc;
+        num = 0;
+    }
+    if (!seen) return null;
+    const n = total + section + num;
+    return n >= 1 ? n : null;
+}
+/** 补丁里出现过哪些「资金类路径」（归一成 /a/b 形式） */
+export function moneyPathsIn(patchText) {
+    const out = [];
+    const s = String(patchText || '');
+    const re = /"path"\s*:\s*"([^"]+)"/g;
+    let m;
+    while ((m = re.exec(s))) {
+        const p = String(m[1]).trim();
+        if (!p) continue;
+        if (MONEY_CASH_RE.test(p) || MONEY_FLOW_RE.test(p)) {
+            const norm = p.charAt(0) === '/' ? p : ('/' + p);
+            if (out.indexOf(norm) < 0) out.push(norm);
+        }
+    }
+    return out;
+}
+/**
+ * 资金流体检：这一楼有没有「提到钱、补丁却没落到资金字段」的迹象。
+ * @returns {{n:number, amount:number, hasCash:boolean, flow:boolean, missingCash:boolean, hint:string} | null}
+ */
+export function moneyFlowHint(text, patchText, opts = {}) {
+    const amount = moneyAmountOf(text);
+    const min = Number(opts.minAmount) > 0 ? Number(opts.minAmount) : 500;
+    if (!amount || amount < min) return null;
+    const paths = moneyPathsIn(patchText);
+    const hasCash = paths.some((p) => MONEY_CASH_RE.test(p));
+    const flow = paths.some((p) => MONEY_FLOW_RE.test(p));
+    // 只在「有资金动作但没动现金/欠款」时提醒；纯支出记账属于设计（卡里累计支出是独立字段）
+    const missingCash = !hasCash;
+    return {
+        n: amount,
+        amount: amount,
+        hasCash: hasCash,
+        flow: flow,
+        missingCash: missingCash,
+        hint: missingCash ? (flow ? 'flow-only' : 'no-money-path') : 'ok',
+    };
+}
+
+/* ── 0.20.0：资金账目对账 ─────────────────────────────────────────
+ * 用户实测第二例：「统计数据里面的金额也不对」—— 逐楼核对后发现：
+ *   楼 #3 的存储里「user.累计支出_林婉婷」从 0 变成 2500，但那一楼的 <UpdateVariable> 里**只有 Analysis、没有 JSONPatch**；
+ *   楼 #5 写了 现金-2500 / 累计支出+2500，存储却没动（透支保护把整楼 patch 跳掉了）。
+ * 所以「模型想写的钱」和「账本实际记的钱」可能对不上。这里只做**对账**：给出每层模型打算写的金额与账本实际变化，不一致就报出来。
+ * 不做的事：不替卡改账（钱怎么走是卡的设计）。
+ */
+/** 从一层的 ops 里取某条路径上的数值变化（delta 用 value，replace 需要 prev 才能算） */
+function amountDeltaOn(op, prevState) {
+    const p = String((op && op.path) || '');
+    if (!p) return null;
+    const kind = String(op.op || '').toLowerCase();
+    if (kind === 'delta') return Number(op.value) || (op.value === 0 ? 0 : null);
+    if (kind === 'replace') {
+        if (!prevState) return null;
+        const segs = p.replace(/^\//, '').split('/').filter(Boolean);
+        let cur = prevState;
+        for (const s of segs) { if (cur == null || typeof cur !== 'object') return null; cur = cur[s]; }
+        if (typeof cur !== 'number' || typeof op.value !== 'number') return null;
+        return op.value - cur;
+    }
+    return null;
+}
+/**
+ * 对账：把「模型打算写的金额」和「账本实际变化」逐层比一遍。
+ * @param {Array<{floor:number, ops:Array, stored:number|null, prevStored:number|null}>} rows
+ * @returns {{checked:number, mismatches:Array<{floor:number, planned:number, actual:number|null, stored:number|null}>}}
+ */
+export function moneyLedgerDrift(rows) {
+    const mismatches = [];
+    let checked = 0;
+    for (const r of (rows || [])) {
+        if (!r || r.stored == null) continue;
+        const planned = (r.ops || []).reduce((n, op) => { const d = amountDeltaOn(op, r.prevState || null); return d == null ? n : n + d; }, 0);
+        if (!planned) continue;
+        checked++;
+        const actual = (r.prevStored == null) ? null : (r.stored - r.prevStored);
+        if (actual == null) continue;
+        if (actual !== planned) mismatches.push({ floor: r.floor, planned: planned, actual: actual, stored: r.stored });
+    }
+    return { checked: checked, mismatches: mismatches };
 }

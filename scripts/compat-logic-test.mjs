@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1194,6 +1194,40 @@ check('53 面板内没有低于 13px 的字号（含 ST 界面偏小时）', fcS
 const fcSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
 check('53 panelFont 默认值 ≥ 1.1', /panelFont:\s*1\.1,/.test(fcSrc));
 check('53 --cc-font 注入带 1.1 兜底', /panelFont\) \|\| 1\.1/.test(fcSrc));
+
+console.log('');
+console.log('— 夹具 54：资金流体检（0.20.0，来自用户实测：给了 3000 现金但状态栏没变）');
+// 真实楼层 #11 的补丁：只有支出记账，没有任何现金路径
+const mfReal11 = '[{"op":"replace","path":"/系统/时间","value":"14:50"},{"op":"delta","path":"/user/累计支出_林婉婷","value":3000}]';
+const mfBody11 = '染伸出手，从腰侧摸出了三千块沉甸甸的现金，稳稳地塞进了林婉婷的手心里。';
+const mf1 = moneyFlowHint(mfBody11, mfReal11, { minAmount: 500 });
+check('54 真实案例：正文提到 3000 现金但补丁无现金字段 → 报警', !!mf1 && mf1.missingCash === true && mf1.amount === 3000, mf1);
+check('54 金额解析：汉字数字也算（三千块=3000 / 五百元=500 / 两万块=20000）', moneyAmountOf('三千块') === 3000 && moneyAmountOf('五百元') === 500 && moneyAmountOf('两万块') === 20000);
+check('54 「两万人」不会被当成钱', moneyAmountOf('两万人') === null);
+check('54 金额解析：阿拉伯数字带单位能抓到', moneyAmountOf('掏出了3000现金给她') === 3000);
+const mf2 = moneyFlowHint('她掏出 5000 元现金', '[{"op":"replace","path":"/林婉婷/经济/现金","value":5000}]', { minAmount: 500 });
+check('54 补丁里有现金字段 → 不报警（真实楼层 #5 那种）', mf2 && mf2.missingCash === false && mf2.hasCash === true);
+check('54 金额低于门槛 → 不打扰（默认 500）', moneyFlowHint('给了 200 元', '[{"op":"delta","path":"/user/累计支出_林婉婷","value":200}]') === null);
+check('54 只是提到钱、补丁完全没资金字段 → 也报（hint=no-money-path）', (() => { const r = moneyFlowHint('桌上放着 800 元', '[{"op":"replace","path":"/系统/时间","value":"15:00"}]'); return r && r.missingCash && r.hint === 'no-money-path'; })());
+check('54 资金路径识别覆盖 欠款/钱包/资产/余额', moneyPathsIn('[{"path":"/林婉婷/经济/欠款"},{"path":"/user/钱包"},{"path":"/a/资产"},{"path":"/b/余额"}]').length === 4);
+check('54 归一化：不带前导 / 的路径也能识别', moneyPathsIn('[{"path":"林婉婷/经济/现金"}]')[0] === '/林婉婷/经济/现金');
+
+console.log('');
+console.log('— 夹具 55：资金账目对账（0.20.0，来自用户实测「统计金额不对」）');
+// 真实聊天逐层还原（planned = 模型补丁里的金额；stored/prevStored = 账本值）
+const ledgerRows = [
+    { floor: 1, ops: [], stored: 0, prevStored: null },
+    { floor: 3, ops: [], stored: 2500, prevStored: 0 },          // 无补丁却涨了 2500 → 这一层是「计划 0 / 实际 2500」，但因 planned=0 不算不一致（对账只比有计划的层）
+    { floor: 5, ops: [{ op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 }], stored: 2500, prevStored: 2500 },
+    { floor: 9, ops: [{ op: 'delta', path: '/user/累计支出_林婉婷', value: 2500 }], stored: 5000, prevStored: 2500 },
+    { floor: 11, ops: [{ op: 'delta', path: '/user/累计支出_林婉婷', value: 3000 }], stored: 8000, prevStored: 5000 },
+];
+const ledger = moneyLedgerDrift(ledgerRows);
+check('55 对账只挑出「有计划但没落地」的那一层（#5）', ledger.mismatches.length === 1 && ledger.mismatches[0].floor === 5 && ledger.mismatches[0].planned === 2500 && ledger.mismatches[0].actual === 0, ledger.mismatches);
+check('55 落地正确的层不误报（#9/#11）', ledger.mismatches.every((m) => m.floor !== 9 && m.floor !== 11));
+check('55 replace 型金额也能算差值（prev 30 → 50 = +20）', (() => { const r = moneyLedgerDrift([{ floor: 1, ops: [{ op: 'replace', path: '/林婉婷/关系态度', value: 50 }], stored: 50, prevStored: 30, prevState: { 林婉婷: { 关系态度: 30 } } }]); return r.mismatches.length === 0; })());
+check('55 没有计划金额的层不参与对账（不制造噪音）', (() => { const r = moneyLedgerDrift([{ floor: 1, ops: [{ op: 'replace', path: '/系统/时间', value: '15:00' }], stored: 8000, prevStored: 8000 }]); return r.checked === 0 && r.mismatches.length === 0; })());
+check('55 空输入不崩', moneyLedgerDrift(null).mismatches.length === 0);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
