@@ -1443,5 +1443,15 @@ check("68 体检文案中英各一", hSrc.split("healthBtn: '").length - 1 === 2
 const hCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
 check('68 体检按钮配色限定 #cc-var-bar 内', (hCss.split('.ccv-health').length - 1) === (hCss.split('#cc-var-bar .ccv-btn.ccv-health').length - 1));
 
+console.log('');
+console.log('— 夹具 69：MVU 判定按真实键名（0.26.1，「补丁不完整」的判定依据）');
+const mvSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('69 读真实键「更新方式」', mvSrc.indexOf('pool[\u0027更新方式\u0027]') > 0 || mvSrc.indexOf("pool[" + String.fromCharCode(39) + "更新方式" + String.fromCharCode(39) + "]") > 0);
+check('69 读真实键「启用自动请求」', mvSrc.indexOf('启用自动请求') > 0);
+check("69 模式含「额外模型解析」才进入该分支", mvSrc.indexOf("额外模型解析") > 0 && mvSrc.indexOf("mode.indexOf") > 0);
+check('69 自动请求关着时**不让位**（否则没人补数据）', /if \(auto === false\) return false;/.test(mvSrc));
+check('69 记下 mode/auto 供体检用', mvSrc.indexOf('mvuExtraInfo = { mode: mode, auto: auto }') > 0);
+check('69 体检报告含 MVU 判定与成因说明', mvSrc.indexOf('更新方式=') > 0 && mvSrc.indexOf('额外解析不会自动跑') > 0);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.26.0';
+const VERSION = '0.26.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -65,6 +65,7 @@ const failAlerted = new Map();     // cat -> 上次提醒时间（防重复弹�
 const strippedByFloor = new Map(); // messageId -> { tags, chars }（未声明块，供对照表按楼层显示）
 let lastToastAt = 0;
 let mvuExtraLogged = false;
+let mvuExtraInfo = null;   // 0.26.1：记下 MVU 的「更新方式 / 启用自动请求」，体检与日志都要用
 
 /* ── P3 ⑩ 面板双语（zh/en），auto 跟随浏览器语言 ── */
 const STRINGS = {
@@ -222,7 +223,13 @@ function renderHealth() {
             out.push('   名字相近的条目: ' + JSON.stringify(near));
             out.push('   长度对比: 当前=' + avatar.length + ' 候选=' + JSON.stringify(near.map((x) => String(x).length)));
         }
-        out.push('5) 酒馆助手渲染开关: ' + (es.tavern_helper && es.tavern_helper.render ? String(es.tavern_helper.render.enabled) : '（读不到）'));
+        try {
+            const on = mvuExtraParseEnabled();
+            const info = mvuExtraInfo || {};
+            out.push('5) MVU: 更新方式=' + JSON.stringify(info.mode || '读取不到') + ' 启用自动请求=' + JSON.stringify(info.auto === undefined ? '读取不到' : info.auto) + ' → 本扩展' + (on === true ? '让位（MVU 自己会解析）' : (info.auto === false ? '照常兜底（MVU 不会自动解析）' : '照常兜底')));
+            if (info.auto === false && String(info.mode || '').indexOf('额外模型解析') >= 0) out.push('   ↑ 这就是补丁明显不完整的原因：额外解析不会自动跑，而消息里的补丁本来就不负责补全');
+        } catch (e) { out.push('5) MVU 判定失败: ' + String((e && e.message) || e)); }
+        out.push('5b) 酒馆助手渲染开关: ' + (es.tavern_helper && es.tavern_helper.render ? String(es.tavern_helper.render.enabled) : '（读不到）'));
         try {
             const nodes = Array.from(document.querySelectorAll('.mes_text'));
             nodes.slice(-3).forEach((n, i) => {
@@ -383,7 +390,18 @@ function mvuExtraParseEnabled() {
             let v = pool['额外模型解析'];
             if (v === undefined) v = pool.extra_model_parse;
             if (v === undefined) v = pool.extraModelParse;
-            if (v === undefined && pool['额外模型解析配置'] && typeof pool['额外模型解析配置'] === 'object') v = pool['额外模型解析配置'].enabled;
+            // 0.26.1（实测修正）：MVU 真正用的键是「更新方式」与「额外模型解析配置.启用自动请求」，
+            // 旧实现只读「额外模型解析」与 .enabled —— 用户机器上这两个键都不存在，永远读成「无法检测」。
+            const cfg = (pool['额外模型解析配置'] && typeof pool['额外模型解析配置'] === 'object') ? pool['额外模型解析配置'] : null;
+            const mode = pool['更新方式'] || pool.update_method || pool.updateMethod || '';
+            const auto = cfg ? (cfg['启用自动请求'] !== undefined ? cfg['启用自动请求'] : (cfg.enabled !== undefined ? cfg.enabled : undefined)) : undefined;
+            if (typeof mode === 'string' && mode.indexOf('额外模型解析') >= 0) {
+                // 关键：模式是额外解析、但「启用自动请求」关着 → MVU 不会自动解析，本扩展不能让位
+                mvuExtraInfo = { mode: mode, auto: auto };
+                if (auto === false) return false;
+                return true;
+            }
+            if (v === undefined && cfg) v = cfg['启用自动请求'];
             if (typeof v === 'boolean') return v;
             if (typeof v === 'string') return /^(true|on|开|启用|yes)$/i.test(v.trim());
         }
