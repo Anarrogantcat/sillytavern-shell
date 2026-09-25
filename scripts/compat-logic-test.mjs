@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1257,6 +1257,22 @@ const mpPretty = '[' + String.fromCharCode(10) + '  { "op": "delta", "path": "/u
 check('58 只给文本（带空格）也能推导出建议', (() => { const r = moneyCorrection({ amount: 3000, patchText: mpPretty, state: mpState }); return r.ok === true && r.actions[0].path === '/林婉婷/经济/现金' && r.actions[0].delta === 3000; })());
 check('58 传已解析 ops 时结果一致（扩展线上走这条）', (() => { const r = moneyCorrection({ amount: 3000, ops: JSON.parse(mpPretty), patchText: mpPretty, state: mpState }); return r.ok === true && r.actions[0].delta === 3000; })());
 check('58 紧凑 JSON（无空格）同样可用', (() => { const r = moneyCorrection({ amount: 3000, patchText: '[{"op":"delta","path":"/user/累计支出_林婉婷","value":3000}]', state: mpState }); return r.ok === true; })());
+
+console.log('');
+console.log('— 夹具 59：${} 包裹路径的还原（0.21.3，实测「数据不更新」的根因）');
+check('59 unwrapPathWrapper: ${/a/b} → /a/b', unwrapPathWrapper('${/a/b}') === '/a/b');
+check('59 unwrapPathWrapper: {{/a/b}} → /a/b', unwrapPathWrapper('{{/a/b}}') === '/a/b');
+check('59 unwrapPathWrapper: 残缺 ${/a/b → /a/b', unwrapPathWrapper('${/a/b') === '/a/b');
+check('59 unwrapPathWrapper: 干净路径不动', unwrapPathWrapper('/林婉婷/穿搭') === '/林婉婷/穿搭' && unwrapPathWrapper('林婉婷.穿搭') === '林婉婷.穿搭');
+check('59 normalizePath 也能还原并补前导斜杠', normalizePath('${/林婉婷/穿搭}') === '/林婉婷/穿搭');
+const wpState = { 系统: { 时间: '14:00' }, user: { 累计支出_林婉婷: 0 }, 互动次数: { 林婉婷与user: 0 } };
+const wpRaw = '[' + String.fromCharCode(10) + '  { "op": "replace", "path": "${/系统/时间}", "value": "14:30" },' + String.fromCharCode(10) + '  { "op": "delta", "path": "${/user/累计支出_林婉婷}", "value": 1500 },' + String.fromCharCode(10) + '  { "op": "delta", "path": "{{/互动次数/林婉婷与user}}", "value": 1 }' + String.fromCharCode(10) + ']';
+const wpParsed = parsePatchOps(wpRaw);
+check('59 parsePatchOps 统计出 3 条被包裹并全部还原', wpParsed.wrapped === 3 && wpParsed.ops.every((x) => x.path.charAt(0) === '/'), wpParsed.ops.map((x) => x.path));
+const wpApplied = applyVarOps(wpState, wpParsed.ops, { overdraftGuard: false });
+check('59 还原后 3 条 op 全部落地（旧版会全被跳过）', wpApplied.applied.length === 3 && wpApplied.skipped.length === 0, wpApplied.skipped);
+check('59 值确实变了（时间/支出/互动次数）', wpApplied.state['系统']['时间'] === '14:30' && wpApplied.state['user']['累计支出_林婉婷'] === 1500 && wpApplied.state['互动次数']['林婉婷与user'] === 1);
+check('59 valueAtPath 也认包裹路径', valueAtPath(wpState, '${/系统/时间}') === '14:00');
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

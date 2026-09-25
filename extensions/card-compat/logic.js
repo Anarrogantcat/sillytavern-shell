@@ -120,9 +120,27 @@ function escTag(name) {
     return String(name ?? '').replace(/[.*+?^{}()|[\]\\$]/g, '\\$&');
 }
 
+/**
+ * 0.21.3（实测根因修复）：模型常把路径写成模板式 `${/林婉婷/穿搭}` 或 `{{/林婉婷/穿搭}}` ——
+ * JSON Pointer 不认这种包裹，于是整条 op 的父路径找不到 → **静默跳过**。
+ * 实测（用户那张卡）：楼 #5 的 9 条补丁路径**全部**带 `${}`，导致整楼 patch 全灭（含 现金/支出/互动次数）。
+ * 这里只剥「整串包裹」与残缺的 `${`/`{` 前缀、尾部多余的 `}`，不碰路径中间的字符。
+ */
+export function unwrapPathWrapper(raw) {
+    let p = String(raw == null ? '' : raw).trim();
+    for (let i = 0; i < 3; i++) {
+        const m = p.match(/^\$\{([\s\S]*)\}$/) || p.match(/^\{\{([\s\S]*)\}\}$/);
+        if (!m) break;
+        p = m[1].trim();
+    }
+    p = p.replace(/^\$\{/, '').replace(/^\{\{/, '');
+    while (p.length > 1 && p.charAt(p.length - 1) === '}') p = p.slice(0, -1);
+    return p.trim();
+}
+
 /** 变量路径归一：点号分隔 → 斜杠开头；去掉空白与多余斜杠；保留末段通配 * */
 export function normalizePath(raw) {
-    let p = String(raw ?? '').trim().replace(/^["']|["']$/g, '');
+    let p = unwrapPathWrapper(String(raw ?? '').trim().replace(/^["']|["']$/g, ''));
     p = p.split('.').join('/').split('｜').join('/');
     p = p.replace(/\/{2,}/g, '/').replace(/\s+/g, '');
     if (!p) return '';
@@ -185,6 +203,7 @@ export function parsePatchOps(blockOrPatch) {
     }
     if (!frags.length) frags.push(raw);
     const ops = [];
+    let wrapped = 0;   // 0.21.3：有多少条路径原本被 ${} / {{}} 包裹（面板与日志要能看见）
     for (const frag of frags) {
         const frag2 = String(frag);
         // 按括号配对逐个试「平衡的 JSON 数组」：原先取首个 [ 到末个 ]，块内任何说明文字（如「（说明：[已更新]）」）都会让 JSON.parse 失败、整段补丁被丢弃；
@@ -224,10 +243,18 @@ export function parsePatchOps(blockOrPatch) {
         if (!Array.isArray(arr)) { problems.push('不是数组'); continue; }
         for (const el of arr) {
             if (!el || typeof el !== 'object') { problems.push('元素不是对象'); continue; }
+            // 0.21.3：把 `${/a/b}` / `{{/a/b}}` 还原成 `/a/b` —— 模型时不时写成模板式，
+            // 而 JSON Pointer 不认包裹 → 父路径找不到 → 整条 op 静默跳过（实测整楼 9 条全灭）
+            for (const key of ['path', 'from']) {
+                const rawPath = el[key];
+                if (typeof rawPath !== 'string' || !rawPath) continue;
+                const fixed = unwrapPathWrapper(rawPath);
+                if (fixed && fixed !== rawPath) { el[key] = fixed; if (key === 'path') wrapped++; }
+            }
             ops.push(el);
         }
     }
-    return { ops, problems, frags: frags.length };
+    return { ops, problems, frags: frags.length, wrapped };
 }
 
 /** 抽出一条回复里的全部变量块（多块记账用；extractUpdateBlock 仍只返回第一个） */
@@ -1076,7 +1103,7 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
     const applied = [], skipped = [], schemaHits = [];
     let aborted = false, tested = 0;   // test 失败即中止；tested 统计通过次数
     const schemaOn = opts.schemaGuard !== false;
-    const segs = (p) => String(p == null ? '' : p).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
+    const segs = (p) => unwrapPathWrapper(p).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
     const ruleFor = (arr, segsArr) => { for (const r of (arr || [])) if (pathMatches(segsArr, r.path)) return r; return null; };
     const inObjects = (segsArr) => { for (const p of (opts.objects || [])) if (pathMatches(segsArr, p)) return true; return false; };
     /** 夹取区间 = 所有命中规则的交集（_.clamp 与 .min/.max/.nonnegative 一起算） */
@@ -2062,7 +2089,7 @@ export function patchCoverage(text, required) {
  */
 export function valueAtPath(state, path) {
     if (!state || typeof state !== 'object') return undefined;
-    const segs = String(path == null ? '' : path).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
+    const segs = unwrapPathWrapper(path).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
     let node = state;
     for (const s of segs) {
         if (node === null || typeof node !== 'object') return undefined;
@@ -2783,7 +2810,7 @@ function amountDeltaOn(op, prevState) {
     if (kind === 'delta') return Number(op.value) || (op.value === 0 ? 0 : null);
     if (kind === 'replace') {
         if (!prevState) return null;
-        const segs = p.replace(/^\//, '').split('/').filter(Boolean);
+        const segs = unwrapPathWrapper(p).replace(/^\//, '').split('/').filter(Boolean);
         let cur = prevState;
         for (const s of segs) { if (cur == null || typeof cur !== 'object') return null; cur = cur[s]; }
         if (typeof cur !== 'number' || typeof op.value !== 'number') return null;
