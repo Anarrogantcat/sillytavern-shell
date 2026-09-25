@@ -1,5 +1,13 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.15 (2026-09-25) — 安全补测：`dataRoot` 与 `serverPath` 走同一套校验
+
+### 安全
+- **`settings:save` 能写入任意 `dataRoot`**（审计发现，同批里唯一漏掉的一处）：`serverPath` 有 `isUnsafeRmPath` 拦截，`dataRoot` 却没有 —— 而启动时的数据迁移与「首次安装清理」都会对它做 `cpSync` / `rmSync`。现在新增 `isUnsafeDataRoot()`：只接受**绝对路径**，且拒绝盘符根、壳/安装目录、ST 目录，以及它们的父目录；`settings:save` 直接返回错误，启动时若发现 settings 里存的旧值不合法则回退默认值并记日志
+- **首次安装清理的反向守卫**：原实现只处理「`dataRoot` 在 ST 目录里」（先搬到临时目录再删），没处理反过来的「`dataRoot` 是 ST 的父目录」—— 那种情况下 `rm -rf <ST>` 会连用户数据一起波及。现在直接抛错并提示改安装目录，不清
+
+### 夹具
+- 与 v2.2.14 相同（未改扩展逻辑）：compat 385/0 ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
 ## v2.2.14 (2026-09-25) — 审计修复第①轮：三条 P1（不可逆数据风险）+ 发布链四处硬闸门
 
 ### 安全

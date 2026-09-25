@@ -112,6 +112,23 @@ function isUnsafeRmPath(p) {
 function assertSafeRmPath(p) {
     if (isUnsafeRmPath(p)) throw new Error(`拒绝删除危险路径: ${p}`);
 }
+// dataRoot 也能被界面写进 settings（settings:save），且迁移/清理会 rm 相关目录 —— 必须与 serverPath 同一套校验。
+// 只允许「绝对路径、非盘符根、不在壳/ST 目录内、也不是它们的父目录」。
+function isUnsafeDataRoot(p) {
+    try {
+        const raw = String(p || '').trim();
+        if (!raw) return true;
+        const r = path.resolve(raw);
+        if (!path.isAbsolute(raw) || /^[A-Za-z]:[\\/]?$/.test(r) || r === '/' || r === '\\') return true;
+        const st = path.resolve(sillyTavernRoot);
+        if (r === st || r.startsWith(st + path.sep) || st.startsWith(r + path.sep)) return true;
+        if (app.isPackaged) {
+            const appDir = path.resolve(path.dirname(process.execPath));
+            if (r === appDir || r.startsWith(appDir + path.sep) || appDir.startsWith(r + path.sep)) return true;
+        }
+        return false;
+    } catch (_) { return true; }
+}
 // User data lives OUTSIDE resources — upgrade/reinstall never touches it
 const dataRoot = settings.dataRoot || (app.isPackaged
     ? path.join(path.dirname(process.resourcesPath), '..', 'Data')
@@ -157,6 +174,12 @@ function ensureStFontTweaks() {
 if (settings.serverPath && isUnsafeRmPath(settings.serverPath)) {
     settings.serverPath = sillyTavernRoot;
     saveSettings(settings);
+}
+
+// 保存过的 dataRoot 与 serverPath 一样必须过校验：迁移/清理会动这些目录
+if (settings.dataRoot && isUnsafeDataRoot(settings.dataRoot)) {
+    console.error(`[sillytavern-shell] 拒绝使用危险数据目录，已回退默认值: ${settings.dataRoot}`);
+    try { delete settings.dataRoot; saveSettings(settings); } catch (_) {}
 }
 
 // CLI --server-path 与已保存的 serverPath 都必须通过同一安全校验（setup/迁移可能 rm 该目录）
@@ -406,6 +429,10 @@ async function setupSillyTavern() {
         assertSafeRmPath(sillyTavernRoot);
         // Safety: never delete user data if dataRoot is inside the ST dir
         const dataInside = dataRoot.startsWith(sillyTavernRoot + path.sep);
+        // 反向：dataRoot 是 ST 的父目录时，rm ST 会连它一起动 —— 宁可不动，报错让用户改路径
+        if (path.resolve(sillyTavernRoot).startsWith(path.resolve(dataRoot) + path.sep)) {
+            throw new Error(`拒绝清理：数据目录 ${dataRoot} 是 SillyTavern 目录的父目录，清理会波及用户数据。请把「安装目录」换成别的路径。`);
+        }
         terminalWrite('\x1b[36m> Cleaning up old files...\x1b[0m');
         if (dataInside) {
             const tmp = path.join(path.dirname(sillyTavernRoot), '.data-tmp');
@@ -800,6 +827,9 @@ ipcMain.handle('tools:integrityCheck', async () => {
         if (s && typeof s === 'object') {
             // 设置面板保存走这里，必须与 settings:setServerPath 同一安全校验，
             // 否则用户可绕过危险路径拦截，重启后 setup 可能 rm 掉安装目录/数据目录。
+            if (typeof s.dataRoot === 'string' && isUnsafeDataRoot(s.dataRoot)) {
+                return { error: '拒绝保存危险数据目录（需绝对路径，且不能是盘符根/安装目录/ST 目录或其父目录）' };
+            }
             if (typeof s.serverPath === 'string') {
                 const p = s.serverPath.trim();
                 if (!p || isUnsafeRmPath(p)) return { error: '拒绝保存危险路径（盘符根/系统根/主目录/套壳自身/数据目录或其父目录）' };
