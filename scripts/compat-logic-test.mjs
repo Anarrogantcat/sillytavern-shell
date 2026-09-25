@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape, isNonYamlTag } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1416,6 +1416,19 @@ const bigBody = new Array(1300).join('y');
 const bigRaw = '正文' + String.fromCharCode(10) + '<huge2>' + bigBody + '</huge2>';
 const bigCleaned = stripUndeclaredBlocks(bigRaw, { declared: [], keep: KEEP_BLOCKS });
 check('66 超大块被安全阀保住 → 不会被误判成「被砍过」', bigCleaned.removed.length === 0 && bigCleaned.text.trim() === bigRaw.trim());
+
+console.log('');
+console.log('— 夹具 67：非 YAML 块不参与 YAML 校验/修复（0.25.1，连楼误报的根因）');
+const f67Yaml = { load: () => { throw new Error('不该被调用'); } };
+const f67Uv = '<UpdateVariable>' + String.fromCharCode(10) + '<Analysis>a</Analysis>' + String.fromCharCode(10) + '<JSONPatch>[{"op":"replace","path":"/a","value":1}]</JSONPatch>' + String.fromCharCode(10) + '</UpdateVariable>';
+check('67 <UpdateVariable> 不再被当 YAML 校验（不会连楼报警）', strictYamlCheck(f67Uv, ['UpdateVariable'], f67Yaml).blocks === 0);
+check('67 YAML 修复也不碰它（原来会改写 JSONPatch）', guardBlockYaml(f67Uv, ['UpdateVariable'], {}).text === f67Uv && repairYamlStructure(f67Uv, ['UpdateVariable']).text === f67Uv);
+const f67St = '<status_current_variables>' + String.fromCharCode(10) + 'a: 1' + String.fromCharCode(10) + '</status_current_variables>';
+check('67 状态表同样不参与 YAML 校验', strictYamlCheck(f67St, ['status_current_variables'], f67Yaml).blocks === 0);
+check('67 真正的 YAML 块仍然被校验（功能没被削弱）', strictYamlCheck('<st_data>' + String.fromCharCode(10) + 'a: 1' + String.fromCharCode(10) + '</st_data>', ['st_data'], f67Yaml).issues.length === 1);
+check('67 判定表正确', isNonYamlTag('UpdateVariable') === true && isNonYamlTag('JSONPatch') === true && isNonYamlTag('st_data') === false);
+const f67Src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('67 面板侧改用过滤后的标签列表', f67Src.indexOf('function yamlTagsOf') > 0 && (f67Src.split('yamlTagsOf(').length - 1) >= 4);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

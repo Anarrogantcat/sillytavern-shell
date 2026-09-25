@@ -679,6 +679,7 @@ export function repairSmartQuotes(text, tags) {
     let out = String(text ?? '');
     const fixed = [];
     for (const tag of tags || []) {
+        if (isNonYamlTag(tag)) continue;   // 0.25.1：非 YAML 块（UpdateVariable / JSONPatch / 状态表等）一概不碰
         const blockRe = new RegExp('(<' + tag + '(?:\\s[^>]*)?>)([\\s\\S]*?)(</' + tag + '>)', 'g');
         out = out.replace(blockRe, (whole, open, body, close) => {
             const next = String(body).split('\n').map((line) => {
@@ -720,6 +721,7 @@ export function repairYamlStructure(text, tags, opts = {}) {
     let blocks = 0;
     const indentOf = (t) => (String(t).match(/^\s*/) || [''])[0].length;
     for (const tag of tags || []) {
+        if (isNonYamlTag(tag)) continue;   // 0.25.1：非 YAML 块（UpdateVariable / JSONPatch / 状态表等）一概不碰
         const blockRe = new RegExp('(<' + tag + '(?:\\s[^>]*)?>)([\\s\\S]*?)(</' + tag + '>)', 'g');
         out = out.replace(blockRe, (whole, open, body, close) => {
             blocks++;
@@ -787,6 +789,7 @@ export function guardBlockYaml(text, tags, opts = {}) {
     let out = String(text ?? '');
     const fixes = [], issues = [];
     for (const tag of tags || []) {
+        if (isNonYamlTag(tag)) continue;   // 0.25.1：非 YAML 块（UpdateVariable / JSONPatch / 状态表等）一概不碰
         const blockRe = new RegExp('(<' + tag + '(?:\\s[^>]*)?>)([\\s\\S]*?)(</' + tag + '>)', 'g');
         out = out.replace(blockRe, (whole, open, body, close) => {
             let literalIndent = -1;   // 块标量（| / >）内容缩进，进入后整段跳过
@@ -830,12 +833,27 @@ export function guardBlockYaml(text, tags, opts = {}) {
  * @param {object} yamlLib 形如 { load(str) } —— 没传或不可用则 checked=false（调用方据此提示"跳过"）
  * @returns {{checked:boolean, blocks:number, issues:Array<{tag,error}>}}
  */
+/**
+ * 0.25.1：这些块**不是 YAML**，绝不能拿 YAML 规则去校验或修复它们。
+ * 实测（用户连收三条「结构块 YAML 解析失败」）：失败的块就是 <UpdateVariable>（1171 字）——
+ * 它装的是 <Analysis> + <JSONPatch>（JSON），当 YAML 解析必然失败；更糟的是同一条标签列表还喂给了
+ * YAML 自动修复（repairYamlStructure / guardBlockYaml），等于**一直在用 YAML 规则改写 JSONPatch**。
+ * <status_current_variables> 是给眼睛看的展示表（模型写得松散），同样不参与 YAML 校验/修复。
+ */
+export const NON_YAML_TAGS = new Set([
+    'updatevariable', 'update_variable', 'variable_update', 'jsonpatch', 'json_patch', 'analysis', 'analysis_zh',
+    'status_current_variable', 'status_current_variables', 'status_variables', 'variables_table', 'variable_table', 'stat_data',
+    'tucao', 'options', 'current_event', 'progress',
+]);
+export function isNonYamlTag(name) { return NON_YAML_TAGS.has(String(name == null ? '' : name).toLowerCase()); }
+
 export function strictYamlCheck(text, tags, yamlLib) {
     const issues = [];
     let blocks = 0;
     if (!yamlLib || typeof yamlLib.load !== 'function') return { checked: false, blocks: 0, issues };
     const src = String(text ?? '');
     for (const tag of tags || []) {
+        if (isNonYamlTag(tag)) continue;   // 0.25.1：非 YAML 块（UpdateVariable / JSONPatch / 状态表等）一概不碰
         const blockRe = new RegExp('<' + tag + '(?:\\s[^>]*)?>([\\s\\S]*?)</' + tag + '>', 'g');
         let m;
         while ((m = blockRe.exec(src))) {

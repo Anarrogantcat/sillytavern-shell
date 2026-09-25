@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure, moneyFlowHint, moneyLedgerDrift, moneyCorrection, parseStatusTable, mergeStatusTable, statusTableDiff } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure, moneyFlowHint, moneyLedgerDrift, moneyCorrection, parseStatusTable, mergeStatusTable, statusTableDiff, isNonYamlTag } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.25.0';
+const VERSION = '0.25.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -191,6 +191,11 @@ function cardTextForProtocol(ch) {
         return parts.join(String.fromCharCode(10)).slice(0, 200000);
     } catch (_) { return ''; }
 }
+/** 0.25.1：YAML 校验/修复只用「真正的 YAML 块」—— 排掉 UpdateVariable / JSONPatch / 状态表等（见 logic.js NON_YAML_TAGS） */
+function yamlTagsOf(prof) {
+    const p = prof || profileOf();
+    return [...(p.dataTags || []), ...(p.anchors || [])].filter((x) => !isNonYamlTag(x));
+}
 function profileOf() {
     try {
         const ctx = getContext();
@@ -223,6 +228,7 @@ function profileOf() {
                 varSpec: prof.varSpec,
                 dataTags: prof.dataTags,
                 blockTags: [...(prof.dataTags || []), ...(prof.anchors || [])],
+        yamlTags: [...(prof.dataTags || []), ...(prof.anchors || [])].filter((x) => !isNonYamlTag(x)),
             });
         } catch (_) { prof.protocol = { id: 'none', label: '（识别失败）', canWriteBack: false, tags: [] }; }
         try { const dv = detectDisabledViews(ext); prof.disabledViews = { total: dv.total || 0, uncovered: dv.uncovered || 0 }; } catch (_) {}
@@ -290,7 +296,7 @@ async function strictCheckMessage(messageId, opts = {}) {
         if (!s || !s.enabled || !m || typeof m.mes !== 'string') return null;
         if (!s.yamlStrict && !opts.force) return null;
         const profile = profileOf();
-        const tags = [...(profile.dataTags || []), ...(profile.anchors || [])];
+        const tags = yamlTagsOf(profile);
         if (!tags.length) return null;
         if (!tags.some((t) => m.mes.includes('<' + t))) return null;   // 没结构块就不去加载库
         if (strictChecked.get(messageId) === fingerprintOf(m.mes) && !opts.force) return null;
@@ -986,7 +992,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
     }
     // 0.3.0 结构级修复：见 logic.js repairYamlStructure（列表项行内映射 + 更深兄弟键 / 引号后跟「, 文字」）
     if (s.fixYamlStructure !== false) {
-        const ys = repairYamlStructure(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])]);
+        const ys = repairYamlStructure(res.text, yamlTagsOf(profile));
         if (ys.fixes.length) {
             res.text = ys.text;
             stats.yamlStructFixed += ys.fixes.length;
@@ -995,7 +1001,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         }
     }
     // 结构块 YAML 预检 + 修复：见 logic.js guardBlockYaml（引号错配 / 未加引号却含「: 」「 #」的值）
-    const yg = guardBlockYaml(res.text, [...(profile.dataTags || []), ...(profile.anchors || [])], {
+    const yg = guardBlockYaml(res.text, yamlTagsOf(profile), {
         fixSmartQuotes: s.fixSmartQuotes !== false,
         quoteScalars: s.quoteScalars !== false,
     });

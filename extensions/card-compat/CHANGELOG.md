@@ -1,5 +1,33 @@
 # 更新日志
 
+## [0.25.1] - 2026-09-25
+
+### 修复：把「非 YAML 的块」从 YAML 校验与修复里彻底排除（连楼误报 + 潜在改写 JSONPatch）
+
+**用户实测的现象**：连续 3 楼弹出 `结构块 YAML 解析失败` 警告（第3楼）。
+
+**实测根因**（把该局每个块丢进 js-yaml 跑出来的）：
+```
+#3 <UpdateVariable> (1171字) YAML 失败: end of the stream or a document separator is expected
+```
+`<UpdateVariable>` 里装的是 `<Analysis>` + `<JSONPatch>`（**JSON**），根本不是 YAML —— 拿 YAML 去解析必然失败。
+**更严重的是**：同一份标签列表还喂给了 YAML 自动修复（`repairYamlStructure` / `guardBlockYaml`），
+等于**一直在用 YAML 规则改写用户的 JSONPatch**。误报是小问题，改写补丁是大问题。
+
+**修复（两层）**：
+1. `logic.js` 新增 `NON_YAML_TAGS` 与 `isNonYamlTag()`：
+   `updatevariable / update_variable / variable_update / jsonpatch / json_patch / analysis / analysis_zh /
+   status_current_variable(s) / status_variables / variables_table / variable_table / stat_data / tucao / options / current_event / progress`
+   —— `strictYamlCheck` / `repairYamlStructure` / `guardBlockYaml`（及另一处 YAML 处理）**各自在循环开头直接跳过**（纵深防御：即使调用方传错也不会碰）
+2. `index.js` 新增 `yamlTagsOf(profile)`，把「YAML 用途」的标签列表统一过滤后再传；
+   保留 `blockTags`（用于判断「块是否存在」）不变 —— 那里仍然要认 `<UpdateVariable>`
+
+**真正的 YAML 块照旧校验**（夹具里用「必抛错的假解析器」验证：非 YAML 块 0 次调用、真 YAML 块仍然报错）
+
+### 夹具
+- 新增「夹具 67」（7 条）：UpdateVariable 不校验 / 修复也不碰 / 状态表不校验 / 真 YAML 仍校验 / 判定表 / 面板侧已换列表
+- `scripts/compat-logic-test.mjs`：569 → **575** 项
+
 ## [0.25.0] - 2026-09-25
 
 ### 新增：一键找回「被误删的块」（从 swipe 备档恢复）

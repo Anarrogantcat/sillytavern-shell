@@ -1,5 +1,15 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.46 (2026-09-25) — card-compat 0.25.1：非 YAML 块不再参与 YAML 校验/修复（连楼误报的根因）
+
+### 修复
+- 用户连楼收到「结构块 YAML 解析失败」→ 实测失败块是 `<UpdateVariable>`（1171 字，装的是 Analysis + JSONPatch）
+- 它本就不是 YAML，却被当 YAML 校验；更严重的是**同一份标签列表还喂给了 YAML 自动修复**，等于用 YAML 规则改写 JSONPatch
+- 新增 `NON_YAML_TAGS` / `isNonYamlTag()`，三处 YAML 函数循环开头直接跳过；`index.js` 新增 `yamlTagsOf()` 统一过滤
+- 真 YAML 块照旧校验（用必抛错的假解析器验证：非 YAML 块 0 次调用）
+
+### 夹具
+- compat **575/0**（新增夹具 67，7 条）
 ## v2.2.45 (2026-09-25) — card-compat 0.25.0：一键找回被误删的块（从 swipe 备档）
 
 ### 新增
