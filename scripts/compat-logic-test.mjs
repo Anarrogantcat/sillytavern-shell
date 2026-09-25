@@ -1168,5 +1168,18 @@ const uiCss = readFileSync(new URL('../extensions/card-compat/style.css', import
 check('51 新样式仍限定在 #cc-panel 内', ['#cc-panel .cc-chips', '#cc-panel .cc-chip', '#cc-panel .cc-trend-bars'].every((s) => uiCss.indexOf(s) >= 0));
 check('51 新样式不含裸全局选择器（.cc-chips/.cc-chip 不带前缀的写法）', (uiCss.split('.cc-chips').length - 1) === (uiCss.split('#cc-panel .cc-chips').length - 1) && (uiCss.split('.cc-chip ').length - 1) <= (uiCss.split('#cc-panel .cc-chip ').length - 1));
 
+console.log('');
+console.log('— 夹具 52：未声明块清理不得误删世界书条目名（0.19.0）');
+const bsText = '正文开始。' + String.fromCharCode(10) + '<世界设定>这是一段设定</世界设定>' + String.fromCharCode(10) + '<status_block>状态</status_block>' + String.fromCharCode(10) + '结尾。';
+const bsNoTitles = stripUndeclaredBlocks(bsText, { declared: [], keep: KEEP_BLOCKS });
+check('52 没有条目名单时：两个未声明块都被清理', bsNoTitles.removed.length === 2 && bsNoTitles.text.indexOf('世界设定') < 0 && bsNoTitles.text.indexOf('status_block') < 0);
+const bsWithTitles = stripUndeclaredBlocks(bsText, { declared: [], keep: KEEP_BLOCKS, bookTitles: ['世界设定'] });
+check('52 条目名在名单里 → 不清理，且记进 keptAsTitle', bsWithTitles.text.indexOf('<世界设定>') >= 0 && bsWithTitles.keptAsTitle.indexOf('世界设定') >= 0);
+check('52 名单里没有的块照常清理', bsWithTitles.removed.length === 1 && bsWithTitles.removed[0].tag === 'status_block');
+const bsKey = stripUndeclaredBlocks('<WORLD_setting>数据</WORLD_setting>', { declared: [], keep: KEEP_BLOCKS, bookTitles: ['WORLD_setting'] });
+check('52 keys 里的条目名同样受保护（大小写不敏感）', bsKey.removed.length === 0 && bsKey.keptAsTitle.length === 1);
+const bsDeclared = stripUndeclaredBlocks(bsText, { declared: ['世界设定'], keep: KEEP_BLOCKS });
+check('52 卡自己声明的标签仍走原路径（不报未声明）', bsDeclared.removed.length === 1 && bsDeclared.removed[0].tag === 'status_block');
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.18.0';
+const VERSION = '0.19.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -206,6 +206,12 @@ function profileOf() {
     prof.required = extractRequiredFields(entries, 200);
             prof.allowed = extractAllowedPaths(entries);      // P2 ⑤ 路径白名单
             prof.bookCount = entries.length;                  // 0.16.0：诊断报告要显示世界书条目数
+            // 0.19.0：世界书条目名（comment 与 keys）—— 给「未声明块清理」当保护名单用
+            prof.bookTitles = [];
+            for (const e of entries) {
+                if (e && e.comment) prof.bookTitles.push(String(e.comment));
+                for (const k of ((e && e.keys) || [])) prof.bookTitles.push(String(k));
+            }
         } catch (_) { prof.varSpec = ''; prof.required = []; prof.allowed = { paths: [], prefixes: [], wildcards: [], all: [] }; }
         // 0.4.0 变量协议识别（MVU / 任意 JSONPatch / YAML 块 / _.set / setvar 宏 / 无）
         try {
@@ -729,7 +735,9 @@ function guardMessage(messageId, { rerender = true } = {}) {
     // ① 先清理「本卡未声明、也没人渲染」的块（v0.2.7 误插进 strictCheckMessage，实际从未生效）
     if (s.stripUndeclared) {
         const declared = new Set([...(profile.anchors || []), ...(profile.dataTags || []), ...(profile.hideTargets || []), ...(profile.strippers || []), ...(profile.rawTags || [])]);
-        const sr = stripUndeclaredBlocks(base, { declared: declared, keep: KEEP_BLOCKS });
+        // 0.19.0：把世界书条目的 comment / keys 作为「条目名」传进去 —— 实测 95 张卡里有 78 张的正文会写成
+        // <条目名>设定…</条目名>（模型回显世界书原文），旧实现把这些条目名当「未声明块」删掉，属于误伤。
+        const sr = stripUndeclaredBlocks(base, { declared: declared, keep: KEEP_BLOCKS, bookTitles: profile.bookTitles || [] });
         if (sr.removed.length) {
             base = sr.text;
             changed = true;
@@ -737,6 +745,10 @@ function guardMessage(messageId, { rerender = true } = {}) {
             strippedByFloor.set(messageId, { tags: sr.removed.map((r) => r.tag), chars: sr.removed.reduce((a, b) => a + b.chars, 0) });
             while (strippedByFloor.size > 200) strippedByFloor.delete(strippedByFloor.keys().next().value);
             log('undeclared-block-stripped', sr.removed.map((r) => r.tag).join(','), '共 ' + sr.removed.reduce((a, b) => a + b.chars, 0) + ' 字（本卡未声明，会以原文裸露）');
+        if (sr.keptAsTitle && sr.keptAsTitle.length) {
+            stats.keptAsTitle = (stats.keptAsTitle || 0) + sr.keptAsTitle.length;
+            log('undeclared-kept-as-title', sr.keptAsTitle.slice(0, 6).join(','), '这些是同名世界书条目，按设置**不清理**（避免误删条目名/卡片自己的容器）');
+        }
         }
         if (sr.unclosed.length) {
             stats.unclosedBlocks += sr.unclosed.length;

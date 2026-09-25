@@ -51,6 +51,20 @@ export function stripUndeclaredBlocks(text, opts = {}) {
     const keep = opts.keep || KEEP_BLOCKS;
     const removed = [];
     const unclosed = [];
+    const keptAsTitle = [];
+    // 0.19.0 修复（实测 95 张卡，81 张会误删）：世界书里常写成 <阿库娅>设定…</阿库娅>、<world_setting>…</world_setting>
+    // —— 这是**条目名**，不是模型乱写的结构块。旧实现只看「卡的正则声明过没」，于是把这些条目名当未声明块删掉。
+    // 现在收两份名单：① 世界书条目的 comment/key（条目名）② 条目标题形态的候选（全大写/下划线风格）。
+    const titleKeys = new Set();
+    for (const raw of (opts.bookTitles || [])) {
+        const s = String(raw == null ? '' : raw).trim();
+        if (!s) continue;
+        titleKeys.add(s.toLowerCase());
+        titleKeys.add(s.toLowerCase().split('\n')[0].trim());
+    }
+    /** 条目名形态：全大写/含下划线/含点/纯 ASCII —— 世界书条目名几乎都长这样，而模型自创块（如 status_block）也长这样，
+     *  所以这条只在「没有任何世界书名单」时不启用；有名单时靠名单本身判定。 */
+    const looksLikeEntryName = (n) => /[A-Z_]/.test(n) && /^[A-Za-z0-9_.\-~!]+$/.test(n);
     const names = [...new Set(broadTagsOf(out))];
     // 0.8.1：先算出「本卡声明过 / 永不清理」的成对块占据的区间 —— 落在这里面的子块一律不碰。
     // 实测 P0：<UpdateVariable>…<JSONPatch>[…]</JSONPatch>…</UpdateVariable> 里 JSONPatch 常常没被单独声明，
@@ -71,6 +85,11 @@ export function stripUndeclaredBlocks(text, opts = {}) {
     const insideProtected = (i) => spans.some((s) => i >= s.a && i < s.b);
     for (const name of names) {
         if (declared.has(name) || keep.has(name) || keep.has(name.toLowerCase())) continue;
+        // ① 世界书条目名 → 绝不清理（这是本条修复的核心）
+        if (titleKeys.has(name.toLowerCase())) { keptAsTitle.push(name); continue; }
+        // ② 世界书里任意条目名与这个标签同名（标签被包进条目名，如 <world_setting> 出现在 comment 里）→ 也不清理
+        for (const tk of titleKeys) { if (tk && (tk.indexOf(name.toLowerCase()) >= 0 || name.toLowerCase().indexOf(tk) >= 0) && tk.length >= 4) { keptAsTitle.push(name); break; } }
+        if (keptAsTitle[keptAsTitle.length - 1] === name) continue;
         // 转义正则元字符：只保留字母/数字/下划线/汉字，其余一律加反斜杠（用 fromCharCode 免得层层转义写错）
         const esc = String(name).split('').map((ch) => { const c = ch.codePointAt(0); return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c > 0x2e80 ? ch : String.fromCharCode(92) + ch; }).join('');
         const anyRe = new RegExp('<' + esc + '(?:\\s[^>]*)?>', 'g');
@@ -93,7 +112,7 @@ export function stripUndeclaredBlocks(text, opts = {}) {
         if (hits.length) continue;                             // 有成对的（哪怕全在保护区里）就不报「只有开标签」
         if (new RegExp('<' + esc + '(?:\\s[^>]*)?>').test(out)) unclosed.push(name);
     }
-    return { text: out, removed, unclosed };
+    return { text: out, removed, unclosed, keptAsTitle };
 }
 
 /** 正则转义（标签名里可能有 status! 这类元字符） */
