@@ -1,5 +1,17 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.27 (2026-09-25) — card-compat 0.16.3（RFC 6902 语义补齐）+ AGENTS v4（状态栏可动）
+
+### 修复 / 新增（card-compat 0.16.3）
+- **`add` 打到数组时改为按 RFC 插入**（原先与 `replace` 同义 → 覆盖而不是插入）；越界下标退化为追加，`-` 追加
+- **新增 `copy` / `test` 两个 op**：`copy` 深拷贝（源不变）；`test` 值全等校验，失败即中止后续（已应用的 op 不回滚），并记进 `skipped`
+- `runVarOps` 返回 `tested` / `aborted`；审计清单里最后一个未闭环的 P2 到此结束
+
+### 文档（AGENTS.md v4）
+- 新增 **0.3.1「状态栏可以动」**：写清状态栏由 `stat_data → 卡的正则/脚本 → 楼层 HTML` 渲染而来，所以「动状态栏」= 动数据层。允许：用公开钩子写/修 `stat_data`、修结构块、重渲染、写完核对；禁止：改别的扩展代码来修状态栏（同 ST 本体一样的更新覆盖坑）、直接塞状态栏 DOM、为好看删用户数据键
+
+### 夹具
+- compat **444/0**（新增夹具 48，10 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 67 ・toolbox 16
 ## v2.2.26+doc (2026-09-25) — AGENTS.md v3：修正发包闸门的两类误报
 
 ### 修复

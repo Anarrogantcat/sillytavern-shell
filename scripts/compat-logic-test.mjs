@@ -1111,5 +1111,27 @@ const ffR7 = noteFailure(ff1, '不存在', 3002000, {});
 check('㊼ 未知类别被忽略（不污染计数）', ffR7.alert === false && ffR7.reason === 'unknown-cat' && ff1.yaml === 1);
 check('㊼ 传入空对象不崩', noteFailure(null, 'data', 1, {}).alert === false);
 
+console.log('');
+console.log('— 夹具 48：RFC 6902 语义补齐（0.16.3：add 插入 / copy / test）');
+const rfBase = { a: { list: ['x', 'y', 'z'], n: 1 } };
+const rf1 = applyVarOps(rfBase, [{ op: 'add', path: '/a/list/1', value: 'NEW' }]);
+check('㊽ 数组 add 是插入而不是覆盖', JSON.stringify(rf1.state.a.list) === JSON.stringify(['x', 'NEW', 'y', 'z']), rf1.state.a.list);
+const rf2 = applyVarOps(rfBase, [{ op: 'add', path: '/a/list/-', value: 'END' }]);
+check('㊽ add 到 - 追加到末尾', JSON.stringify(rf2.state.a.list) === JSON.stringify(['x', 'y', 'z', 'END']));
+const rf3 = applyVarOps(rfBase, [{ op: 'add', path: '/a/list/9', value: 'BIG' }]);
+check('㊽ 越界下标退化为追加（不产生稀疏数组）', JSON.stringify(rf3.state.a.list) === JSON.stringify(['x', 'y', 'z', 'BIG']));
+const rf4 = applyVarOps(rfBase, [{ op: 'add', path: '/a/k', value: 5 }]);
+check('㊽ 对象 add 仍可新增键', rf4.state.a.k === 5 && rf4.skipped.length === 0);
+const rf5 = applyVarOps(rfBase, [{ op: 'test', path: '/a/n', value: 1 }, { op: 'replace', path: '/a/n', value: 2 }]);
+check('㊽ test 通过后继续执行后续 op', rf5.state.a.n === 2 && rf5.tested === 1 && rf5.aborted === false);
+const rf6 = applyVarOps(rfBase, [{ op: 'test', path: '/a/n', value: 99 }, { op: 'replace', path: '/a/n', value: 2 }]);
+check('㊽ test 失败 → 中止后续（n 保持原值）', rf6.state.a.n === 1 && rf6.aborted === true && rf6.tested === 0);
+const rf7 = applyVarOps(rfBase, [{ op: 'copy', from: '/a/list', path: '/a/listCopy' }]);
+rf7.state.a.list.push('MUT');
+check('㊽ copy 是深拷贝（改副本不影响源）', rf7.state.a.listCopy.length === 3 && rf7.state.a.list.length === 4);
+const rf8 = applyVarOps(rfBase, [{ op: 'copy', from: '/a/nope', path: '/a/x' }]);
+check('㊽ copy 源不存在 → 记账跳过', rf8.skipped.length === 1 && rf8.state.a.x === undefined);
+check('㊽ 校验器接受 copy / test（不再报未知 op）', validatePatchBlock('[{"op":"copy","from":"/a","path":"/b"}]').ok === true && validatePatchBlock('[{"op":"test","path":"/a","value":1}]').ok === true);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

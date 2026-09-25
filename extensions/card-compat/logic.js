@@ -1055,6 +1055,7 @@ export function parseSetCommands(text) {
 function runVarOps(state, ops, opts = {}, skipDeltas = false) {
     const out = (state && typeof state === 'object') ? JSON.parse(JSON.stringify(state)) : {};
     const applied = [], skipped = [], schemaHits = [];
+    let aborted = false, tested = 0;   // test 失败即中止；tested 统计通过次数
     const schemaOn = opts.schemaGuard !== false;
     const segs = (p) => String(p == null ? '' : p).replace(/^\//, '').split(/[\/.]/).filter((s) => s !== '');
     const ruleFor = (arr, segsArr) => { for (const r of (arr || [])) if (pathMatches(segsArr, r.path)) return r; return null; };
@@ -1133,20 +1134,66 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
         }
         return node;
     };
-    for (const op of (ops || [])) {
+    for (let oi = 0; oi < (ops || []).length; oi++) {
+        const op = ops[oi];
         const kind = String((op && op.op) || '').toLowerCase();
         const path = segs(op && op.path);
         if (!path.length) { skipped.push({ path: String((op && op.path) || ''), reason: '空路径' }); continue; }
         if (skipDeltas && kind === 'delta') { skipped.push({ path: String(op.path), reason: '整楼 delta 已跳过（防透支保护）' }); continue; }
+        // RFC 6902：test 失败即中止后续（但不回滚已应用的 op，与 MVU 行为一致）
+        if (aborted) { skipped.push({ path: String(op.path), reason: '前一个 test 未通过，已中止后续' }); continue; }
         const head = path.slice(0, -1);
         const last = path[path.length - 1];
         try {
-            if (kind === 'replace' || kind === 'add') {
+            if (kind === 'replace') {
                 const parent = seek(head, false);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
                 const ck = check(path, parent[last], op.value, op.path);
                 if (!ck.ok) continue;
                 parent[last] = clampOf(path, ck.v);
+            } else if (kind === 'add') {
+                // RFC 6902：数组必须用 splice 插入（原先 add 与 replace 同义 → 数组元素被覆盖而不是插入）
+                const parent = seek(head, false);
+                if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
+                if (Array.isArray(parent)) {
+                    const ck0 = check(path, undefined, op.value, op.path);
+                    if (!ck0.ok) continue;
+                    const v2 = clampOf(path, ck0.v);
+                    if (last === '-') parent.push(v2);
+                    else if (/^\d+$/.test(last)) { const i2 = Number(last); if (i2 > parent.length) parent.push(v2); else parent.splice(i2, 0, v2); }
+                    else { skipped.push({ path: String(op.path), reason: 'add 到数组的下标非法（应为数字或 -）' }); continue; }
+                } else {
+                    const ck1 = check(path, parent[last], op.value, op.path);
+                    if (!ck1.ok) continue;
+                    parent[last] = clampOf(path, ck1.v);
+                }
+            } else if (kind === 'copy') {
+                const from = segs(op.from);
+                const srcP = from.length ? seek(from.slice(0, -1), false) : null;
+                if (!srcP) { skipped.push({ path: String(op.path), reason: 'copy 源路径不存在' }); continue; }
+                const v0 = srcP[from[from.length - 1]];
+                if (v0 === undefined) { skipped.push({ path: String(op.path), reason: 'copy 源路径没有值' }); continue; }
+                const ckC = check(path, undefined, JSON.parse(JSON.stringify(v0)), op.path);
+                if (!ckC.ok) continue;
+                const parentC = seek(head, false);
+                if (!parentC) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
+                if (Array.isArray(parentC)) {
+                    const vc = clampOf(path, ckC.v);
+                    if (last === '-') parentC.push(vc);
+                    else if (/^\d+$/.test(last)) { const i3 = Number(last); if (i3 > parentC.length) parentC.push(vc); else parentC.splice(i3, 0, vc); }
+                    else { skipped.push({ path: String(op.path), reason: 'copy 到数组的下标非法' }); continue; }
+                } else parentC[last] = clampOf(path, ckC.v);
+            } else if (kind === 'test') {
+                const parentT = seek(head, false);
+                if (!parentT) { skipped.push({ path: String(op.path), reason: 'test 路径不存在' }); continue; }
+                const ckT = check(path, parentT[last], op.value, op.path);
+                const aT = stableStringify(parentT[last]), bT = stableStringify(ckT.ok ? ckT.v : op.value);
+                if (aT !== bT) {
+                    skipped.push({ path: String(op.path), reason: 'test 未通过（当前 ' + aT.slice(0, 40) + '，期望 ' + bT.slice(0, 40) + '）' });
+                    aborted = true;
+                    continue;
+                }
+                tested++;
             } else if (kind === 'delta') {
                 const parent = seek(head, false);
                 if (!parent) { skipped.push({ path: String(op.path), reason: '父路径不存在' }); continue; }
@@ -1192,7 +1239,7 @@ function runVarOps(state, ops, opts = {}, skipDeltas = false) {
             applied.push(String(op.path));
         } catch (e) { skipped.push({ path: String(op && op.path), reason: String((e && e.message) || e) }); }
     }
-    return { state: out, applied: applied, skipped: skipped, schemaHits: schemaHits };
+    return { state: out, applied: applied, skipped: skipped, schemaHits: schemaHits, tested: tested, aborted: aborted };
 }
 
 /**
