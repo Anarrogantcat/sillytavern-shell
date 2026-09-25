@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.16.4';
+const VERSION = '0.17.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -87,7 +87,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限', fontWarn: '注意：这两项会覆盖「所有角色卡自己的状态栏样式」（每张卡的美化都不同）。只在你确实觉得字太小时才开；开着时状态栏可能与卡的设计不一致。默认关闭。',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -121,7 +121,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size', fontWarn: 'Note: these two override EVERY card\'s own status-bar styling (each card is themed differently). Only turn them on if the text really is too small; while on, the status bar may disagree with the card design. Default off.',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -1314,6 +1314,17 @@ function renderCoverageTable() {
         parts.push('<tr><td>' + escHtml(f.path) + '</td><td>' + doneCell + '</td><td>' + mark + '</td></tr>');
     }
     parts.push('</tbody></table>');
+    // 0.17.0：把符号含义直接印在面板上（用户指出：解释了但没标注，面板上还是看不懂）
+    const lgItem = (sym, cls, key) => '<span class="' + cls + '" title="' + escHtml(T(key)) + '">' + sym + '</span>' + escHtml(T(key + 'Short'));
+    parts.push('<div class="cc-legend">'
+        + '<b>' + escHtml(T('legendTitle')) + '</b> '
+        + lgItem('✅', 'cc-ok', 'lgDone') + '　'
+        + lgItem('❌', 'cc-bad', 'lgMiss') + '　'
+        + lgItem('➖', 'cc-muted', 'lgSame') + '　'
+        + lgItem('⚠️', 'cc-warn', 'lgStuck') + '　'
+        + lgItem('○', 'cc-muted', 'lgNoBase') + '　'
+        + lgItem('—', 'cc-muted', 'lgPlaceholder')
+        + '</div>');
     if (st) {
         parts.push(st.noBase
             ? ('<div class="cc-line cc-muted">' + escHtml(T('stateNoBase')) + '</div>')

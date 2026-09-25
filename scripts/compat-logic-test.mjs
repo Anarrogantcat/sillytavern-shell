@@ -1146,5 +1146,15 @@ check('㊾ 字号/缩放默认关闭（fontZoom=1、fontFloor=0）', /fontZoom:\
 check('㊾ 覆写型开关带面板警告文案（fontWarn 中英各一）', (rfSrc.split("fontWarn:").length - 1) === 2);
 check('㊾ 不手写状态栏 DOM（不出现往 .mes_text 注入 HTML 的写法）', !/\.mes_text[^\n]*innerHTML/.test(rfSrc));
 
+console.log('');
+console.log('— 夹具 50：符号说明必须印在面板上（0.17.0）');
+const lgSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+const lgKeys = ['legendTitle', 'lgDone', 'lgMiss', 'lgSame', 'lgStuck', 'lgNoBase', 'lgPlaceholder'];
+check('㊿ 七个图例键各出现两次（中英各一）', lgKeys.every((k) => (lgSrc.split(k + ':').length - 1) === 2), lgKeys.filter((k) => (lgSrc.split(k + ':').length - 1) !== 2));
+check('㊿ 图例把符号字面印出来（含 ✅ ❌ ➖ ⚠️ ○ —）', ['✅', '❌', '➖', '⚠️', '○', '—'].every((s) => lgSrc.indexOf(s) >= 0));
+check('㊿ 图例渲染代码存在于对照表渲染函数里（cc-legend）', lgSrc.indexOf('cc-legend') >= 0 && lgSrc.indexOf('lgItem(') >= 0);
+const lgCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+check('㊿ 图例样式限定在 #cc-panel 内（不出现裸 .cc-legend 选择器）', (lgCss.split('.cc-legend').length - 1) === (lgCss.split('#cc-panel .cc-legend').length - 1));
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

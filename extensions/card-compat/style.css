@@ -14,6 +14,19 @@
 #cc-panel .cc-grp > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 #cc-panel .cc-trend { font-size: .95em; opacity: .9; letter-spacing: 1px; margin: 2px 0 6px; }
 #cc-panel .cc-tab { width: 100%; border-collapse: collapse; font-size: .95em; }
+/* 0.17.0：符号图例 —— 每个符号是什么意思直接印在面板上 */
+#cc-panel .cc-legend {
+    margin: 4px 0 6px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.7;
+    opacity: .92;
+}
+#cc-panel .cc-legend .cc-ok { color: #4caf50; }
+#cc-panel .cc-legend .cc-bad { color: #e57373; }
+
 #cc-panel .cc-tab th, #cc-panel .cc-tab td { border-bottom: 1px solid rgba(255,255,255,.12); padding: 2px 4px; text-align: left; }
 #cc-panel .cc-line { margin: 4px 0; font-size: .95em; line-height: 1.5; }
 #cc-panel .cc-warn { color: #ffb86b; }
