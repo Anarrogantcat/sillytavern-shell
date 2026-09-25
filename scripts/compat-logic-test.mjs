@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape, isNonYamlTag } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape, isNonYamlTag, repairPatchPaths, backfillInitKeys } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1514,6 +1514,36 @@ check('73 mustInclude 用归一化比较（/a/b 与 a.b 等价）', pickReminder
 const f73src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
 check('73 面板侧把「从没写过」的字段喂进提醒', /neverWrittenFields\(12\)[\s\S]{0,300}mustInclude: neverW/.test(f73src));
 check('73 有日志说明哪些字段被优先', f73src.indexOf("log('reminder-priority'") > 0);
+
+console.log('');
+console.log('— 夹具 74：修补写歪的补丁路径 + 按 [InitVar] 补齐缺失键（0.30.0，实测 MVU zod 报错）');
+const f74cands = ['/系统/日期', '/林婉婷/关系态度', '/陈慧兰/关系态度', '/user/累计支出_林婉婷', '/user/累计支出_陈慧兰', '/林婉婷/身体状态/小穴/总次数'];
+const f74r = repairPatchPaths([
+    { op: 'replace', path: '累计支出_林婉婷', value: 2500 },
+    { op: 'delta', path: '/关系态度', value: 5 },
+    { op: 'delta', path: '/林婉婷/身体状态/小穴/总次数', value: 1 },
+    { op: 'replace', path: '/林婉婷/心情', value: 'x' },
+], f74cands);
+check('74 缺层级但叶子名唯一 → 修成 /user/累计支出_林婉婷', f74r.fixed.some((x) => x.from === '累计支出_林婉婷' && x.to === '/user/累计支出_林婉婷'), f74r.fixed);
+check('74 缺角色层级 + 同段补丁只有一个角色 → 补上角色', f74r.fixed.some((x) => x.from === '/关系态度' && x.to === '/林婉婷/关系态度'), f74r.fixed);
+check('74 卡里没有的字段 → 列为未解决（不硬造）', f74r.unresolved.some((x) => x.path === '/林婉婷/心情'), f74r.unresolved);
+const f74amb = repairPatchPaths([{ op: 'delta', path: '/关系态度', value: 1 }], f74cands);
+check('74 只有一条 op 且叶子有 2 个候选 → 不修，列为未解决', f74amb.fixed.length === 0 && f74amb.unresolved.length === 1, f74amb);
+const f74multi = repairPatchPaths([
+    { op: 'delta', path: '/关系态度', value: 1 },
+    { op: 'delta', path: '/林婉婷/身体状态/小穴/总次数', value: 1 },
+    { op: 'replace', path: '/陈慧兰/关系态度', value: 3 },
+], f74cands);
+check('74 同段补丁出现两个角色 → 仍然不修（不猜）', f74multi.fixed.length === 0 && f74multi.unresolved.length === 1, f74multi);
+const f74ok = repairPatchPaths([{ op: 'replace', path: '/林婉婷/关系态度', value: 1 }], f74cands);
+check('74 本来就对的路径原样保留', f74ok.fixed.length === 0 && f74ok.ops[0].path === '/林婉婷/关系态度');
+const f74bf = backfillInitKeys({ 林婉婷: { 身体状态: { 小穴: { 状态: '干净' } } } }, { 林婉婷: { 身体状态: { 小穴: { 状态: '干净', 总次数: 0, 当次次数: 0 } } }, 系统: { 天气: '晴' } });
+check('74 补齐缺失键且不覆盖已有值', f74bf.added.indexOf('林婉婷/身体状态/小穴/总次数') >= 0 && f74bf.state['林婉婷']['身体状态']['小穴']['状态'] === '干净', f74bf.added);
+check('74 补齐后那条报错的 delta 能算了（原值 undefined → 0+1）', applyVarOps(f74bf.state, [{ op: 'delta', path: '/林婉婷/身体状态/小穴/总次数', value: 1 }], {}).state['林婉婷']['身体状态']['小穴']['总次数'] === 1);
+const f74src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('74 接线：opsForMessage 走 repairPatchPaths 并记日志', f74src.indexOf('repairPatchPaths(ops, cands)') > 0 && f74src.indexOf("log('patch-path-repair'") > 0);
+check('74 接线：applyFloorVars 按 [InitVar] 补齐', /initVarOfCard\(\)[\s\S]{0,240}backfillInitKeys\(base, iv0\)/.test(f74src));
+check('74 开关 repairPaths 默认开', /repairPaths:\s*true,/.test(f74src));
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

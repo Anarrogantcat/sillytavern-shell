@@ -173,6 +173,88 @@ function escTag(name) {
  * 实测（用户那张卡）：楼 #5 的 9 条补丁路径**全部**带 `${}`，导致整楼 patch 全灭（含 现金/支出/互动次数）。
  * 这里只剥「整串包裹」与残缺的 `${`/`{` 前缀、尾部多余的 `}`，不碰路径中间的字符。
  */
+/**
+ * 0.30.0（实测：用户贴出的 MVU zod 报错）——**修补模型写歪的补丁路径**。
+ * 实测三条原始报错：
+ *   {"op":"replace","path":"累计支出_林婉婷","value":2500}  → 没前导 /、缺 user/ 层级 → MVU: 期望 object，实际 undefined
+ *   {"op":"delta","path":"/关系态度","value":5}             → 缺角色层级 → MVU: 不能对 undefined 加减
+ * 修法**不是猜**：拿模型写的叶子名去匹配「卡片自己声明的字段」——
+ *   叶子名唯一命中 → 直接改写成那条路径（有依据）
+ *   命中多条 → 若同一段补丁里其它可解析路径只指向同一个角色，则用这个上下文定角色（补丁自身的证据）
+ *   仍然不唯一 → **不改**，原样报出（宁可不修，也不猜）
+ * @returns {{ops:Array, fixed:Array<{from,to,how}>, unresolved:Array<{path,reason,candidates}>}}
+ */
+export function repairPatchPaths(ops, candidates, opts = {}) {
+    const list = (ops || []).filter((o) => o && typeof o === 'object').map((o) => Object.assign({}, o));
+    const cands = [];
+    for (const c of (candidates || [])) {
+        const p = normalizePath(c);
+        if (p && cands.indexOf(p) < 0) cands.push(p);
+    }
+    const cset = new Set(cands);
+    const fixed = [], unresolved = [];
+    const leafOf = (p) => String(p).split('/').filter(Boolean).pop() || '';
+    const topOf = (p) => { const s = String(p).split('/').filter(Boolean); return s.length >= 2 ? s[0] : ''; };
+    // 第一遍：正常路径 → 收集「本段补丁里出现过哪些角色」（作为第二遍的上下文）
+    const subjects = new Map();
+    for (const o of list) {
+        const p = normalizePath(o.path);
+        if (p && cset.has(p)) { const s = topOf(p); if (s) subjects.set(s, (subjects.get(s) || 0) + 1); }
+    }
+    const subjectKeys = [...subjects.keys()];
+    for (const o of list) {
+        const raw = String(o.path == null ? '' : o.path);
+        const p = normalizePath(raw);
+        if (!p) continue;
+        if (cset.has(p)) { o.path = p; continue; }
+        const leaf = leafOf(p);
+        const hits = cands.filter((c) => leafOf(c) === leaf);
+        if (hits.length === 1) {
+            fixed.push({ from: raw, to: hits[0], how: '叶子名在卡里唯一' });
+            o.path = hits[0];
+            continue;
+        }
+        if (hits.length > 1 && subjectKeys.length === 1) {
+            const sub = hits.find((c) => topOf(c) === subjectKeys[0]);
+            if (sub) {
+                fixed.push({ from: raw, to: sub, how: '同一补丁里只出现角色 ' + subjectKeys[0] });
+                o.path = sub;
+                continue;
+            }
+        }
+        if (!cands.length) { o.path = p; continue; }   // 拿不到卡的字段表：只做归一化，不做匹配
+        unresolved.push({ path: raw, reason: hits.length ? ('卡里有 ' + hits.length + ' 个同名字段，无法判定角色') : '卡里没有这个字段', candidates: hits.slice(0, 3) });
+    }
+    return { ops: list, fixed: fixed, unresolved: unresolved };
+}
+
+/**
+ * 0.30.0：**按 [InitVar] 补齐状态里缺掉的键**（只补不覆盖）。
+ * 实测报错：`/林婉婷/身体状态/小穴/总次数` 路径完全正确，但「原值 undefined」——
+ * 卡片的 [InitVar] 里本来就定义了它（=0），是运行时状态里缺了 → delta 无从计算。
+ */
+export function backfillInitKeys(state, initObj, opts = {}) {
+    const out = (state && typeof state === 'object' && !Array.isArray(state)) ? JSON.parse(JSON.stringify(state)) : {};
+    const added = [];
+    const limit = Number(opts.limit) > 0 ? Number(opts.limit) : 200;
+    const walk = (dst, src, prefix) => {
+        if (added.length >= limit) return;
+        if (!src || typeof src !== 'object' || Array.isArray(src)) return;
+        for (const k of Object.keys(src)) {
+            const v = src[k];
+            const p = prefix ? (prefix + '/' + k) : k;
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+                if (dst[k] === undefined) { dst[k] = {}; }
+                if (dst[k] && typeof dst[k] === 'object' && !Array.isArray(dst[k])) walk(dst[k], v, p);
+                continue;
+            }
+            if (dst[k] === undefined) { dst[k] = v; added.push(p); }
+        }
+    };
+    walk(out, initObj || {}, '');
+    return { state: out, added: added };
+}
+
 export function unwrapPathWrapper(raw) {
     let p = String(raw == null ? '' : raw).trim();
     for (let i = 0; i < 3; i++) {

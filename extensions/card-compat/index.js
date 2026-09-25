@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure, moneyFlowHint, moneyLedgerDrift, moneyCorrection, parseStatusTable, mergeStatusTable, statusTableDiff, isNonYamlTag } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure, moneyFlowHint, moneyLedgerDrift, moneyCorrection, parseStatusTable, mergeStatusTable, statusTableDiff, isNonYamlTag, repairPatchPaths, backfillInitKeys } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.29.0';
+const VERSION = '0.30.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -42,6 +42,7 @@ const DEFAULTS = {
     moneyCheck: true,      // 0.22.0：资金流体检 + 账目对账（关掉则完全不计算、不显示）
     moneyFix: true,        // 0.22.0：资金纠正按钮（写入前确认、可撤销）
     tableWrite: true,      // 0.23.0：本楼没有 JSONPatch 但有状态表时，允许按表写回（写前确认、可撤销）
+    repairPaths: true,     // 0.30.0：把模型写歪的补丁路径按卡片字段表修回来（叶子名唯一 / 同段补丁只有一个角色时才修）
     mvuVerify: true,       // 用 MVU 的 parseMessage 试解析本轮变量块（能提前发现「块在但解析不了」）
     toastOnFail: true,     // 连续多楼缺变量块 → 弹一次气泡
     profileTtlMs: 60000,   // 角色卡档案缓存时长（P1 ④）
@@ -1366,6 +1367,23 @@ function opsForMessage(mes) {
         log('path-wrapper-unwrapped', wrapped + ' 条', '路径原本被 ${} / {{}} 包裹，已还原为标准 JSON Pointer（旧版会整条跳过）');
     }
     for (const op of parseSetCommands(mes)) ops.push(op);
+    // 0.30.0：修补模型写歪的路径（实测 MVU zod 报错：「累计支出_林婉婷」缺 user/ 层级、「/关系态度」缺角色层级）
+    try {
+        if ((settings() || {}).repairPaths !== false && ops.length) {
+            const prof = profileOf();
+            const cands = [...(prof.allowed || []), ...((prof.required || []).map((x) => (x && x.path) || ''))];
+            const rp = repairPatchPaths(ops, cands);
+            if (rp.fixed.length) {
+                stats.pathFixed = (stats.pathFixed || 0) + rp.fixed.length;
+                log('patch-path-repair', rp.fixed.length + ' 条', rp.fixed.slice(0, 4).map((x) => x.from + ' → ' + x.to + '（' + x.how + '）').join(' ｜ '));
+            }
+            if (rp.unresolved.length) {
+                stats.pathUnresolved = (stats.pathUnresolved || 0) + rp.unresolved.length;
+                log('patch-path-unresolved', rp.unresolved.length + ' 条', rp.unresolved.slice(0, 4).map((x) => x.path + '：' + x.reason).join(' ｜ '));
+            }
+            return rp.ops;
+        }
+    } catch (e) { log('patch-path-repair-failed', '', String((e && e.message) || e)); }
     return ops;
 }
 /** 把某一楼的补丁应用进变量（A 自动 / B 手动都走这里） */
@@ -1382,6 +1400,11 @@ async function applyFloorVars(messageId, opts) {
             const iv = initVarOfCard();
             if (iv) { base = iv; baseFrom = T('varBaseInit'); } else { toast(T('varNoBase'), 'warning'); return { applied: 0, skipped: [], reason: 'no-base' }; }
         }
+        // 0.30.0：状态里缺的键按 [InitVar] 补回来（实测：路径对但「原值 undefined」→ delta 无从计算）
+        try {
+            const iv0 = initVarOfCard();
+            if (iv0) { const bf = backfillInitKeys(base, iv0); if (bf.added.length) { base = bf.state; stats.initBackfilled = (stats.initBackfilled || 0) + bf.added.length; log('init-backfill', bf.added.length + ' 处', bf.added.slice(0, 5).join('、')); } }
+        } catch (_) {}
         const h0 = schemaHintsOfCard();
         const r = applyVarOps(base, ops, { clamps: h0.clamps, bounds: h0.bounds, types: h0.types, enums: h0.enums, objects: h0.objects, defaults: h0.defaults, ints: h0.ints, catches: h0.catches, rounds: h0.rounds, coerces: h0.coerces, overdraftGuard: settings().overdraftGuard !== false, schemaGuard: settings().schemaGuard !== false });
         const ok = writeStateOf(messageId, r.state, sc.scope);

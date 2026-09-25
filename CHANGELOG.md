@@ -1,5 +1,16 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.53 (2026-09-25) — card-compat 0.30.0：修补写歪的补丁路径 + 按 [InitVar] 补齐缺失键
+
+### 新增
+- 用户贴出的 MVU zod 报错暴露：模型写出「累计支出_林婉婷」（缺 user/ 层级）、「/关系态度」（缺角色层级）、以及路径对但状态缺键
+- `repairPatchPaths()`：叶子名在卡里唯一 → 直接修；多条命中且同段补丁只出现一个角色 → 用该上下文修；仍不唯一 → 不改只报告
+- `backfillInitKeys()`：按卡片 [InitVar] 只补不覆盖地补齐缺失键（修「原值 undefined」那类 delta）
+- 日志 patch-path-repair / patch-path-unresolved / init-backfill；开关 repairPaths 默认开
+- **本轮刻意未同步到已装目录**（用户正在观察 0.11.0 回退版）
+
+### 夹具
+- compat **624/0**（新增夹具 74，11 条）
 ## v2.2.52 (2026-09-25) — card-compat 0.29.0：修「穿搭永远不更新」（提醒把它挤掉了）
 
 ### 修复
