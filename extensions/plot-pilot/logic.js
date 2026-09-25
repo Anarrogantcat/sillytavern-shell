@@ -5,7 +5,7 @@
 // 后续要加新策略（新卡型探测、新按钮、自动连发…）都改这里 + 加断言。
 
 export const EXT_ID = 'plot-pilot';
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.2';
 
 /** 配置默认值。新增字段请同时写进 sanitizeConfig 的白名单与 README 表格。 */
 export const DEFAULTS = {
@@ -265,6 +265,30 @@ export function pickSendStrategy(mode, caps) {
     if (mode === 'api') return c.api ? 'api' : 'dom';
     if (mode === 'dom') return 'dom';
     return c.api ? 'api' : 'dom';
+}
+
+/**
+ * 发送失败后的兜底决策（0.2.0 起抽成纯函数，便于夹具验证「不再重复发送」）。
+ * 返回 null = 不回退；返回 {channel, reason} = 用哪条通道重试。
+ * - sendMode='api'：用户明确要求只用 API → 绝不改成模拟点击
+ * - 输入框已被清空：说明 API 大概率已经把消息发出去了 → 再点一次会重复发送，不回退
+ * - sendMode='auto' 且输入框仍有内容：可以回退到 DOM
+ */
+export function getFailureFallback(mode, ctx) {
+    const c = ctx || {};
+    const m = String(mode || 'auto');
+    const caps = c.caps || { api: true, dom: true };
+    if (m !== 'auto') return null;            // 用户明确只用某一条通道
+    if (c.inputStillHoldsText !== true) return null;  // 输入框已空 → API 可能已发出，再点会重复
+    if (!caps.dom) return null;               // DOM 通道不可用
+    return { channel: 'dom', reason: 'api 失败且输入框仍有内容' };
+}
+export function fallbackReason(mode, ctx) {
+    const c = ctx || {};
+    const m = String(mode || 'auto');
+    if (m !== 'auto') return 'sendMode=' + m + '（按设置不自动改用模拟点击）';
+    if (c.inputStillHoldsText !== true) return '输入框已空，API 可能已发出，跳过模拟点击以避免重复发送';
+    return '没有可用的兜底通道';
 }
 
 /** 面板上那句状态汇总 */

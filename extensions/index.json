@@ -6,12 +6,12 @@
     {
       "id": "card-compat",
       "display_name": "卡兼容助手 (Card Compat)",
-      "version": "0.14.2",
+      "version": "0.15.0",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 53683,
-          "sha1": "63cf224cb9918a069e279347e639238b3d9ad840"
+          "size": 55595,
+          "sha1": "95778a23b7a2fbef8f654d770fcaefcb69ce75ff"
         },
         {
           "path": "README.md",
@@ -30,18 +30,18 @@
         },
         {
           "path": "index.js",
-          "size": 128652,
-          "sha1": "ed3cd8d146fac8a88530f39258061b265fff264e"
+          "size": 131880,
+          "sha1": "a2e635f4bb3eafea382c24264ba5578f34c7b52d"
         },
         {
           "path": "logic.js",
-          "size": 136998,
-          "sha1": "ac07c5cf9c6263526295b39780f7e134928f36bb"
+          "size": 139054,
+          "sha1": "39f6c60b370cae9a37260532f355485c4c33b886"
         },
         {
           "path": "manifest.json",
           "size": 623,
-          "sha1": "b9d22f93631991f23548f4dd982e9d9a4a9eb163"
+          "sha1": "5d81dd643601c3d4f542c894b7446f8b9a281056"
         },
         {
           "path": "style.css",
@@ -53,12 +53,12 @@
     {
       "id": "plot-pilot",
       "display_name": "剧情推进器 (Plot Pilot)",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 4933,
-          "sha1": "c8753857e028717c6d3f195fffff0b86240ee298"
+          "size": 5585,
+          "sha1": "1a9b7e5648b4a55029434e6ad1d101e0f4eb282a"
         },
         {
           "path": "README.md",
@@ -67,18 +67,18 @@
         },
         {
           "path": "index.js",
-          "size": 29572,
-          "sha1": "6b9e80070e04e39e4011af03c955cbcedd1ef34e"
+          "size": 29538,
+          "sha1": "0d299031b8dba7b47465234ee38d4294006cde62"
         },
         {
           "path": "logic.js",
-          "size": 14048,
-          "sha1": "5617bcaf86905435be8940b1024257d9db2987c1"
+          "size": 15403,
+          "sha1": "57e47239a1d5fa6c17b52a2682dbb218c77191af"
         },
         {
           "path": "manifest.json",
           "size": 439,
-          "sha1": "c2a5c2d0886e49e3643e9e20101bfe98ad1d48b6"
+          "sha1": "56f49cb52148aa85004aa4eff9e539e6346efb95"
         },
         {
           "path": "style.css",
@@ -88,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-25T17:19:03.848Z"
+  "generatedAt": "2026-09-25T17:26:22.835Z"
 }

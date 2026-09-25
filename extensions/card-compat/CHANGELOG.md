@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.15.0] - 2026-09-25
+
+### 修复
+- **`detectVarScope` 把 `character`/`chat` 变量误判成 message**：原先第一分支把 `all_variables` 与「精确 type: message」并列，而 `all_variables` 在渲染模板里极常见 —— 卡明明写的是 `getVariables({type:'character'})` 也会被写成 message 作用域。现在先判三个精确 type，`all_variables` 只作最后兜底
+- **`repairYamlStructure` 会删掉正文里的所有引号**：并回「, 文字」时用 `split('"').join('')`，`他说"你好"` 会变成 `他说你好`。改为只剥外层包裹引号（内部引号原样保留）
+- **`mvuCanParse` 用空对象当基线 → 假 ✅**：原先 `parseMessage(block, {})`，与 MVU 真实上下文不同，且命令级错误在 MVU 里只 warn 不抛 → 「路径不存在」也报通过。现在取该楼真实数据当基线，并以「解析后 `stat_data` 是否真的变化」作为判定
+- **`applyPatchToMvu` 忽略 `messageId`**：读用 `getCurrentMvuData()`、写用 `replaceCurrentMvuData()`（旧别名都忽略楼层）→ 通过公开钩子写回**旧楼层**时会写进当前楼层。现在统一走 `getMvuData({type:'message',message_id})` / `replaceMvuData(next,{...})`，旧别名只作兜底
+- **`chat`/`character` 作用域重复写同一份变量**：这两个作用域下每层 `readStateOf` 返回的是同一份共享表，`planFloorFixes` 会把所有含补丁的楼层都判成待写 → 每次触发重复写 N 遍。现在共享作用域只写最后一层（并记日志说明跳过了几层）
+- **`validatePatchBlock` 不校验 `move` 的 `from`、也不校验 op 取值**：`[{"op":"move","path":"/a/b"}]` 原先判 ok。现在 op 走白名单（含自家 `delta`/`insert`）、`move` 必填 `from`、并拒绝 `from`/`path` 互为祖先的歧义写法
+
+### 夹具
+- `scripts/compat-logic-test.mjs` 新增「夹具 44」：400 → **409** 项
+
 ## [0.14.2] - 2026-09-25
 
 ### 夹具

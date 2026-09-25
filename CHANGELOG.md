@@ -1,5 +1,25 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.21 (2026-09-25) — plot-pilot 0.2.2：失败兜底抽成纯函数 + 补 DOM 行为夹具
+
+### 变更
+- `getFailureFallback` / `fallbackReason` 抽到 `logic.js`（纯函数），`send()` 的失败分支改为调用它们
+- plot-pilot 夹具 57 → **66**：补上原先零覆盖的发送失败/超时路径 —— 其中两条**直接调用真实 `sendViaDom`**（注入假 DOM），验证「按钮一直不可用 → 抛错且不点击」「点了但输入框没变化 → 判失败」
+
+### 夹具
+- compat 409/0 ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot **67/67** ・toolbox 16
+## v2.2.20 (2026-09-25) — 审计修复收尾：card-compat 0.15.0（MVU 楼层/基线/作用域 + 校验）
+
+### 修复（card-compat 0.15.0）
+- `detectVarScope`：精确 type 优先于 `all_variables` 弱信号（卡写 character 变量不再被写进 message）
+- `repairYamlStructure`：只剥外层包裹引号，正文引号不再被删掉
+- `mvuCanParse`：改用该楼真实数据当基线，并以 `stat_data` 是否真的变化判定（原先空基线 + 命令级错误只 warn → 假 ✅）
+- `applyPatchToMvu`：按 `messageId` 读写（原先用忽略楼层的旧别名 → 写回旧楼层会落到当前楼层）
+- `chat`/`character` 作用域只写最后一层（原先每次触发重复写 N 遍同一份共享变量）
+- `validatePatchBlock`：op 白名单 + `move` 必填 `from` + 拒绝 from/path 互为祖先
+
+### 夹具
+- compat **409/0** ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
 ## v2.2.19 (2026-09-25) — 审计反例固化为回归夹具 + 版本同步
 
 ### 变更

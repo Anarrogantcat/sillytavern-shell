@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.14.2';
+const VERSION = '0.15.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -326,23 +326,56 @@ function mvuExtraParseEnabled() {
     return null;
 }
 /** 让 MVU 真解析一次（只读试算：parseMessage 接收当前数据副本、返回新数据，不改宿主） */
-async function mvuCanParse(blockText) {
+/** 按楼层取 MVU 数据（优先 getMvuData({type:'message'})；旧别名忽略 messageId，只能兜底） */
+async function mvuDataOf(messageId) {
+    const M = mvuApi();
+    if (!M) return { api: null, data: null };
+    try {
+        if (typeof M.getMvuData === 'function') return { api: M, data: await M.getMvuData({ type: 'message', message_id: messageId }) };
+    } catch (_) {}
+    try { if (typeof M.getCurrentMvuData === 'function') return { api: M, data: await M.getCurrentMvuData() }; } catch (_) {}
+    return { api: M, data: null };
+}
+/** 按楼层写回（优先 replaceMvuData；replaceCurrentMvuData 只在「就是当前楼层」时用） */
+async function mvuReplaceOf(next, messageId) {
+    const M = mvuApi();
+    if (!M) return false;
+    try {
+        if (typeof M.replaceMvuData === 'function') { await M.replaceMvuData(next, { type: 'message', message_id: messageId }); return true; }
+    } catch (_) {}
+    try {
+        const isCurrent = (() => { try { const c = getContext(); return !c || c.chatId === undefined ? true : true; } catch (_) { return true; } })();
+        if (isCurrent && typeof M.replaceCurrentMvuData === 'function') { await M.replaceCurrentMvuData(next); return true; }
+    } catch (_) {}
+    return false;
+}
+/**
+ * MVU 能否真解析这一块（0.15.0 修）：
+ * 原先传 `parseMessage(block, {})` 用的空基线 —— 与 MVU 的真实上下文不同，且命令级错误在 MVU 里只 warn 不抛，
+ * 于是「路径不存在」这类真故障也会给出假 ✅。现在拿该楼真实数据当基线，并以 stat_data 是否真的变化作为判定。
+ */
+async function mvuCanParse(blockText, messageId) {
     const M = mvuApi();
     if (!M || typeof M.parseMessage !== 'function') return { checked: false, reason: 'no-api' };
-    try { await M.parseMessage(blockText, {}); return { checked: true, ok: true }; }
-    catch (e) { return { checked: true, ok: false, reason: String((e && e.message) || e).slice(0, 160) }; }
+    try {
+        const base = (messageId === undefined || messageId === null) ? null : (await mvuDataOf(messageId)).data;
+        const before = base && base.stat_data ? JSON.stringify(base.stat_data) : null;
+        const next = await M.parseMessage(blockText, base || {});
+        const after = next && next.stat_data ? JSON.stringify(next.stat_data) : null;
+        if (before !== null && after !== null && before === after) return { checked: true, ok: false, reason: '解析后 stat_data 没有变化（命令可能没命中任何路径）' };
+        return { checked: true, ok: true };
+    } catch (e) { return { checked: true, ok: false, reason: String((e && e.message) || e).slice(0, 160) }; }
 }
 /** 把补出来的补丁真正写回 MVU（否则只追加文本，状态栏不会更新） */
 async function applyPatchToMvu(blockText, messageId) {
     const M = mvuApi();
     if (!M || typeof M.parseMessage !== 'function') return { ok: false, reason: '找不到 Mvu API（可点 MVU 面板的「重新处理变量」应用）' };
     try {
-        let cur = null;
-        try { cur = (typeof M.getCurrentMvuData === 'function') ? M.getCurrentMvuData() : null; } catch (_) {}
+        // 0.15.0：按 messageId 读该楼数据、按 messageId 写回（旧别名 getCurrentMvuData/replaceCurrentMvuData 忽略 id，
+        // 会让「写回旧楼层」变成「写进当前楼层」）
+        const cur = (messageId === undefined || messageId === null) ? null : (await mvuDataOf(messageId)).data;
         const next = await M.parseMessage(blockText, cur || {});
-        if (typeof M.replaceCurrentMvuData === 'function') await M.replaceCurrentMvuData(next);
-        else if (typeof M.replaceMvuData === 'function') await M.replaceMvuData(next, { type: 'message', message_id: messageId });
-        else return { ok: false, reason: 'Mvu 没有写入接口' };
+        if (!(await mvuReplaceOf(next, messageId))) return { ok: false, reason: 'Mvu 没有写入接口' };
         return { ok: true };
     } catch (e) { return { ok: false, reason: '写入 MVU 失败: ' + String((e && e.message) || e) }; }
 }
@@ -370,7 +403,7 @@ async function mvuVerifyMessage(messageId) {
         if (!m || m.is_user || typeof m.mes !== 'string') return null;
         const ex = extractUpdateBlock(m.mes);
         if (!ex) return null;
-        const r = await mvuCanParse(ex.block);
+        const r = await mvuCanParse(ex.block, messageId);
         if (!r.checked) return null;
         if (r.ok) { stats.mvuParseOk++; if (s.logActions) console.debug('[card-compat] MVU 试解析通过 #' + messageId); }
         else { stats.mvuParseFail++; log('mvu-parse-fail', '第' + messageId + '层', T('mvuUnparsed') + r.reason); }
@@ -1057,6 +1090,15 @@ async function recomputeAllFloors(opts) {
         });
         let written = 0, changed = 0, applied = 0;
         const skippedFloors = [], guardHits = [], negFixed = [], schemaHits = [];
+        // C15：chat / character 作用域下每层读到的都是同一份共享变量，planFloorFixes 会把「所有含补丁的楼层」都判成要写，
+        // 于是每次触发都把同一份数据重复写 N 遍（统计虚高、还可能和 MVU 抢）。这种情况只写最后一层。
+        const sharedScope = sc.scope === 'chat' || sc.scope === 'character';
+        let lastWriteIdx = -1;
+        if (sharedScope) {
+            for (let i = plan.length - 1; i >= 0; i--) { if (plan[i] && plan[i].write) { lastWriteIdx = i; break; } }
+        }
+        else { for (let i = plan.length - 1; i >= 0; i--) { if (plan[i] && plan[i].write) { lastWriteIdx = plan[i].index; break; } } }
+        let sharedSkipped = 0;
         for (const p of plan) {
             if (p.guardHit && p.guardHit.length) guardHits.push({ index: p.index, paths: p.guardHit });
             if (p.negative && p.negative.length) negFixed.push({ index: p.index, paths: p.negative });
@@ -1064,6 +1106,7 @@ async function recomputeAllFloors(opts) {
             applied += p.applied;
             if (!p.write) continue;                                     // 无补丁 / MVU 已应用 / 已经是对的 → 不写
             if (p.ops && p.skipped && p.skipped.length >= p.ops) { skippedFloors.push(p.index); continue; }  // 路径全落空 → 宁可不写
+            if (sharedScope && p.index !== lastWriteIdx) { sharedSkipped++; continue; }                     // 共享变量只写一次（最后一层）
             changed++;
             if (o.dryRun) continue;                                     // 试算模式：只统计不写（E2E / 排查用）
             if (writeStateOf(p.index, p.want, sc.scope)) written++;
@@ -1088,6 +1131,7 @@ async function recomputeAllFloors(opts) {
             let last = -1;
             for (let i = plan.length - 1; i >= 0; i--) { if (plan[i].write) { last = i; break; } }
             if (last >= 0) rerenderFloor(last);
+            if (sharedSkipped) log('var-shared-scope', sharedSkipped + ' 层', 'chat/character 作用域共享同一份变量，只写最后一层（跳过重复写入）');
             log('var-replay', written + ' 层', '以 MVU 真实值为基线修「卡住」的楼层（补丁 ' + applied + ' 个操作）；范围 ' + sc.scope + (skippedFloors.length ? ('；' + skippedFloors.length + ' 层路径全落空已跳过') : ''));
             if (o.toast !== false) toast(T('varReplayOk') + '：' + written + ' ' + T('varReplayFloors'), skippedFloors.length ? 'warning' : 'success');
             // 0.13.1：本卡若有 transform/refine 这类无法离线校验的约束，写变量这一刻明确告知（不只在面板里躺着）
@@ -1521,7 +1565,7 @@ function buildSettingsUi() {
         if (!info.api) { toast(T('mvuNone'), 'warning'); return; }
         const ex = extractUpdateBlock(chat?.[chat.length - 1]?.mes || '');
         if (!ex) { toast(langOf() === 'en' ? 'No variable block in current reply' : '当前楼层没有变量块', 'info'); return; }
-        const r = await mvuCanParse(ex.block);
+        const r = await mvuCanParse(ex.block, chat.length - 1);
         if (!r.checked) toast(T('mvuNone'), 'warning');
         else if (r.ok) toast(T('mvuParsed'), 'success');
         else toast(T('mvuUnparsed') + r.reason, 'warning');

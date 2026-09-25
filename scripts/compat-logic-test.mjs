@@ -1033,5 +1033,22 @@ check('⑬ _.delete 映射为 remove', parseSetCommands('_.delete("旧字段")')
 check('⑬ _.insert 映射为 insert', parseSetCommands('_.insert("列表", "x")')[0].op === 'insert');
 const mvOp = parseSetCommands('_.move("a.b", "c.d")')[0];
 check('⑬ _.move 同时产出 from 与 path', mvOp.op === 'move' && mvOp.from === 'a.b' && mvOp.path === 'c.d');
+console.log('');
+console.log('— 夹具 44：0.15.0 审计修复回归');
+// C16 精确 type 优先于 all_variables 弱信号
+check('⑯ character 型不被 all_variables 抢成 message', detectVarScope("getVariables({ type: 'character' })\n{{getvar::all_variables}}").scope === 'character');
+check('⑯ chat 型同理优先', detectVarScope("getVariables({ type: 'chat' })").scope === 'chat');
+check('⑯ 精确 message 仍判 message', detectVarScope("getVariables({ type: 'message' })").scope === 'message');
+check('⑯ 只有 all_variables 的弱信号仍落到 message（保守）', detectVarScope('模板里出现 all_variables').scope === 'message');
+// C12 只剥外层包裹引号，正文引号保留
+const c12out = repairYamlStructure('穿搭: "长裙。", 他说"你好"');
+const c12txt = (c12out && c12out.text) ? c12out.text : String(c12out || '');
+check('⑫ 正文内的引号不被删除', c12txt.indexOf('他说"你好"') >= 0 || c12txt.indexOf('他说\\"你好\\"') >= 0, c12txt);
+// C17 op 白名单 + move 必填 from + 祖先前缀
+check('⑰ move 缺 from 被拒', validatePatchBlock('[{"op":"move","path":"/a/b"}]').ok === false);
+check('⑰ 未知 op 被拒', validatePatchBlock('[{"op":"frobnicate","path":"/a"}]').ok === false);
+check('⑰ 合法的 move 仍通过', validatePatchBlock('[{"op":"move","from":"/a/b","path":"/c/d"}]').ok === true);
+check('⑰ delta/insert 是自家语法，不能被判非法', validatePatchBlock('[{"op":"delta","path":"/a","value":1}]').ok === true);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

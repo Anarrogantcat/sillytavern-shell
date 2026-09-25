@@ -11,7 +11,7 @@ import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
 import {
     EXT_ID, VERSION, DEFAULTS, sanitizeConfig, detectBlueprint, detectLegacySignals,
     formatDetection, advancePayload, resolveCard, shouldShowAdvance, legacyStandby,
-    pickSendStrategy, summarizeState, renderChangelogMarkdown,
+    pickSendStrategy, summarizeState, renderChangelogMarkdown, getFailureFallback, fallbackReason,
 } from './logic.js';
 
 const NAME = EXT_ID;
@@ -209,9 +209,10 @@ async function send(text, kind) {
             const mode = String(settings().sendMode || 'auto');
             const ta = document.getElementById('send_textarea');
             const apiAlreadySent = !!ta && ta.value.trim() === '';
-            if (mode === 'auto' && !apiAlreadySent) await sendViaDom(String(text));
-            else if (mode !== 'auto') log('no-fallback', kind, 'sendMode=' + mode + '，失败后按设置回退到系统浏览器外不做模拟点击');
-            else log('no-fallback', kind, 'API 可能已发出（输入框已空），跳过模拟点击以避免重复发送');
+            const ctx = { caps: { api: true, dom: true }, inputStillHoldsText: !apiAlreadySent };
+            const fb = getFailureFallback(mode, ctx);
+            if (fb && fb.channel === 'dom') await sendViaDom(String(text));
+            else log('no-fallback', kind, fallbackReason(mode, ctx));
         } catch (_) {}
     } finally {
         setTimeout(() => { busy = false; }, (settings() && settings().clickGuardMs) || 0);

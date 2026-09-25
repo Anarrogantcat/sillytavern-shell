@@ -9,6 +9,7 @@ import {
     DEFAULTS, detectBlueprint, formatDetection, buildAdvanceText, resolveCard,
     shouldShowAdvance, sanitizeConfig, legacyStandby, detectLegacySignals,
     pickSendStrategy, summarizeState, advancePayload, renderChangelogMarkdown,
+    getFailureFallback, fallbackReason,
 } from '../extensions/plot-pilot/logic.js';
 
 let pass = 0;
@@ -184,6 +185,41 @@ ok('信息卡默认折叠成一行按钮且状态可记忆', ppSrc.indexOf('id="
 ok('日志读扩展目录里的 CHANGELOG.md', ppSrc.indexOf("new URL('./CHANGELOG.md', import.meta.url)") > 0);
 ok('用 ST 原生 popup 展示', ppSrc.indexOf('callGenericPopup(') > 0 && ppSrc.indexOf('POPUP_TYPE.TEXT') > 0);
 ok('对外钩子暴露 showChangelog()', ppSrc.indexOf('showChangelog() { return showChangelog(); }') > 0);
+console.log('— 夹具：0.2.x 审计修复（发送失败兜底不再重复发送 / 不再谎报）');
+// D1：只有 auto 模式才回退；输入框已空说明 API 可能已发出，也不回退
+ok('api 模式失败后不回退到模拟点击（尊重「只用 API」）', getFailureFallback('api', { inputStillHoldsText: true }) === null);
+ok('auto 模式 + 输入框已空 → 不回退（避免重复发送）', getFailureFallback('auto', { inputStillHoldsText: false }) === null);
+ok('auto 模式 + 输入框仍有内容 → 回退到 dom', (function () { const f = getFailureFallback('auto', { inputStillHoldsText: true, caps: { api: true, dom: true } }); return !!f && f.channel === 'dom'; })());
+ok('dom 不可用时不出兜底', getFailureFallback('auto', { inputStillHoldsText: true, caps: { api: true, dom: false } }) === null);
+ok('不回退时给出可读原因', /sendMode=api/.test(fallbackReason('api', {})));
+ok('输入框已空的原因明确提到重复发送', /重复发送/.test(fallbackReason('auto', { inputStillHoldsText: false })));
+// D2：DOM 超时/点不动的路径不再记「已发送」（拿真实实现跑，注入假 DOM）
+const domSrc = fs.readFileSync(new URL('../extensions/plot-pilot/index.js', import.meta.url), 'utf8');
+function makeDomSend(fakeTa, fakeBtn, waitMs) {
+    // 按函数名切片（不依赖紧跟其后的函数名），并注入真实 setTimeout —— 注入假 timer 会让 await 永远挂住
+    const s0 = domSrc.indexOf('async function sendViaDom');
+    const s1 = domSrc.indexOf('async function send(', s0);
+    const body = domSrc.slice(s0, s1 > s0 ? s1 : s0 + 3000);
+    const f = new Function('document', 'settings', 'setTimeout', 'Event', body + String.fromCharCode(10) + 'return sendViaDom;');
+    return f({ getElementById: (id) => (id === 'send_textarea' ? fakeTa : (id === 'send_but' ? fakeBtn : null)) }, () => ({ waitSendableMs: waitMs || 0 }), globalThis.setTimeout, function Event() {});
+}
+async function runDomSend(fn, failAfterMs) {
+    let out = { thrown: null, timedOut: false };
+    const guard = new Promise((resolve) => setTimeout(() => { out.timedOut = true; resolve(); }, failAfterMs));
+    const run = (async () => { try { await fn('测试文本'); } catch (e) { out.thrown = e; } })();
+    await Promise.race([run, guard]);
+    return out;
+}
+const disabledBtn = { disabled: true, classList: { contains: () => true }, click: () => { disabledBtn.clicked = true; } };
+const taA = { value: '测试文本', dispatchEvent: () => {} };
+const rD2a = await runDomSend(makeDomSend(taA, disabledBtn, 0), 1500);
+ok('按钮一直不可用 → 抛错而不是静默点击并记成功', !!rD2a.thrown && /一直不可用/.test(String(rD2a.thrown.message || rD2a.thrown)), String(rD2a.thrown && rD2a.thrown.message || rD2a.thrown));
+ok('按钮不可用时确实没有点下去', disabledBtn.clicked !== true);
+const enabledBtn = { disabled: false, classList: { contains: () => false }, click: () => { enabledBtn.clicked = true; } };
+const taB = { value: '测试文本', dispatchEvent: () => {} };
+const rD2b = await runDomSend(makeDomSend(taB, enabledBtn, 0), 2000);
+ok('点了但输入框内容没变化 → 判失败（不谎报已发送）', !!rD2b.thrown && /未变化/.test(String(rD2b.thrown.message || rD2b.thrown)), String(rD2b.thrown && rD2b.thrown.message || rD2b.thrown));
+ok('这种情况下确实点了按钮（点了但没生效）', enabledBtn.clicked === true);
 console.log('');
 if (failures.length) {
     console.log('夹具结果：' + pass + ' 项通过，' + failures.length + ' 项失败');

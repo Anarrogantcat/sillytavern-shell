@@ -658,7 +658,18 @@ export function repairYamlStructure(text, tags, opts = {}) {
                 const m2 = line.match(/^(\s*[^\s:]{1,40}:[ \t]*)(["'])([\s\S]*?)\2[ \t]*[,，][ \t]*(\S.*)$/);
                 if (m2) {
                     const sep = /[。！？…，,、；;：:]$/.test(m2[3]) ? '' : '，';
-                    dst.push(m2[1] + m2[2] + m2[3] + sep + m2[4].split('"').join('').split("'").join('') + m2[2]);
+                    // 只剥外层包裹引号：原实现把整段里的所有引号都删掉（「他说"你好"」会变成「他说你好」）
+                    const stripOuter = (str) => {
+                        const s = String(str || '');
+                        const pairs = [['"', '"'], ["'", "'"]];
+                        for (const [a, b] of pairs) {
+                            if (s.length > 1 && s.startsWith(a) && s.endsWith(b) && s.slice(a.length, s.length - b.length).indexOf(a) === -1) {
+                                return s.slice(a.length, s.length - b.length);
+                            }
+                        }
+                        return s;
+                    };
+                    dst.push(m2[1] + m2[2] + m2[3] + sep + stripOuter(m2[4]) + m2[2]);
                     fixes.push({ tag: tag, kind: 'trailing-text-merged', key: (m2[1].match(/[^\s:]{1,40}/) || [''])[0] });
                     continue;
                 }
@@ -767,9 +778,14 @@ export function extractUpdateBlock(text) {
 export function validatePatchBlock(blockOrPatch) {
     const parsed = parsePatchOps(blockOrPatch);
     const problems = parsed.problems.slice();
+    // RFC 6902 + 本项目自己的扩展 op（delta/insert 由 applyVarOps 消费，别把自家语法判成非法）
+    const LANGS_OPS = new Set(['add', 'remove', 'replace', 'move', 'copy', 'test', 'delta', 'insert']);
     for (const o of parsed.ops) {
         if (!o.op) problems.push('缺少 op');
+        else if (!LANGS_OPS.has(String(o.op))) problems.push('未知 op: ' + o.op);
         if (!o.path && o.op !== 'move') problems.push('缺少 path');
+        if (o.op === 'move' && !o.from) problems.push('move 缺少 from');
+        if (o.op === 'move' && o.from && o.path && (String(o.path) === String(o.from) || String(o.path).startsWith(String(o.from) + '/') || String(o.from).startsWith(String(o.path) + '/'))) problems.push('move 的 from/path 互为祖先，语义不明确');
     }
     if (!parsed.ops.length && !problems.length) problems.push('空数组（没有任何操作）');
     return { ok: problems.length === 0, ops: parsed.ops.length, problems: problems };
@@ -1793,7 +1809,15 @@ export function planFloorFixes(stored, ops, initState, opts = {}) {
  */
 export function detectVarScope(text) {
     const t = String(text || '');
-    if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]message/i.test(t) || /all_variables/.test(t)) return { scope: 'message', reason: 'all_variables / message 变量' };
+    // 先按精确的 type 值判定（all_variables / getvar 都是弱信号：渲染模板里很常见，卡实际可能写 character/chat 变量）
+    const tMessage = /getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]message/i.test(t);
+    const tChar = /getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]character/i.test(t);
+    const tChat = /getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]chat/i.test(t);
+    if (tChar) return { scope: 'character', reason: 'character 变量' };
+    if (tChat) return { scope: 'chat', reason: 'chat 变量' };
+    if (tMessage) return { scope: 'message', reason: 'message 变量（与 MVU 同处）' };
+    if (/all_variables/.test(t)) return { scope: 'message', reason: '弱信号：all_variables（无精确 type 时的保守选择，与 MVU 一致）' };
+    if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]message/i.test(t)) return { scope: 'message', reason: 'message 变量' };
     if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]character/i.test(t)) return { scope: 'character', reason: 'character 变量' };
     if (/getVariables\s*\(\s*\{[^}]*type\s*:\s*['"]chat/i.test(t) || /chat_metadata/.test(t) || /getvar\s*\(/.test(t) || /\{\{\s*getvar::/i.test(t)) return { scope: 'chat', reason: 'chat 变量 / getvar' };
     return { scope: 'message', reason: '默认（与 MVU 一致）' };
