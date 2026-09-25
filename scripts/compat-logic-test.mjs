@@ -1490,5 +1490,14 @@ check('71 关掉保护时余额会变负（说明保护仍有意义）', g71o.st
 const g71b = applyVarOps(g71st, [{ op: 'delta', path: '/user/累计支出_林婉婷', value: 300 }], {});
 check('71 没有变负风险时全部照常、零跳过', g71b.state.user['累计支出_林婉婷'] === 300 && g71b.skipped.length === 0);
 
+console.log('');
+console.log('— 夹具 72：模型从没写过的字段提醒（0.28.0，实测「穿搭一直停在初值」）');
+const nwSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('72 有 neverWrittenFields（对照卡片 required 与最近楼层的补丁路径）', nwSrc.indexOf('function neverWrittenFields') > 0 && nwSrc.indexOf('opsForMessage(m.mes)') > 0);
+check('72 用的是归一化后的路径比较（点号/斜杠/模板包裹都能对上）', /function neverWrittenFields[\s\S]{0,900}normalizePath\(op && op\.path\)/.test(nwSrc));
+check('72 面板会显示（含字段名列表）', nwSrc.indexOf("T('neverWritten'") > 0 && nwSrc.indexOf('模型至今没写过') > 0);
+check('72 文案中英各一', nwSrc.split("neverWritten: '").length - 1 === 2);
+check('72 提醒里写明「插件不会替你编造」（与 0.3.3 一致）', nwSrc.indexOf('插件不会替你编造') > 0);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
