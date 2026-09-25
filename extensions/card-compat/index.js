@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.17.0';
+const VERSION = '0.18.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -87,9 +87,9 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限', fontWarn: '注意：这两项会覆盖「所有角色卡自己的状态栏样式」（每张卡的美化都不同）。只在你确实觉得字太小时才开；开着时状态栏可能与卡的设计不一致。默认关闭。',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', stVersion: '版本', stFixes: '修正', stRerender: '重渲染', stAnchor: '补锚点', stClose: '补闭合', stDataMiss: '数据块缺失', stStale: '未更新告警', stDup: '重复锚点合并', stBlocks: '未声明块清理', stUnclosed: '未闭合块', stForeign: '串卡标签', stCover: '上轮覆盖', stMissing: '缺字段', stMvuFail: 'MVU 失败', stYamlStrict: 'YAML 严格失败', stOk: '正常', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
-        covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
+        covTrend: '覆盖度趋势', covTrendNone: '还没有覆盖度记录（发几条消息后这里会出现趋势条）', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
         mvuExtraOff: 'MVU「额外模型解析」未开启或无法检测。', mvuUnparsed: 'MVU 解析本轮变量块失败：',
         mvuParsed: 'MVU 能解析本轮变量块', toastNoVars: '已连续 {n} 楼没有变量更新块，状态栏可能不会更新',
@@ -121,9 +121,9 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size', fontWarn: 'Note: these two override EVERY card\'s own status-bar styling (each card is themed differently). Only turn them on if the text really is too small; while on, the status bar may disagree with the card design. Default off.',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', stVersion: 'version', stFixes: 'fixes', stRerender: 'rerenders', stAnchor: 'anchors', stClose: 'closures', stDataMiss: 'data missing', stStale: 'stale', stDup: 'dup anchors', stBlocks: 'blocks stripped', stUnclosed: 'unclosed', stForeign: 'foreign tags', stCover: 'coverage', stMissing: 'missing', stMvuFail: 'MVU failures', stYamlStrict: 'YAML strict fails', stOk: 'OK', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
-        covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
+        covTrend: 'Coverage trend', covTrendNone: 'No coverage history yet (send a few replies)', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
         mvuExtraOff: 'MVU extra model parsing is off or undetectable.', mvuUnparsed: 'MVU failed to parse this reply variable block: ',
         mvuParsed: 'MVU parsed this reply variable block', toastNoVars: '{n} replies in a row have no variable block; the status bar may not update',
@@ -591,7 +591,32 @@ function coverageTrendText() {
     const a = avg(last10), b = avg(prev10);
     const arrow = (a !== null && b !== null) ? (a > b ? ' ↑' : (a < b ? ' ↓' : ' →')) : '';
     return bars + '  ' + (a === null ? '' : a + '%') + (b === null ? '' : ('（前 10 轮 ' + b + '%）')) + arrow;
+}/**
+ * 0.18.0（UI 优化）：趋势从「▁▃▅ 21%（前 10 轮 18%）」这种要解码的文本，改成**能看的条**：
+ * 每层一根竖条（高度=覆盖率，颜色随高低变化），右侧一个大号百分比 + 与前 10 轮的对比箭头。
+ */
+function renderTrend() {
+    const el = document.getElementById('cc-trend');
+    if (!el) return;
+    if (!covHistory.length) { el.innerHTML = '<div class="cc-line cc-muted">' + escHtml(T('covTrendNone')) + '</div>'; return; }
+    const tail = covHistory.slice(-16);
+    const ratioOf = (h) => (h && h.total ? Math.max(0, Math.min(1, h.hit / h.total)) : 0);
+    const bars = tail.map((h) => {
+        const r = ratioOf(h);
+        const cls = r >= 0.8 ? 'ok' : (r >= 0.5 ? 'mid' : 'low');
+        const hh = Math.max(3, Math.round(r * 34));
+        return '<i class="' + cls + '" style="height:' + hh + 'px" title="' + escHtml(String(h.hit) + '/' + String(h.total) + '（' + Math.round(r * 100) + '%）') + '"></i>';
+    }).join('');
+    const txt = coverageTrendText();
+    const m = txt.match(/(\d+)%/);
+    const pct = m ? Number(m[1]) : Math.round(ratioOf(tail[tail.length - 1]) * 100);
+    const arrow = txt.indexOf('↑') >= 0 ? '↑' : (txt.indexOf('↓') >= 0 ? '↓' : '→');
+    const cls = pct >= 80 ? 'ok' : (pct >= 50 ? 'mid' : 'low');
+    el.innerHTML = '<div class="cc-trend-row"><span class="cc-trend-label">' + escHtml(T('covTrend')) + '</span>'
+        + '<span class="cc-trend-bars">' + bars + '</span>'
+        + '<b class="cc-trend-pct ' + cls + '">' + pct + '% <span class="cc-trend-arrow">' + arrow + '</span></b></div>';
 }
+
 /**
  * 0.13.2：独立构建/刷新「本卡要求 vs 本轮实际」报表。
  * 旧版只在「本卡有规则 **且** 本楼有 <UpdateVariable>」时才写 lastReport ——
@@ -1358,10 +1383,44 @@ function renderSchemaLine() {
     } catch (_) {}
 }
 function renderStats() {
+    // 0.18.0（UI 优化）：原来是一长串「v0.17.0 ｜ 修正 0 次 ｜ 补锚点 0 ｜ …」—— 用户反馈看不懂重点。
+    // 现在拆成 4 组芯片：常态数据默认中性色，只有出问题（>0 / 失败 / 覆盖不满）才转警告色，一眼能扫。
+    const chip = (label, value, opts) => {
+        const o = opts || {};
+        const zeroNeutral = o.zeroNeutral !== false;
+        const bad = o.bad === true || (zeroNeutral && Number(value) > 0 && o.goodWhenZero === true);
+        return '<span class="cc-chip' + (bad ? ' cc-chip-warn' : '') + '"' + (o.title ? (' title="' + escHtml(o.title) + '"') : '') + '>'
+            + '<i>' + escHtml(label) + '</i><b>' + escHtml(String(value)) + '</b></span>';
+    };
+    const chipsOf = (arr) => arr.filter(Boolean).join('');
     const box = document.getElementById('cc-stats');
-    if (box) box.textContent = 'v' + VERSION + ' ｜ 修正 ' + stats.guarded + ' 次（重渲染 ' + stats.rerendered + '）｜ 补锚点 ' + stats.anchorInjected +
-        ' ｜ 补闭合 ' + stats.closeRepaired + ' ｜ 数据块缺失 ' + stats.dataMissing + ' ｜ 未更新告警 ' + stats.staleWarned + ' ｜ 未接管 ' + stats.unrendered + ' ｜ 串卡标签 ' + stats.foreignTags + ' ｜ 重复锚点合并 ' + stats.duplicatesCollapsed + ' ｜ 引号修复 ' + stats.quotesFixed + ' ｜ 加引号 ' + stats.scalarsQuoted + ' ｜ YAML 疑点 ' + stats.yamlIssues + ' ｜ 结构修复 ' + stats.yamlStructFixed + ' ｜ 补变量 ' + stats.varFixOk + '/' + stats.varFixTried + ' ｜ 清块 ' + stats.blocksStripped + ' ｜ 多块 ' + stats.multiBlocks + ' ｜ 越界路径 ' + stats.pathUnknown + ' ｜ 联动未生效 ' + stats.nudgeMisses + ' ｜ 格式标签缺 ' + stats.formatMissing + ' ｜ 括号修复 ' + stats.bracketFixed + ' ｜ MVU 解析 ' + stats.mvuParseOk + (stats.mvuParseFail ? ('/失败 ' + stats.mvuParseFail) : '') + ' ｜ YAML 严格 ' + (stats.yamlStrictFail ? ('失败 ' + stats.yamlStrictFail) : ('通过 ' + stats.yamlStrictOk)) +
-        (lastCoverage ? (' ｜ 上轮覆盖 ' + lastCoverage.covered.length + '/' + lastCoverage.total + (lastCoverage.missing.length ? '（缺 ' + lastCoverage.missing.slice(0, 4).join('、') + '）' : ' ✅')) : '');
+    if (box) {
+        const g1 = chipsOf([
+            chip(T('stVersion'), 'v' + VERSION, { zeroNeutral: false }),
+            chip(T('stFixes'), stats.guarded, { goodWhenZero: false }),
+            chip(T('stRerender'), stats.rerendered, { goodWhenZero: false }),
+        ]);
+        const g2 = chipsOf([
+            chip(T('stAnchor'), stats.anchorInjected, { goodWhenZero: true }),
+            chip(T('stClose'), stats.closeRepaired, { goodWhenZero: true }),
+            chip(T('stDataMiss'), stats.dataMissing, { goodWhenZero: true }),
+            chip(T('stStale'), stats.staleWarned, { goodWhenZero: true }),
+        ]);
+        const g3 = chipsOf([
+            chip(T('stDup'), stats.duplicatesCollapsed, { goodWhenZero: true }),
+            chip(T('stBlocks'), stats.blocksStripped, { goodWhenZero: true }),
+            chip(T('stUnclosed'), stats.unclosedBlocks, { goodWhenZero: true }),
+            chip(T('stForeign'), stats.foreignTags, { goodWhenZero: true }),
+        ]);
+        const covRatio = lastCoverage ? (lastCoverage.total ? lastCoverage.covered.length / lastCoverage.total : 0) : 0;
+        const covWarn = !!(lastCoverage && lastCoverage.total && lastCoverage.covered.length < lastCoverage.total);
+        const g4 = chipsOf([
+            chip(T('stCover'), lastCoverage ? (lastCoverage.covered.length + '/' + lastCoverage.total) : '—', { bad: covWarn, title: lastCoverage && lastCoverage.missing.length ? (T('stMissing') + '：' + lastCoverage.missing.slice(0, 6).join('、')) : '' }),
+            chip(T('stMvuFail'), stats.mvuParseFail || 0, { goodWhenZero: true }),
+            chip(T('stYamlStrict'), stats.yamlStrictFail || 0, { goodWhenZero: true }),
+        ]);
+        box.innerHTML = '<div class="cc-chips">' + g1 + '</div>' + '<div class="cc-chips">' + g2 + '</div>' + '<div class="cc-chips">' + g3 + '</div>' + '<div class="cc-chips">' + g4 + '</div>';
+    }
     // 0.16.2：连续硬失败可见化（只列还在连续中的类别；计数跨楼层，换类别即清零）
     const failsBox = document.getElementById('cc-fails');
     if (failsBox) {
@@ -1371,8 +1430,7 @@ function renderStats() {
     }
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
-    const trendBox = document.getElementById('cc-trend');
-    if (trendBox) trendBox.textContent = covHistory.length ? (T('covTrend') + '：' + coverageTrendText()) : '';
+    renderTrend();
     // 0.16.4：这两项会**覆写卡自己的状态栏样式**（用户实测每张卡的美化都不同）→ 打开时明确警告
     const fw = document.getElementById('cc-font-warn');
     if (fw) {

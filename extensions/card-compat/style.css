@@ -15,6 +15,57 @@
 #cc-panel .cc-trend { font-size: .95em; opacity: .9; letter-spacing: 1px; margin: 2px 0 6px; }
 #cc-panel .cc-tab { width: 100%; border-collapse: collapse; font-size: .95em; }
 /* 0.17.0：符号图例 —— 每个符号是什么意思直接印在面板上 */
+/* 0.18.0（UI 优化）：统计从一长串 ｜ 改成芯片组 + 能看的趋势条 */
+#cc-panel .cc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    margin: 2px 0 6px;
+}
+#cc-panel .cc-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px 7px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, .18);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+#cc-panel .cc-chip i { font-style: normal; opacity: .62; }
+#cc-panel .cc-chip b { font-weight: 700; }
+#cc-panel .cc-chip-warn {
+    border-color: rgba(255, 183, 77, .55);
+    background: rgba(255, 152, 0, .12);
+}
+#cc-panel .cc-chip-warn b { color: #ffb74d; }
+#cc-panel .cc-trend-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 4px 0 8px;
+}
+#cc-panel .cc-trend-label { font-size: 12px; opacity: .7; align-self: center; }
+#cc-panel .cc-trend-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 38px;
+    padding: 0 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, .18);
+}
+#cc-panel .cc-trend-bars i { display: block; width: 5px; border-radius: 1px; background: #78909c; }
+#cc-panel .cc-trend-bars i.ok { background: #66bb6a; }
+#cc-panel .cc-trend-bars i.mid { background: #ffca28; }
+#cc-panel .cc-trend-bars i.low { background: #ef5350; }
+#cc-panel .cc-trend-pct { font-size: 15px; align-self: center; }
+#cc-panel .cc-trend-pct.ok { color: #66bb6a; }
+#cc-panel .cc-trend-pct.mid { color: #ffca28; }
+#cc-panel .cc-trend-pct.low { color: #ef5350; }
+#cc-panel .cc-trend-arrow { opacity: .8; font-size: 13px; }
+
 #cc-panel .cc-legend {
     margin: 4px 0 6px;
     padding: 6px 8px;

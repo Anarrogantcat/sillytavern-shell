@@ -539,7 +539,7 @@ const g28 = guardText('【NSFW_IMG>p.jpg</NSFW_IMG>', imgProf28, { injectAnchor:
 check('⑥ guardText 顺手修好括号并记账', g28.text === '<NSFW_IMG>p.jpg</NSFW_IMG>' && g28.actions.some((a) => a.type === 'bracket-tag-fixed'), g28);
 check('⑥ 关掉开关就不动（fixBracketTags=false）', guardText('【NSFW_IMG>p.jpg</NSFW_IMG>', imgProf28, { injectAnchor: false, fixBracketTags: false }).text === '【NSFW_IMG>p.jpg</NSFW_IMG>');
 // ⑦ 面板接线
-check('⑦ 面板有开关、统计与日志接线', idxSrc.indexOf('fixBracketTags') > 0 && idxSrc.indexOf("'bracket-tag-fixed'") > 0 && idxSrc.indexOf('cc-bracket-tags') > 0 && idxSrc.indexOf('括号修复') > 0);
+check('⑦ 面板有开关、统计与日志接线', ['fixBracketTags', "'bracket-tag-fixed'", 'cc-bracket-tags', 'cc-stats', 'cc-chips', 'cc-log', 'cc-table'].every((k) => idxSrc.indexOf(k) > 0));
 check('⑦ 括号修好会强制重渲染该楼（否则图片/面板出不来）', /forceRerender = true/.test(idxSrc) && /if \(rerender \|\| forceRerender\)/.test(idxSrc), 'forceRerender 接线');
 
 console.log('— 夹具 29：不许把变量补丁当「未声明块」删掉（0.8.1 修 P0）');
@@ -1155,6 +1155,18 @@ check('㊿ 图例把符号字面印出来（含 ✅ ❌ ➖ ⚠️ ○ —）', 
 check('㊿ 图例渲染代码存在于对照表渲染函数里（cc-legend）', lgSrc.indexOf('cc-legend') >= 0 && lgSrc.indexOf('lgItem(') >= 0);
 const lgCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
 check('㊿ 图例样式限定在 #cc-panel 内（不出现裸 .cc-legend 选择器）', (lgCss.split('.cc-legend').length - 1) === (lgCss.split('#cc-panel .cc-legend').length - 1));
+
+console.log('');
+console.log('— 夹具 51：统计改芯片组 + 趋势条（0.18.0 UI）');
+const uiSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+const uiKeys = ['stVersion', 'stFixes', 'stRerender', 'stAnchor', 'stClose', 'stDataMiss', 'stStale', 'stDup', 'stBlocks', 'stUnclosed', 'stForeign', 'stCover', 'stMvuFail', 'stYamlStrict'];
+check('51 十四个统计标签中英各一', uiKeys.every((k) => (uiSrc.split(k + ':').length - 1) === 2), uiKeys.filter((k) => (uiSrc.split(k + ':').length - 1) !== 2));
+check('51 统计改用芯片网格（cc-chips / cc-chip）', uiSrc.indexOf('cc-chips') >= 0 && uiSrc.indexOf('cc-chip') >= 0);
+check('51 旧的「一长串 ｜」统计行已移除', uiSrc.indexOf("' ｜ 修正 '") < 0 && uiSrc.indexOf("' ｜ 补锚点 '") < 0);
+check('51 趋势改用可见条 + 百分比（renderTrend）', /function renderTrend\(\)/.test(uiSrc) && uiSrc.indexOf('cc-trend-bars') >= 0 && uiSrc.indexOf('cc-trend-pct') >= 0);
+const uiCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+check('51 新样式仍限定在 #cc-panel 内', ['#cc-panel .cc-chips', '#cc-panel .cc-chip', '#cc-panel .cc-trend-bars'].every((s) => uiCss.indexOf(s) >= 0));
+check('51 新样式不含裸全局选择器（.cc-chips/.cc-chip 不带前缀的写法）', (uiCss.split('.cc-chips').length - 1) === (uiCss.split('#cc-panel .cc-chips').length - 1) && (uiCss.split('.cc-chip ').length - 1) <= (uiCss.split('#cc-panel .cc-chip ').length - 1));
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
