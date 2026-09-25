@@ -638,7 +638,7 @@ check('② 轮询后覆盖到所有顶层分组（旧实现只看前 12 条 → 
 check('② 条数不超过上限', pick33.length === 14, pick33.length);
 check('② 字段少时原样返回（不重排）', pickReminderFields([{ path: 'a.b' }, { path: 'c.d' }], 14).map((f) => f.path).join(',') === 'a.b,c.d');
 check('② 空输入安全', pickReminderFields(undefined, 5).length === 0 && pickReminderFields([], 5).length === 0);
-check('③ 扩展接线（提醒用 pickReminderFields）', idxSrc.indexOf('pickReminderFields(prof.required || [], 14)') > 0);
+check('③ 扩展接线（提醒用 pickReminderFields，0.29.0 起带 mustInclude）', idxSrc.indexOf('pickReminderFields(prof.required || [], 14') > 0);
 
 console.log('— 夹具 34：补丁到底生效了没（0.9.4；实测「破产后姐姐…」第 7 楼）');
 check('① 没变量块 → no-block', patchApplyVerdict({ hasBlock: false, ops: 0 }).level === 'no-block');
@@ -1498,6 +1498,22 @@ check('72 用的是归一化后的路径比较（点号/斜杠/模板包裹都�
 check('72 面板会显示（含字段名列表）', nwSrc.indexOf("T('neverWritten'") > 0 && nwSrc.indexOf('模型至今没写过') > 0);
 check('72 文案中英各一', nwSrc.split("neverWritten: '").length - 1 === 2);
 check('72 提醒里写明「插件不会替你编造」（与 0.3.3 一致）', nwSrc.indexOf('插件不会替你编造') > 0);
+
+console.log('');
+console.log('— 夹具 73：提醒必须带上「从没写过」的字段（0.29.0，实测 穿搭 被上限挤掉）');
+const f73fields = [];
+for (let i = 0; i < 20; i++) f73fields.push({ path: '林婉婷.字段' + i });
+f73fields.push({ path: '林婉婷.穿搭' });
+const f73old = pickReminderFields(f73fields, 14);
+check('73 复现：14 条上限内轮询会把末尾的 穿搭 挤掉', f73old.length === 14 && !f73old.some((x) => x.path.indexOf('穿搭') >= 0), f73old.map((x) => x.path));
+const f73new = pickReminderFields(f73fields, 14, { mustInclude: ['/林婉婷/穿搭'] });
+check('73 修复：加 mustInclude 后 穿搭 一定进提醒（且排在最前）', f73new.some((x) => x.path === '林婉婷.穿搭') && f73new[0].path === '林婉婷.穿搭', f73new.map((x) => x.path));
+check('73 上限仍然被尊重（没有把提醒撑爆）', f73new.length <= 14);
+check('73 字段数没超上限时行为不变（向后兼容）', pickReminderFields([{ path: 'a.b' }, { path: 'c.d' }], 14).length === 2);
+check('73 mustInclude 用归一化比较（/a/b 与 a.b 等价）', pickReminderFields([{ path: '林婉婷.穿搭' }, { path: 'x.y' }], 14, { mustInclude: ['/林婉婷/穿搭'] }).some((x) => x.path === '林婉婷.穿搭'));
+const f73src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('73 面板侧把「从没写过」的字段喂进提醒', /neverWrittenFields\(12\)[\s\S]{0,300}mustInclude: neverW/.test(f73src));
+check('73 有日志说明哪些字段被优先', f73src.indexOf("log('reminder-priority'") > 0);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -2664,17 +2664,31 @@ export function frontBlockVerdict(o) {
  * @param {Array<{path:string, check?:string}>} fields
  * @param {number} limit 提醒里最多列几条
  */
-export function pickReminderFields(fields, limit = 14) {
+export function pickReminderFields(fields, limit = 14, opts = {}) {
     const list = (fields || []).filter((f) => f && f.path);
-    if (list.length <= limit) return list.slice();
+    // 0.29.0（实测）：**从没被写过的字段优先进入提醒**。
+    // 起因：这张卡有 49 个要求字段，提醒上限 14 条 —— 「林婉婷.穿搭」被轮询挤在外面，
+    // 模型从来没被要求更新它，于是它一直停在 [InitVar] 的值。
+    // 我上次只是把上限从 12 改到 14，等于把被挤掉的字段往后挪一格，没解决问题。
+    const all = list.slice();
+    const must = Array.isArray(opts.mustInclude) ? opts.mustInclude : [];
+    const norm = (p) => String(p == null ? '' : p).replace(/^\/+/, '').replace(/\//g, '.').replace(/\.{2,}/g, '.');
+    const mustSet = new Set(must.map(norm).filter(Boolean));
+    const out = [];
+    const mustLimit = Number(opts.mustLimit) > 0 ? Number(opts.mustLimit) : 6;
+    if (mustSet.size) {
+        for (const f of all) { if (out.length >= mustLimit) break; if (mustSet.has(norm(f.path))) out.push(f); }
+    }
+    const rest = all.filter((f) => out.indexOf(f) < 0);
+    const cap = Math.max(0, Number(limit) - out.length);
+    if (rest.length <= cap) { out.push.apply(out, rest); return out; }
     const groups = new Map();
-    for (const f of list) {
+    for (const f of rest) {
         const g = String(f.path).split('.')[0];
         if (!groups.has(g)) groups.set(g, []);
         groups.get(g).push(f);
     }
     const keys = [...groups.keys()];
-    const out = [];
     for (let round = 0; out.length < limit; round++) {
         let added = false;
         for (const k of keys) {
