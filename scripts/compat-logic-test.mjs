@@ -1453,7 +1453,7 @@ const mvSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.
 check('69 读真实键「更新方式」', mvSrc.indexOf('pool[\u0027更新方式\u0027]') > 0 || mvSrc.indexOf("pool[" + String.fromCharCode(39) + "更新方式" + String.fromCharCode(39) + "]") > 0);
 check('69 读真实键「启用自动请求」', mvSrc.indexOf('启用自动请求') > 0);
 check("69 模式含「额外模型解析」才进入该分支", mvSrc.indexOf("额外模型解析") > 0 && mvSrc.indexOf("mode.indexOf") > 0);
-check('69 自动请求关着时**不让位**（否则没人补数据）', /if \(auto === false\) return false;/.test(mvSrc));
+check('69（0.31.0 反转）自动请求关着**也让位** —— 由 writeMode 决定是否接管，不再拿这条件决定', mvSrc.indexOf('if (auto === false) return false;') < 0);
 check('69 记下 mode/auto 供体检用', mvSrc.indexOf('mvuExtraInfo = { mode: mode, auto: auto }') > 0);
 check('69 体检报告含 MVU 判定与成因说明', mvSrc.indexOf('更新方式=') > 0 && mvSrc.indexOf('额外解析不会自动跑') > 0);
 
@@ -1555,6 +1555,18 @@ check('75 renderStats 有重入保护（busy 标志 + finally 复位）', /let r
 check('75 neverWrittenFields 有缓存（不再每次重绘都全量解析）', fhSrc.indexOf('neverWrittenCache') > 0 && /neverWrittenCache\.key === cacheKey/.test(fhSrc));
 check('75 路径修补仍然只记计数（统计不丢）', fhSrc.indexOf('stats.pathFixed') > 0 && fhSrc.indexOf('stats.pathUnresolved') > 0);
 check('75 包裹路径还原也只记计数', fhSrc.indexOf('stats.pathWrapped') > 0);
+
+console.log('');
+console.log('— 夹具 76：恢复「MVU 在场就让位」+ 三档写入策略（0.31.0，P0 回归修复）');
+const wmSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+const wmFn = wmSrc.slice(wmSrc.indexOf('function mvuExtraParseEnabled'), wmSrc.indexOf('function mvuExtraParseEnabled') + 2600);
+check('76 恢复了「MVU 在场即让位」：默认分支 return true', /const wm = String\(\(\(settings\(\) \|\| \{\}\)\.writeMode\) \|\| 'auto'\)/.test(wmFn) && /return true;\s+\/\/ auto/.test(wmFn));
+check('76 0.26.1 的「自动请求关着就接管」已删除（回归锁定）', wmFn.indexOf('if (auto === false) return false;') < 0);
+check('76 always 才接管写入', /if \(wm === 'always'\) return false;/.test(wmFn));
+check('76 never 只诊断（也让位）', /if \(wm === 'never'\) return true;/.test(wmFn));
+check('76 设置项存在且默认 auto', /writeMode: 'auto',/.test(wmSrc));
+check('76 面板有三档下拉与绑定', wmSrc.indexOf('cc-write-mode') > 0 && wmSrc.indexOf("settings().writeMode = wmsel.value") > 0);
+check('76 文案中英各一', (wmSrc.split("writeModeAuto: '").length - 1) === 2 && (wmSrc.split("writeModeNever: '").length - 1) === 2);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
