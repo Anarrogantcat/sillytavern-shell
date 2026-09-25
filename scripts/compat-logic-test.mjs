@@ -1384,5 +1384,18 @@ const f64Noise2 = [];
 mergeStatusTable({}, { 陈慧兰: { 身体状态: { 嘴巴: '干净, 0, 0' } } }, { skipped: f64Noise2 });
 check('64 真正的扁平元组才会被标记', f64Noise2.length === 1);
 
+console.log('');
+console.log('— 夹具 65：发送栏「按状态表写回」按钮（0.24.0）');
+const sbSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('65 发送栏里有第二个按钮 #cc-var-table', sbSrc.indexOf("bt.id = 'cc-var-table'") > 0 && sbSrc.indexOf("bar.appendChild(bt)") > 0);
+check('65 按钮默认隐藏，不做死按钮', sbSrc.indexOf("bt.style.display = 'none'") > 0 && sbSrc.indexOf('function refreshTableButton') > 0);
+check('65 显隐由 refreshTableButton 决定，且 applyVarBar 会刷新它', /function applyVarBar\(\) \{[\s\S]{0,120}refreshTableButton\(\)/.test(sbSrc));
+check('65 目标探测只在「有差异」时返回（无差异就不显示）', /function tableWriteTarget[\s\S]{0,1400}return n > 0 \? \{ id: i, n: n \} : null;/.test(sbSrc));
+check('65 点击走同一套写入函数（确认 + 快照 + 可撤销）', /cc-var-table[\s\S]{0,700}applyTableWrite\(tg\.id\)/.test(sbSrc));
+check('65 关掉开关后按钮不再显示', sbSrc.indexOf("settings().tableWrite === false") > 0);
+check('65 按钮文案中英各一', (sbSrc.split("varTableBtn: '").length - 1) === 2);
+const sbCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+check('65 配色限定在 #cc-var-bar 内（不污染消息区）', (sbCss.split('.ccv-table').length - 1) === (sbCss.split('#cc-var-bar .ccv-btn.ccv-table').length - 1));
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

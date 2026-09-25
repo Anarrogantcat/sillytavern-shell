@@ -136,5 +136,11 @@
     user-select: none;
     transition: background .2s, opacity .2s, transform .1s;
 }
+/* 0.24.0：发送栏第二个按钮（按状态表写回）—— 与「补应用变量」区分配色，仍限定在 #cc-var-bar 内 */
+#cc-var-bar .ccv-btn.ccv-table {
+    border-color: rgba(255, 193, 7, .55);
+    color: #ffca28;
+}
+#cc-var-bar .ccv-btn.ccv-table:hover { background: rgba(255, 193, 7, .16); }
 #cc-var-bar .ccv-btn:hover { background: rgba(0, 229, 255, .16); }
 #cc-var-bar .ccv-btn:active { transform: scale(.97); }
