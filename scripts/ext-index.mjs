@@ -16,7 +16,9 @@ export const REPO = 'Anarrogantcat/sillytavern-shell';
 function sha1(buf) { return crypto.createHash('sha1').update(buf).digest('hex'); }
 
 /** 二进制资源（将来扩展带图片/字体/音频时用；按字节哈希，不做行尾归一） */
-const BIN_EXT = /.(png|jpe?g|gif|webp|ico|bmp|woff2?|ttf|otf|eot|mp3|ogg|wav|mp4|webm|zip|gz|pdf|bin)$/i;
+// 点号必须转义：原 /.(png|…)/ 会把 foo-png / note-pdf 这种文本名判成二进制（实测 isBinaryPath('foo-png')===true）；
+// 同时补齐常见二进制后缀（wasm/exe/dll/7z/svgz…），否则它们会被当文本做 CRLF 归一 → sha1 与客户端算不一致
+const BIN_EXT = /\.(?:png|jpe?g|gif|webp|ico|bmp|svgz|woff2?|ttf|otf|tte|eot|mp3|ogg|wav|flac|mp4|webm|zip|gz|7z|wasm|exe|dll|pdf|bin)$/i;
 export function isBinaryPath(rel) { return BIN_EXT.test(String(rel || '')); }
 
 /** 生成清单对象（不含 generatedAt 之外的随机性，保证可复现） */

@@ -53,12 +53,12 @@
     {
       "id": "plot-pilot",
       "display_name": "剧情推进器 (Plot Pilot)",
-      "version": "0.1.5",
+      "version": "0.2.0",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 3776,
-          "sha1": "5f89b68a7ead5c4a3a3ce53e356db87e0047d0b9"
+          "size": 4701,
+          "sha1": "fc17ba211976dfa225e7bf03d715e961320582b0"
         },
         {
           "path": "README.md",
@@ -67,18 +67,18 @@
         },
         {
           "path": "index.js",
-          "size": 28018,
-          "sha1": "177b970e2973e5e1a3504fc93f88b2fd8671728d"
+          "size": 29572,
+          "sha1": "6b9e80070e04e39e4011af03c955cbcedd1ef34e"
         },
         {
           "path": "logic.js",
           "size": 14048,
-          "sha1": "1083aeca94794c3ec149b1c4e779327a52c20860"
+          "sha1": "2b730237966caf74b40d9a2d568ff2c9074f22f2"
         },
         {
           "path": "manifest.json",
           "size": 439,
-          "sha1": "d3d5ad6f86c64f65e7339a61f8e842e90c6ebcd0"
+          "sha1": "3309f499314f10bb0d2f6eb25bc619f3e43b1ec3"
         },
         {
           "path": "style.css",
@@ -88,5 +88,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-25T17:13:06.935Z"
+  "generatedAt": "2026-09-25T17:14:29.388Z"
 }

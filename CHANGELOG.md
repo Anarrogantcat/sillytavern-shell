@@ -1,5 +1,20 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.18 (2026-09-25) — 审计修复第③轮：plot-pilot 0.2.0（重复发送 / 谎报已发送 / 配置截断）+ P3 清账
+
+### 修复（plot-pilot 0.2.0）
+- API 模式失败后不再无条件模拟点击（可能重复发送，且违背「只用 API」设置）；回退前检查输入框是否已空
+- `sendViaDom` 超时不再静默点击并记「已发送」；点击后确认输入框已清空，否则判失败
+- `bindText` 写入设置前按 2000 字截断（与 sanitizeConfig 一致），不再先落盘超大文本
+
+### 变更（P3 清账）
+- `scripts/ext-index.mjs`：二进制后缀正则的点号以前没转义（`foo-png`/`note-pdf` 会被判成二进制），并补齐 `wasm/exe/dll/7z/svgz`；否则这些文件会被当文本做 CRLF 归一 → sha1 与客户端不一致 → 该扩展在线更新永久失败
+- `electron-builder-lite.json`：`directories.output` 从 `../../dist-electron-v3-lite`（仓库外两层）改回仓库内，避免绕过 clean 并踩上 app.asar 文件锁
+- `scripts/cf-download-test.mjs`：清理改为幂等并挂到异常/拒绝路径（原先前面的断言抛错会跳过末尾清理，泄漏 20MB+ 临时目录）；`readMeta(...)` 改可选链，缺 meta 时记为失败项而不是 TypeError
+- `tavern-scripts/`（旧版「继续按钮」脚本）：**保留**。该目录自带说明「已被 ST 扩展取代、仅作回滚备份」，属于有意的回退资产
+
+### 夹具
+- compat 385/0 ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
 ## v2.2.17 (2026-09-25) — 审计修复第②b轮：card-compat 0.14.1（命令解析 + 长聊内存 + 误弹）
 
 ### 修复

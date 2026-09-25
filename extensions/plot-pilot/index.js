@@ -164,11 +164,23 @@ async function sendViaDom(text) {
     ta.value = text;
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     const deadline = Date.now() + ((settings() && settings().waitSendableMs) || 0);
-    while (Date.now() < deadline) {
-        if (!(btn.classList.contains('disabled') || btn.disabled)) break;
+    let sendable = false;
+    while (Date.now() <= deadline) {
+        if (!(btn.classList.contains('disabled') || btn.disabled)) { sendable = true; break; }
         await new Promise((r) => setTimeout(r, 100));
     }
+    if (!sendable) {
+        // 原实现在这里照样 click() 并让调用方记 'sent'：按钮一直禁用时点击无效，面板却显示发送成功（谎报）
+        throw new Error('发送按钮一直不可用（生成中？），已放弃本次模拟点击');
+    }
     btn.click();
+    // 点击后确认输入框确实被清空，避免「点了但没生效」也算成功
+    await new Promise((r) => setTimeout(r, 120));
+    if (ta.value === String(text)) {
+        ta.value = '';
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        throw new Error('点击发送后输入框内容未变化，判定本次未发出');
+    }
 }
 
 async function send(text, kind) {
@@ -192,7 +204,14 @@ async function send(text, kind) {
         log('send-failed', kind, String((e && e.message) || e));
         console.error('[plot-pilot] send failed', e);
         try {
-            if (pickSendStrategy(settings().sendMode, { api: true, dom: true }) !== 'dom') await sendViaDom(String(text));
+            // 原先无条件回退：sendMode='api'（用户明确要求只用 API）时也会走模拟点击；
+            // 而 API 已经创建了用户消息后再抛错，DOM 再点一次就会把同一句话发两遍。
+            const mode = String(settings().sendMode || 'auto');
+            const ta = document.getElementById('send_textarea');
+            const apiAlreadySent = !!ta && ta.value.trim() === '';
+            if (mode === 'auto' && !apiAlreadySent) await sendViaDom(String(text));
+            else if (mode !== 'auto') log('no-fallback', kind, 'sendMode=' + mode + '，失败后按设置回退到系统浏览器外不做模拟点击');
+            else log('no-fallback', kind, 'API 可能已发出（输入框已空），跳过模拟点击以避免重复发送');
         } catch (_) {}
     } finally {
         setTimeout(() => { busy = false; }, (settings() && settings().clickGuardMs) || 0);
@@ -318,11 +337,13 @@ function writeCard(patch) {
     refresh();
 }
 
+/** 与 sanitizeConfig 的上限保持一致：原先直接存 el.value（输入框没有 maxlength），超大文本会先落盘 */
+const MAX_TEXT_LEN = 2000;
 function bindText(id, key, onChange) {
     const el = document.getElementById(id);
     if (!el) return;
     el.value = settings()[key];
-    el.addEventListener('input', () => { settings()[key] = el.value; saveSettingsDebounced(); if (onChange) onChange(); });
+    el.addEventListener('input', () => { settings()[key] = String(el.value).slice(0, MAX_TEXT_LEN); saveSettingsDebounced(); if (onChange) onChange(); });
 }
 function bindCheck(id, key, onChange) {
     const el = document.getElementById(id);

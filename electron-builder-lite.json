@@ -1,5 +1,5 @@
 {
-  "directories": { "output": "../../dist-electron-v3-lite" },
+  "directories": { "output": "dist-electron-v3-lite" },
   "compression": "maximum",
   "appId": "com.sillytavern.desktop.lite",
   "productName": "SillyTavern",
