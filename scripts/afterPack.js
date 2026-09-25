@@ -7,10 +7,17 @@ export default async function afterPack(context){
     if (lite) { console.log('[afterPack] Lite build — skipping SillyTavern bundle'); return; }
     const staging = path.resolve(__dirname, '../staging/sillytavern');
     const dest = path.join(appOutDir, 'resources/sillytavern');
-    if (!fs.existsSync(staging)) { console.log('[afterPack] Staging not found, skipping'); return; }
+    // 审计：原先缺 staging 或拷完不全都只打日志，full 包在「没有 ST / 少 node_modules」时照样构建成功，
+    // 用户装完才发现打不开。这里改成硬失败，让电子构建直接红掉。
+    if (!fs.existsSync(staging)) {
+        throw new Error('[afterPack] full 构建缺少 staging/sillytavern（先跑 npm run st-prep）。若确实要出不含 ST 的包，请用 lite 配置。');
+    }
     console.log('[afterPack] Copying SillyTavern...');
     copyDir(staging, dest);
     const ok = fs.existsSync(path.join(dest, 'server.js')) && fs.existsSync(path.join(dest, 'node_modules'));
-    console.log(ok ? '[afterPack] SillyTavern bundled successfully' : '[afterPack] WARNING: Incomplete bundle!');
+    if (!ok) {
+        throw new Error('[afterPack] SillyTavern 打包不完整：' + dest + ' 缺少 server.js 或 node_modules（full 包会不可用）');
+    }
+    console.log('[afterPack] SillyTavern bundled successfully');
 }
 function copyDir(src,dest){fs.mkdirSync(dest,{recursive:true});for(const e of fs.readdirSync(src,{withFileTypes:true})){const s=path.join(src,e.name),d=path.join(dest,e.name);e.isDirectory()?copyDir(s,d):fs.copyFileSync(s,d);}}

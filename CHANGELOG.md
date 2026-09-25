@@ -1,5 +1,36 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.14 (2026-09-25) — 审计修复第①轮：三条 P1（不可逆数据风险）+ 发布链四处硬闸门
+
+### 安全
+- **渲染层 DOM XSS（可升级为任意命令执行）**：`shell.js` 的 `renderChangelogMd()` 原先把 CHANGELOG 文本直接拼成 HTML 再塞进 `innerHTML`，`script-src 'self'` 的 CSP 挡不住内联事件处理器，而渲染层通过 `preload.js` 握着 `terminal.exec`（`index.js` 里以 `exec(cmd,{cwd:sillyTavernRoot})` 直执行）。改为**逐行 `escapeHtml` 后再包标签**；顺带修掉空行导致的列表断裂（原实现把连续列表拆成多个 `<ul>`）。已用真实 CHANGELOG + 带 `onerror` 的恶意样例端到端验证：输出不含任何可执行属性
+- **回滚安装的版本号可夹带路径穿越**：`lib/tools-app.js` 的 `rollbackInstall(version)` 直接把版本号拼进文件名，`..\..\..\Users\...\evil` 这类值能越出 `rollbackDir`，随后 `spawn(f, ['/S', ...])` 会以 NSIS 静默参数**执行任意 exe**。新增 `safeVersion()` 白名单（只接受 `x.y.z` 数字段），`saveRollbackPackage()` 走同一校验；探针复现的越界路径现已拒绝
+
+### 修复
+- **备份变成「假备份」**：开了 zip 压缩时，原实现不管 PowerShell 退出码就 `rmSync(dest)` 删掉未压缩目录 —— `Compress-Archive` 在路径含空格/引号、或 PS 不可用时失败，用户会得到一个有名无实的备份。现在**先校验 zip 真的产出（退出码 0 且文件非空）**，成功才删原目录；失败则保留未压缩目录并在终端提示。保留策略同时收紧：只把「完整备份」计数，未压缩兜底目录不会被当成两份而被误删
+- **`afterPack` 对 ST 打包不完整只打 WARNING**：full 包缺 `staging/sillytavern`、或拷完少了 `server.js`/`node_modules` 时，构建照样绿灯，用户装完才发现打不开。改为**直接 throw**，让构建红掉
+- **`update:check` 的版本比较把预发布当正式版**：原实现按「段 ×100 累加」，`1.18.0-beta` 与 `1.18.0` 结果相同 → 不提示更新。改为逐段比较，预发布按「低于同号正式版」处理
+
+### 变更
+- **NSIS 安装器三处加固（`scripts/installer.nsh`）**：
+  - 静默升级分支从来没生效过 —— 旧代码取命令行前 4 字符判 `_?=`，而 electron-builder 传的是 `/S /KEEP_APP_DATA ... --updated _?=<dir>`，前 4 字符恒为 `/S /`。改为 `${If} ${Silent} → Goto Done`：**静默卸载/升级绝不弹框、绝不删数据**
+  - 目录归一（补 `\Shell`）从只由 `.onVerifyInstDir` 触发的回调，改成在 `customInstall` 里**幂等执行**，静默安装（`/S`）不再落到 `...\Programs\SillyTavern` 并让「Shell / SillyTavern / Data」三分离塌陷
+  - 安装时写 **`.shell-owned` 归属标记**（Data、resources、移出去的 SillyTavern 各一份）；卸载时**只删有标记的目录**，没有标记的（例如用户自己装的 `D:\Games\SillyTavern`）会被保留并打印原因；`xcopy` 内置 ST 之前同样先查标记，避免覆盖合并用户自有 ST。卸载勾选框文案同步说明「还会删套壳设置与已保存的回滚包」
+- **发布链四处硬闸门（`.github/workflows/release.yml`）**：新增「版本一致性硬校验」（tag ≠ `package.json` 的 version 直接失败）；缺产物不再 `SKIP` 而是 `Write-Error + exit 1`；自愈步骤给 `git commit` 补退出码检查、推送前要求「HEAD 就是 main 顶端，或恰好是 main 之上那一个自愈提交」、推送后用 `ls-remote` 复核远端哈希；工作流加 `concurrency: release`，并给 `gh` 相关步骤补原生命令错误策略（原来 `gh release edit` 失败会被吞）
+- 夹具步骤补上漏掉的 `toolbox-test.mjs`；`UI snapshot check` 去掉 `continue-on-error`（不再用绿灯掩盖 UI 回归）
+- `README` 的版本号规则不再写死「当前版本」，一律指向 `package.json`（上一轮就是这里漂移了一版）
+
+### 实测（NSIS 安装器，makensis 3.10 编译 + 静默跑）
+- 装了 NSIS 3.10 编译测试台（含 `scripts/installer.nsh` 本体 + 复刻 electron-builder 卸载器的 `un.onInit`/`Section` 插入点），覆盖 4 个场景：静默安装 / 静默升级（旧卸载器 `/S /KEEP_APP_DATA --updated _?=<dir>` 后覆盖安装）/ 静默卸载 / 预置用户自有 ST
+- **测出并修掉两个真 bug**（静态审阅看不出来、只有编译+跑才会暴露）：
+  - `FileOpen` 不会自动建目录 —— 覆盖安装记录与 `.shell-owned` 标记原本写不进去，且失败是静默的。已改为先 `CreateDirectory` 并检查 `${Errors}`，写不进去时明确提示且**保留数据**（更安全的一侧）
+  - 内置 ST 的搬运目标写成了 `$INSTDIR\..\SillyTavern`（多嵌一层），与运行时的 `defaultST = <父>\SillyTavern` 不一致，导致守卫查错路径 → **可能覆盖用户自装 ST**。已改为 `$INSTDIR\..`，守卫与标记路径同步对齐
+- 另一处必须改的：守卫原来用 `MessageBox` 提示目录冲突 —— 实测**在静默安装下仍会弹出到真实桌面**（阻塞自动化安装）。已改成 `DetailPrint` 诊断，不弹窗、不阻塞
+- 实测通过：静默安装三分离（`Shell` / `SillyTavern` / `Data` 各就各位，壳落在 `<父>\SillyTavern\Shell`）・内置 ST 搬运与标记写入・重复安装不覆盖用户自有 ST（内容与文件都保持原样）・静默升级后 `Data` 仍在
+- **未实机验证**（诚实标注）：交互式卸载（勾选框 + NSIS 对话框，需人工点击，无法自动化）与「旧版本卸载器」的真实二进制路径。这两条只做了代码级复核；下次发版时建议在真实桌面上手点一次卸载确认
+
+### 夹具
+- 与 v2.2.13 相同的 7 个夹具（本次未改扩展逻辑）：compat 385/0 ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
 ## v2.2.13 (2026-09-25) — 文档事实校准：版本号规则改为现行规则 + card-compat README 与代码对齐（无功能改动）
 
 ### 修复

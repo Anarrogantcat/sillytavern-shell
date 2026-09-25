@@ -915,8 +915,18 @@ ipcMain.handle('tools:integrityCheck', async () => {
                     const r = JSON.parse(body);
                     const cur = JSON.parse(fs.readFileSync(path.join(sillyTavernRoot, 'package.json'), 'utf-8')).version;
                     const latest = r.tag_name?.replace(/^v/, '') || '';
-                    const v2n = s => String(s).split('.').reduce((a, n) => a * 100 + (parseInt(n, 10) || 0), 0);
-                    resolve({ latest, current: cur, hasUpdate: latest && v2n(latest) > v2n(cur), url: r.html_url });
+                    // 审计：原实现把版本按「段×100 累加」，遇到 1.18.0-beta 这类预发布会被当成 1.18.0（比较结果相同 → 不提示更新）。
+                    // 改为逐段比较：只有数字段参与，预发布尾缀按「低于同号正式版」处理。
+                    const vparts = s => ({ nums: String(s).split(/[.\-+]/).map(n => parseInt(n, 10) || 0), pre: /-/.test(String(s)) });
+                    const cmpVer = (a, b) => {
+                        const A = vparts(a), B = vparts(b);
+                        for (let i = 0; i < Math.max(A.nums.length, B.nums.length); i++) {
+                            const x = A.nums[i] || 0, y = B.nums[i] || 0;
+                            if (x !== y) return x > y ? 1 : -1;
+                        }
+                        return (A.pre === B.pre) ? 0 : (A.pre ? -1 : 1);
+                    };
+                    resolve({ latest, current: cur, hasUpdate: latest && cmpVer(latest, cur) > 0, url: r.html_url });
                 } catch (_) { resolve({ error: 'Failed to parse release info' }); }
             });
         });

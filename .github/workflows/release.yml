@@ -1,5 +1,9 @@
 name: Release Lite
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 on:
   push:
     tags:
@@ -22,7 +26,6 @@ jobs:
       - run: npm ci
 
       - name: UI snapshot check
-        continue-on-error: true
         run: npm run ui:check
 
       - name: 扩展清单自愈（过期则重建并回提交 main）
@@ -30,27 +33,33 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # GitHub Actions 的 pwsh 默认把原生命令的非零退出/ stderr 当错误 → 这里必须先放宽，
-          # 否则 --check 一失败就直接结束步骤，"自愈"根本没机会跑
-          $ErrorActionPreference = 'Continue'
-          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
           node scripts/ext-index.mjs --check
-          if ($LASTEXITCODE -eq 0) { Write-Host "清单已是最新"; exit 0 }
-          Write-Host "清单过期 → 自动重建"
+          if ($LASTEXITCODE -eq 0) { Write-Host '清单已是最新'; exit 0 }
+          Write-Host '清单过期 → 自动重建'
           node scripts/ext-index.mjs
-          if ($LASTEXITCODE -ne 0) { Write-Error "重建失败"; exit 1 }
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ($LASTEXITCODE -ne 0) { Write-Error '重建失败'; exit 1 }
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add extensions/index.json
-          git commit -m "chore(ci): 自动重建 extensions/index.json（打包前自愈）"
+          $staged = @(git diff --cached --name-only)
+          if ($staged.Count -gt 0) {
+            git commit -m 'chore(ci): 自动重建 extensions/index.json（打包前自愈）'
+            if ($LASTEXITCODE -ne 0) { Write-Error '清单提交失败'; exit 1 }
+          } else { Write-Host '重建后无差异，跳过提交' }
           git fetch --depth=1 origin main
-          # 只在 main 是当前提交祖先时推送（fast-forward），避免把 main 回退
-          git merge-base --is-ancestor origin/main HEAD
-          if ($LASTEXITCODE -ne 0) { Write-Error "main 已领先于本次 tag，放弃自动回提交（请本地跑 ext-index.mjs 后重发）"; exit 1 }
-          # 必须清掉 actions/checkout 注入的 extraheader，否则它会盖掉 URL 里的凭据（表现为 403 且署名 github-actions[bot]）
-          git -c "http.https://github.com/.extraheader=" push "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git" HEAD:main
-          if ($LASTEXITCODE -ne 0) { Write-Error "回提交失败（检查仓库 secret GH_TOKEN 是否有 contents:write）"; exit 1 }
-          Write-Host "已把重建后的清单推回 main"
+          $headSha = (git rev-parse HEAD).Trim()
+          $baseSha = (git rev-parse origin/main).Trim()
+          $remoteMain = (git ls-remote origin refs/heads/main).Split()[0]
+          # 只有两种情况允许回提交：本次 tag 就是 main 顶端，或 HEAD 恰好是 main 之上多出来的那一个自愈提交。
+          # 旧判定只看「main 是 HEAD 的祖先」，tag 打在别的分支提交上时会把 main 静默推进过去。
+          $canPush = ($headSha -eq $remoteMain) -or (($baseSha -eq $remoteMain) -and ($staged.Count -gt 0))
+          if (-not $canPush) { Write-Error 'main 与本次 tag 不一致（或已被别人推进），放弃自动回提交'; exit 1 }
+          if ($headSha -eq $remoteMain) { Write-Host 'main 已是本次提交，无需回提交'; exit 0 }
+          git -c 'http.https://github.com/.extraheader=' push 'https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git' HEAD:main
+          if ($LASTEXITCODE -ne 0) { Write-Error '回提交失败（检查仓库 secret GH_TOKEN 是否有 contents:write）'; exit 1 }
+          $after = (git ls-remote origin refs/heads/main).Split()[0]
+          if ($after -ne $headSha) { Write-Error '回提交后远端 main 不是本次提交，视为失败'; exit 1 }
+          Write-Host '已把重建后的清单推回 main'
 
       - name: 扩展夹具（部署 + 在线更新 + 管理器 + 逻辑层）
         run: |
@@ -61,6 +70,17 @@ jobs:
           node scripts/cf-download-test.mjs
           node scripts/compat-logic-test.mjs
           node scripts/plot-pilot-test.mjs
+          node scripts/toolbox-test.mjs
+
+      - name: 版本一致性硬校验（tag 必须等于 package.json 的 version）
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag.StartsWith('v')) { Write-Error 'tag 必须形如 vX.Y.Z'; exit 1 }
+          $want = $tag.Substring(1)
+          $have = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($have -ne $want) { Write-Error ('tag ' + $tag + ' 与 package.json 的 version ' + $have + ' 不一致：要么先升 version 再打 tag，要么删掉这个 tag。'); exit 1 }
+          Write-Host ('版本一致：' + $have)
 
       - name: Build Lite and publish
         env:
@@ -72,6 +92,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
           $tag = $env:GITHUB_REF_NAME
           $ver = $tag -replace '^v', ''
           $changelog = Get-Content CHANGELOG.md -Raw -Encoding UTF8
@@ -83,12 +105,16 @@ jobs:
           } else {
             gh release edit $tag --draft=false
           }
+          if ($LASTEXITCODE -ne 0) { Write-Error ('Release ' + $tag + ' 转正式失败（gh 退出码 ' + $LASTEXITCODE + '）'); exit 1 }
+          Write-Host ('Release ' + $tag + ' 已转为正式可见')
 
       - name: Verify and upload release assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
           $tag = $env:GITHUB_REF_NAME
           $ver = $tag -replace '^v', ''
           $dir = 'dist-electron-v3-lite'
@@ -103,25 +129,16 @@ jobs:
             if ($LASTEXITCODE -eq 0) { $releaseOk = $true; break }
             Start-Sleep -Seconds 5
           }
-          if (-not $releaseOk) {
-            Write-Error "Release $tag not found after waiting"
-            exit 1
-          }
+          if (-not $releaseOk) { Write-Error ('等待后仍找不到 Release ' + $tag); exit 1 }
           $existing = @(gh release view $tag --json assets --jq '.assets[].name' 2>$null)
           foreach ($name in $expected) {
             $file = Join-Path $dir $name
-            if (-not (Test-Path $file)) {
-              Write-Host "SKIP missing local file: $file"
-              continue
-            }
+            if (-not (Test-Path $file)) { Write-Error ('缺少发布产物: ' + $file + '（构建版本与 tag 可能不一致）'); exit 1 }
             if ($existing -contains $name) {
-              Write-Host "OK asset exists: $name"
+              Write-Host ('OK asset exists: ' + $name)
             } else {
-              Write-Host "Uploading missing asset: $name"
+              Write-Host ('Uploading missing asset: ' + $name)
               gh release upload $tag $file --clobber
-              if ($LASTEXITCODE -ne 0) {
-                Write-Error "Failed to upload $name"
-                exit 1
-              }
+              if ($LASTEXITCODE -ne 0) { Write-Error ('Failed to upload ' + $name); exit 1 }
             }
           }

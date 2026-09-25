@@ -817,11 +817,21 @@ $('#btn-open-st-dir')?.addEventListener('click',async()=>{const p=await ST?.getS
 $('#btn-open-data-dir')?.addEventListener('click',async()=>{const p=await ST?.getDataRoot();if(p)window.electronAPI?.window?.openPath(p);});
 // ── 关于页：版本 / 作者 / 更新日志（更新与日志都收在这一页）────
 function renderChangelogMd(md) {
+    // 安全：日志文本先逐行 escapeHtml 再包标签 —— 直接拼 HTML 会执行内联事件（曾是不转义注入面）。
+    // 空行触发换行（原实现 `<li>...</li>` → `</ul><ul>` 会把中间空行吃掉）。
     return String(md || '')
-        .replace(/^# (.+)/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)/gm, '<h4>$1</h4>')
-        .replace(/^- (.+)/gm, '<li>$1</li>')
-        .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+        .split(/\r?\n/)
+        .map((line) => {
+            const m1 = line.match(/^# (.+)$/);
+            if (m1) return '<h3>' + escapeHtml(m1[1]) + '</h3>';
+            const m2 = line.match(/^## (.+)$/);
+            if (m2) return '<h4>' + escapeHtml(m2[1]) + '</h4>';
+            const m3 = line.match(/^- (.+)$/);
+            if (m3) return '<li>' + escapeHtml(m3[1]) + '</li>';
+            return '';
+        })
+        .join('\n')
+        .replace(/(?:^|\n)(?:<li>[^<]*<\/li>\n?)+(?=\n|$)/g, (block) => '<ul>' + block.replace(/^\n/, '').replace(/\n$/, '') + '</ul>');
 }
 let aboutChangelogLoaded = false;
 async function loadAboutChangelog() {
