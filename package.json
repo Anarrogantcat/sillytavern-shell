@@ -1,6 +1,6 @@
 {
   "name": "sillytavern-electron",
-  "version": "2.2.41",
+  "version": "2.2.42",
   "description": "SillyTavern Desktop Shell — Electron wrapper with tray, terminal, auto-update",
   "license": "AGPL-3.0",
   "author": "小肥鱼 (DeepSeek V4 Flash) & 染喵",

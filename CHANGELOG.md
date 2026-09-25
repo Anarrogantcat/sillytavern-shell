@@ -1,5 +1,14 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.42 (2026-09-25) — card-compat 0.23.2：修「数据写对了、状态栏却不出来」（重渲染走错通路）
+
+### 修复
+- 实测：用户那局第 3 楼的变量**已经全部写对**（时间 14:10、位置、当前在做什么、支出 2500，10/10 落地）
+- 但画面显示 `<UpdateVariable>` 原文 + 裸露的 `<StatusPlaceHolderImpl/>` —— `rerenderFloor()` 优先用了酒馆助手 `refreshOneMessage` 并 return，**该路不跑卡的正则**
+- 改为**优先 ST `updateMessageBlock`**（卡的正则在这里执行），酒馆助手降为兜底 + 日志；ST 渲染报错也记日志
+
+### 夹具
+- compat **539/0**（新增夹具 63，5 条）
 ## v2.2.41 (2026-09-25) — 修 cf 夹具被网络带偏（显式 fetchImpl:null 不再退化成全局 fetch）
 
 ### 修复

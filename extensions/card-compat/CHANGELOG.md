@@ -1,5 +1,25 @@
 # 更新日志
 
+## [0.23.2] - 2026-09-25
+
+### 修复：「数据写对了，状态栏却不出来」—— 重渲染走错了通路
+
+**实测根因**：`rerenderFloor()` 旧实现**优先用酒馆助手的 `refreshOneMessage` 并直接 `return`**，
+而**卡的正则（状态栏 / 去变量更新）只在 ST 自己的渲染通路（`updateMessageBlock`）里执行**。
+于是重渲染后画面变成一堆原文：`<UpdateVariable>…</UpdateVariable>` 整块裸露 + `<StatusPlaceHolderImpl/>` 锚点裸露 → 状态栏画不出来。
+
+**证据（用户那局聊天 04h46 的第 3 楼）**：变量其实**已经写对了** ——
+`系统.时间=14:10`、`林婉婷.位置=user家客厅沙发上`、`林婉婷.当前在做什么=正趴在染怀里迎接全套服务的开始`、`user.累计支出_林婉婷=2500`，
+10 条 op 全部落地、0 跳过。坏的是**画面**，不是数据。
+
+**修复**：`rerenderFloor()` 改为**先走 ST 的 `updateMessageBlock(id, chat[id], { rerenderMessage: true })`**，
+酒馆助手 `refreshOneMessage` 降级为兜底（仅在 ST 渲染不可用时使用，并记日志 `rerender-fallback`）；
+ST 渲染抛错也不再静默（`rerender-st-failed`）；结尾仍补发 `nudgeRender`。
+
+### 夹具
+- 新增「夹具 63」（5 条）：锁住「`updateMessageBlock` 必须排在 `refreshOneMessage` 之前」「兜底在 `!viaSt` 之后」「两条日志在位」「结尾仍 nudge」
+- `scripts/compat-logic-test.mjs`：534 → **539** 项
+
 ## [0.23.1] - 2026-09-25
 
 ### 修复（P0 数据丢失）：变量表被当「未声明块」整块删掉

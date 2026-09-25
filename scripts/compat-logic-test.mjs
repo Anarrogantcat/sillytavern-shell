@@ -1346,5 +1346,15 @@ check('62 小块仍照常清理', kt5.removed.length === 1 && kt5.removed[0].tag
 const kt6 = stripUndeclaredBlocks('<huge_block>' + ktBigBody + '</huge_block>', { declared: [], keep: KEEP_BLOCKS, maxRemoveChars: 5000 });
 check('62 上限可调（放宽后照常清理）', kt6.removed.length === 1);
 
+console.log('');
+console.log('— 夹具 63：重渲染必须优先走 ST 渲染通路（0.23.2，状态栏不出来的根因）');
+const rrSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+const rrFn = rrSrc.slice(rrSrc.indexOf('function rerenderFloor'), rrSrc.indexOf('function rerenderFloor') + 900);
+check('63 rerenderFloor 里 updateMessageBlock 出现在 refreshOneMessage 之前', rrFn.indexOf('updateMessageBlock') > 0 && rrFn.indexOf('updateMessageBlock') < rrFn.indexOf('refreshOneMessage'), { st: rrFn.indexOf('updateMessageBlock'), th: rrFn.indexOf('refreshOneMessage') });
+check('63 酒馆助手只作兜底（在 !viaSt 判断之后）', /if \(!viaSt\)[\s\S]{0,300}refreshOneMessage/.test(rrFn));
+check('63 走兜底时会记日志（该路不跑卡的正则）', rrFn.indexOf('rerender-fallback') > 0);
+check('63 ST 渲染失败会记日志而不是静默', rrFn.indexOf('rerender-st-failed') > 0);
+check('63 结尾仍补发 nudgeRender（让卡重画前端块）', rrFn.indexOf('nudgeRender(id)') > 0);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.23.1';
+const VERSION = '0.23.2';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -1171,9 +1171,25 @@ function writeStateOf(id, statData, scope) {
     } catch (e) { log('var-write-failed', '', String((e && e.message) || e)); }
     return false;
 }
+/**
+ * 重渲染某一楼。
+ * 0.23.2（实测根因）：**必须优先走 ST 自己的 updateMessageBlock** —— 卡的正则（状态栏 / 去变量更新）
+ * 是在 ST 的渲染通路里执行的；旧版优先用酒馆助手的 refreshOneMessage 并直接 return，
+ * 那条路不跑卡的正则 → 画面被重画成 <UpdateVariable> 原文 + 裸露的 <StatusPlaceHolderImpl/> 锚点。
+ * 现象就是「数据明明写对了，状态栏却不出来」。酒馆助手只作为兜底。
+ */
 function rerenderFloor(id) {
-    try { const th = thApi(); if (th && typeof th.refreshOneMessage === 'function') { th.refreshOneMessage(id); return; } } catch (_) {}
-    try { updateMessageBlock(id, chat[id], { rerenderMessage: true }); nudgeRender(id); } catch (_) {}
+    let viaSt = false;
+    try {
+        if (typeof updateMessageBlock === 'function' && chat && chat[id]) {
+            updateMessageBlock(id, chat[id], { rerenderMessage: true });
+            viaSt = true;
+        }
+    } catch (e) { log('rerender-st-failed', '第' + id + '层', String((e && e.message) || e)); }
+    if (!viaSt) {
+        try { const th = thApi(); if (th && typeof th.refreshOneMessage === 'function') { th.refreshOneMessage(id); log('rerender-fallback', '第' + id + '层', 'ST 渲染不可用，退回酒馆助手（该路不跑卡的正则，状态栏可能不刷新）'); } } catch (_) {}
+    }
+    nudgeRender(id);
 }
 /** 这一楼的补丁操作（<JSONPatch> + _.set 命令式） */
 function opsForMessage(mes) {
