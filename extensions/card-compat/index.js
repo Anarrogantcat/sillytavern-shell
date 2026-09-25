@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.26.1';
+const VERSION = '0.26.2';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -206,6 +206,7 @@ function renderHealth() {
     try {
         const ctx = getContext ? getContext() : null;
         const es = (ctx && ctx.extensionSettings) || {};
+        out.push('0) 本扩展版本: v' + VERSION + '（若不是最新，就是页面没加载到新版 —— 这本身就是答案）');
         out.push('ST 版本: ' + String((ctx && ctx.version) || '?'));
         const dis = Array.isArray(es.disabledExtensions) ? es.disabledExtensions : [];
         out.push('1) 正则扩展被禁用: ' + (dis.indexOf('regex') >= 0 ? '是（← 问题在这）' : '否'));
@@ -1617,6 +1618,7 @@ function ensureVarBar() {
     bar.appendChild(bh);
     form.prepend(bar);
     log('var-bar-injected', '', '变量兜底按钮已注入发送栏');
+    try { log('boot', 'v' + VERSION, '扩展已加载（这条用于确认你跑的是哪一版）'); } catch (_) {}
     return bar;
 }
 /** 最近几楼里，哪一楼有状态表且与当前变量有差异 → 返回 {id, n}；没有则 null */

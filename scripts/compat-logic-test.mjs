@@ -1453,5 +1453,19 @@ check('69 自动请求关着时**不让位**（否则没人补数据）', /if \(
 check('69 记下 mode/auto 供体检用', mvSrc.indexOf('mvuExtraInfo = { mode: mode, auto: auto }') > 0);
 check('69 体检报告含 MVU 判定与成因说明', mvSrc.indexOf('更新方式=') > 0 && mvSrc.indexOf('额外解析不会自动跑') > 0);
 
+console.log('');
+console.log('— 夹具 70：版本自证 + 旧版删除行为可复现（0.26.2）');
+const vsSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('70 体检报告第一行报扩展版本', /out\.push\(.0\) 本扩展版本: v. \+ VERSION/.test(vsSrc));
+check('70 启动日志带版本号（用于确认加载到哪一版）', /log\(.boot., .v. \+ VERSION/.test(vsSrc));
+// 用真实形态验证：当前白名单不删表，去掉白名单里的表族才会删（旧版行为可复现）
+const f70Table = '<status_current_variables>' + String.fromCharCode(10) + '系统:' + String.fromCharCode(10) + '  时间: 14:15' + String.fromCharCode(10) + '林婉婷:' + String.fromCharCode(10) + '  穿搭: 黑色皮衣' + String.fromCharCode(10) + '  心情: 期待' + String.fromCharCode(10) + '</status_current_variables>';
+const f70Decl = new Set(['UpdateVariable', 'StatusPlaceHolderImpl']);
+const f70a = stripUndeclaredBlocks(f70Table, { declared: f70Decl, keep: KEEP_BLOCKS });
+check('70 当前白名单：状态表一个字都不删', f70a.removed.length === 0 && f70a.text.indexOf('<status_current_variables>') >= 0);
+const f70Old = new Set([...KEEP_BLOCKS].filter((x) => x.indexOf('status') !== 0 && x !== '变量表' && x !== '状态表' && x !== '变量列表' && x !== '状态栏'));
+const f70b = stripUndeclaredBlocks(f70Table, { declared: f70Decl, keep: f70Old });
+check('70 去掉表族白名单后复现旧版删除（= 用户看到的现象）', f70b.removed.length === 1 && f70b.removed[0].tag === 'status_current_variables');
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
