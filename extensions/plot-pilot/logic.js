@@ -5,7 +5,7 @@
 // 后续要加新策略（新卡型探测、新按钮、自动连发…）都改这里 + 加断言。
 
 export const EXT_ID = 'plot-pilot';
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 
 /** 配置默认值。新增字段请同时写进 sanitizeConfig 的白名单与 README 表格。 */
 export const DEFAULTS = {

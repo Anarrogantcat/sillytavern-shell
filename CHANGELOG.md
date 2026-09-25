@@ -1,5 +1,14 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.19 (2026-09-25) — 审计反例固化为回归夹具 + 版本同步
+
+### 变更
+- **把本轮修掉的 bug 反例固化成断言**（`scripts/compat-logic-test.mjs` 新增「夹具 43」）：385 → **400** 项，覆盖模板组上限、补丁块内方括号说明、YAML 反斜杠、前缀标签、大小写抽取、move 丢值、命令解析嵌套括号 —— 以后回归会立刻红
+- `docs/extension-roadmap.md` 的当前版本与落地条目同步到实际（card-compat 0.14.2 / plot-pilot 0.2.1 / 壳 2.2.19）
+- 三个包版本号递增（纯夹具与版本变更，**代码无功能性改动**）
+
+### 夹具
+- compat **400/0** ・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 57 ・toolbox 16
 ## v2.2.18 (2026-09-25) — 审计修复第③轮：plot-pilot 0.2.0（重复发送 / 谎报已发送 / 配置截断）+ P3 清账
 
 ### 修复（plot-pilot 0.2.0）

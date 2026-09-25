@@ -1003,5 +1003,35 @@ check('⑤ 报表行去重（同路径只渲染一次）', idxSrc.indexOf('const
 check('⑤ 版本号已到 0.13.2', versionWired());
 
 console.log('');
+console.log('— 夹具 43：0.14.x 审计修复回归（每条先做过独立反例验证，这里固化防回归）');
+// C5 模板组展开上限（原先 8 组×10 = 1 亿条、主线程卡死）
+const tplOverflow = expandTemplateGroups(['系统.' + Array.from({ length: 8 }, (_, i) => '{' + Array.from({ length: 10 }, (_, j) => 'g' + i + '_' + j).join('|') + '}').join('.')]);
+check('⑬ 模板组爆炸输入被截断（≤2000 条）', tplOverflow.length <= 2000 && tplOverflow.length > 0, tplOverflow.length);
+check('⑬ 小样例仍正常展开（两组各自展开）', JSON.stringify(expandTemplateGroups(['角色.{林婉婷|陈慧兰}.关系态度']).sort()) === JSON.stringify(['角色.林婉婷.关系态度', '角色.陈慧兰.关系态度']));
+// C6 补丁块里的方括号说明不再毁掉整段补丁
+check('⑥ 块内「（说明：[已更新]）」仍能解析出补丁', parsePatchOps('<JSONPatch>[{"op":"replace","path":"/a","value":1}]（说明：[已更新]）</JSONPatch>').ops.length === 1);
+check('⑥ 前置「分析[1]:」仍能解析出补丁', parsePatchOps('<JSONPatch>分析[1]: [{"op":"replace","path":"/b","value":2}]</JSONPatch>').ops.length === 1);
+check('⑥ 字符串值里的方括号不影响解析', parsePatchOps('<JSONPatch>[{"op":"replace","path":"/c","value":"数组[0]与]括号"}]</JSONPatch>').ops.length === 1);
+// C7 YAML 加引号时反斜杠必须转义（原先 C:\\new 会被解析成换行）
+const bs = String.fromCharCode(92);   // 反斜杠：写成字面量容易在源码里被转义，这里显式生成
+const yamlIn = '<B>' + String.fromCharCode(10) + ' 路径: C:' + bs + 'new # 重要' + String.fromCharCode(10) + '</B>';
+const yamlBs = guardBlockYaml(yamlIn, ['B']).text;
+check('⑦ 反斜杠已转义（输出含双反斜杠）', yamlBs.indexOf('C:' + bs + bs + 'new') >= 0, yamlBs);
+check('⑦ 不会把反斜杠吃成换行', yamlBs.indexOf('C:' + String.fromCharCode(10) + 'new') < 0);
+// C8 前缀标签：干净数据不该被误改
+const cleanStatus = '<StatusBar>ok</StatusBar>';
+check('⑧ 合法的 </StatusBar> 不被前缀标签逻辑破坏', normalizeMalformedClosings(cleanStatus, ['Status']).text === cleanStatus);
+// C10 变量块抽取大小写不敏感（与 detectVariableProtocol 同口径）
+check('⑩ 小写 <updatevariable> 也能抽出块', extractUpdateBlocks('<updatevariable><JSONPatch>[{"op":"replace","path":"/x","value":1}]</JSONPatch></updatevariable>').length === 1);
+check('⑩ 大写 <UPDATEVARIABLE> 也能抽出块', !!extractUpdateBlock('<UPDATEVARIABLE>x</UPDATEVARIABLE>'));
+// C3 move 目标不可建时不得丢源值
+const mv = applyVarOps({ a: { b: 1 } }, [{ op: 'move', from: '/a/b', path: '/x/y' }], { objects: [['a']] });
+check('③ move 目标不可建 → 源值保留、并记 skipped', mv.state.a && mv.state.a.b === 1 && mv.skipped.length === 1);
+// C13 命令解析：嵌套括号与 insert/delete/move
+check('⑬ 嵌套括号不再截断（Number(基础值) 完整保留）', parseSetCommands('_.set("角色.金钱", Number(基础值))')[0].value === 'Number(基础值)');
+check('⑬ _.delete 映射为 remove', parseSetCommands('_.delete("旧字段")')[0].op === 'remove');
+check('⑬ _.insert 映射为 insert', parseSetCommands('_.insert("列表", "x")')[0].op === 'insert');
+const mvOp = parseSetCommands('_.move("a.b", "c.d")')[0];
+check('⑬ _.move 同时产出 from 与 path', mvOp.op === 'move' && mvOp.from === 'a.b' && mvOp.path === 'c.d');
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
