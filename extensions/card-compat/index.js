@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.30.0';
+const VERSION = '0.30.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -756,8 +756,13 @@ async function restoreFromSwipe(id) {
  * 用途：把「数据没更新」这件事一刀切开 —— 是模型漏写，还是插件丢了。
  * 实测（用户那张卡）：穿搭 在所有楼层的补丁里都没出现过，所以它一直停在 [InitVar] 的值。
  */
+let neverWrittenCache = { key: '', at: 0, val: [] };
 function neverWrittenFields(floors) {
     try {
+        const n0 = Number(floors) > 0 ? Number(floors) : 10;
+        const lastMes = (chat && chat.length) ? String((chat[chat.length - 1] || {}).mes || '') : '';
+        const cacheKey = String((chat && chat.length) || 0) + ':' + lastMes.length + ':' + n0;
+        if (neverWrittenCache.key === cacheKey && (Date.now() - neverWrittenCache.at) < 5000) return neverWrittenCache.val;
         const prof = profileOf();
         const req = (prof.required || []).map((x) => normalizePath((x && x.path) || '')).filter(Boolean);
         if (!req.length || !chat || !chat.length) return [];
@@ -769,8 +774,10 @@ function neverWrittenFields(floors) {
             if (!m || m.is_user || typeof m.mes !== 'string') continue;
             for (const op of opsForMessage(m.mes)) { const p = normalizePath(op && op.path); if (p) written.add(p); }
         }
-        return req.filter((p) => !written.has(p));
-    } catch (e) { log('never-written-failed', '', String((e && e.message) || e)); return []; }
+        const outList = req.filter((p) => !written.has(p));
+        neverWrittenCache = { key: cacheKey, at: Date.now(), val: outList };
+        return outList;
+    } catch (e) { return []; }
 }
 
 /** 最近 6 楼里有没有「被砍过、可从 swipe 恢复」的楼层 */
@@ -1364,7 +1371,7 @@ function opsForMessage(mes) {
     // 0.21.3：模型把路径写成 ${/a/b} 时，旧版整条 op 静默失效（实测整楼全灭）—— 这里报出来
     if (wrapped) {
         stats.pathWrapped = (stats.pathWrapped || 0) + wrapped;
-        log('path-wrapper-unwrapped', wrapped + ' 条', '路径原本被 ${} / {{}} 包裹，已还原为标准 JSON Pointer（旧版会整条跳过）');
+        // 0.30.1：热路径不打日志（见下），只计数
     }
     for (const op of parseSetCommands(mes)) ops.push(op);
     // 0.30.0：修补模型写歪的路径（实测 MVU zod 报错：「累计支出_林婉婷」缺 user/ 层级、「/关系态度」缺角色层级）
@@ -1373,17 +1380,14 @@ function opsForMessage(mes) {
             const prof = profileOf();
             const cands = [...(prof.allowed || []), ...((prof.required || []).map((x) => (x && x.path) || ''))];
             const rp = repairPatchPaths(ops, cands);
-            if (rp.fixed.length) {
-                stats.pathFixed = (stats.pathFixed || 0) + rp.fixed.length;
-                log('patch-path-repair', rp.fixed.length + ' 条', rp.fixed.slice(0, 4).map((x) => x.from + ' → ' + x.to + '（' + x.how + '）').join(' ｜ '));
-            }
-            if (rp.unresolved.length) {
-                stats.pathUnresolved = (stats.pathUnresolved || 0) + rp.unresolved.length;
-                log('patch-path-unresolved', rp.unresolved.length + ' 条', rp.unresolved.slice(0, 4).map((x) => x.path + '：' + x.reason).join(' ｜ '));
-            }
+            // 0.30.1（P0 卡死）：这里**绝不能打日志** —— opsForMessage 是热路径，log() 会触发 renderStats()
+            // → renderCoverageTable() → neverWrittenFields() → 又回到 opsForMessage，无限递归卡死页面。
+            // 只记计数，由面板读 stats。
+            if (rp.fixed.length) stats.pathFixed = (stats.pathFixed || 0) + rp.fixed.length;
+            if (rp.unresolved.length) stats.pathUnresolved = (stats.pathUnresolved || 0) + rp.unresolved.length;
             return rp.ops;
         }
-    } catch (e) { log('patch-path-repair-failed', '', String((e && e.message) || e)); }
+    } catch (_) { stats.pathRepairFailed = (stats.pathRepairFailed || 0) + 1; }
     return ops;
 }
 /** 把某一楼的补丁应用进变量（A 自动 / B 手动都走这里） */
@@ -1860,6 +1864,7 @@ function renderSchemaLine() {
             : (head + '　' + T('schemaAllCovered'));
     } catch (_) {}
 }
+let renderStatsBusy = false;   // 0.30.1：面板重绘的重入保护
 function renderStats() {
     // 0.18.0（UI 优化）：原来是一长串「v0.17.0 ｜ 修正 0 次 ｜ 补锚点 0 ｜ …」—— 用户反馈看不懂重点。
     // 现在拆成 4 组芯片：常态数据默认中性色，只有出问题（>0 / 失败 / 覆盖不满）才转警告色，一眼能扫。
@@ -1916,21 +1921,27 @@ function renderStats() {
     }
     const logBox = document.getElementById('cc-log');
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
-    renderTrend();
-    // 0.16.4：这两项会**覆写卡自己的状态栏样式**（用户实测每张卡的美化都不同）→ 打开时明确警告
-    const fw = document.getElementById('cc-font-warn');
-    if (fw) {
-        const s2 = settings() || {};
-        const on = (Number(s2.fontZoom) || 1) !== 1 || Number(s2.fontFloor) > 0;
-        fw.style.display = on ? '' : 'none';
-        fw.textContent = on ? T('fontWarn') : '';
-    }
-    renderCoverageTable();
-    renderMvuBox();
-    renderSchemaLine();
-    renderProtocolLine();
-    refreshDepBox(false);
-    renderScan();
+        // 0.30.1（P0 卡死）：重入保护 —— 任何「热路径 → 日志 → 面板重绘」的环都挡在这里
+        if (!renderStatsBusy) {
+            renderStatsBusy = true;
+            try {
+        renderTrend();
+        // 0.16.4：这两项会**覆写卡自己的状态栏样式**（用户实测每张卡的美化都不同）→ 打开时明确警告
+        const fw = document.getElementById('cc-font-warn');
+        if (fw) {
+            const s2 = settings() || {};
+            const on = (Number(s2.fontZoom) || 1) !== 1 || Number(s2.fontFloor) > 0;
+            fw.style.display = on ? '' : 'none';
+            fw.textContent = on ? T('fontWarn') : '';
+        }
+        renderCoverageTable();
+        renderMvuBox();
+        renderSchemaLine();
+        renderProtocolLine();
+        refreshDepBox(false);
+        renderScan();
+            } finally { renderStatsBusy = false; }
+        }
 }
 /** P3 ⑨ 面板里的 MVU 状态块 */
 /* ── 0.4.0：依赖状态 / 变量协议 / 兼容模式 ─────────────────────── */

@@ -1,5 +1,14 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.54 (2026-09-25) — card-compat 0.30.1：修 P0 卡死（热路径日志 → 面板重绘 → 无限递归）
+
+### 修复（P0）
+- 用户实测「卡住了」：0.30.0 在热路径 opsForMessage 里加日志，而 log() 触发 renderStats() → renderCoverageTable() → neverWrittenFields() → 又回到 opsForMessage → 无限递归
+- 三重加固：① 热路径零日志（三处改为只记 stats）② renderStats 重入保护（busy + finally）③ neverWrittenFields 加 5 秒缓存
+- 夹具 75 锁死「opsForMessage 里不许出现 log(」
+
+### 夹具
+- compat **629/0**（新增夹具 75，5 条）
 ## v2.2.53 (2026-09-25) — card-compat 0.30.0：修补写歪的补丁路径 + 按 [InitVar] 补齐缺失键
 
 ### 新增

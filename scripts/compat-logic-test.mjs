@@ -1494,7 +1494,7 @@ console.log('');
 console.log('— 夹具 72：模型从没写过的字段提醒（0.28.0，实测「穿搭一直停在初值」）');
 const nwSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
 check('72 有 neverWrittenFields（对照卡片 required 与最近楼层的补丁路径）', nwSrc.indexOf('function neverWrittenFields') > 0 && nwSrc.indexOf('opsForMessage(m.mes)') > 0);
-check('72 用的是归一化后的路径比较（点号/斜杠/模板包裹都能对上）', /function neverWrittenFields[\s\S]{0,900}normalizePath\(op && op\.path\)/.test(nwSrc));
+check('72 用的是归一化后的路径比较（点号/斜杠/模板包裹都能对上）', /function neverWrittenFields[\s\S]{0,1800}normalizePath\(op && op\.path\)/.test(nwSrc));
 check('72 面板会显示（含字段名列表）', nwSrc.indexOf("T('neverWritten'") > 0 && nwSrc.indexOf('模型至今没写过') > 0);
 check('72 文案中英各一', nwSrc.split("neverWritten: '").length - 1 === 2);
 check('72 提醒里写明「插件不会替你编造」（与 0.3.3 一致）', nwSrc.indexOf('插件不会替你编造') > 0);
@@ -1541,9 +1541,20 @@ const f74bf = backfillInitKeys({ 林婉婷: { 身体状态: { 小穴: { 状态: 
 check('74 补齐缺失键且不覆盖已有值', f74bf.added.indexOf('林婉婷/身体状态/小穴/总次数') >= 0 && f74bf.state['林婉婷']['身体状态']['小穴']['状态'] === '干净', f74bf.added);
 check('74 补齐后那条报错的 delta 能算了（原值 undefined → 0+1）', applyVarOps(f74bf.state, [{ op: 'delta', path: '/林婉婷/身体状态/小穴/总次数', value: 1 }], {}).state['林婉婷']['身体状态']['小穴']['总次数'] === 1);
 const f74src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
-check('74 接线：opsForMessage 走 repairPatchPaths 并记日志', f74src.indexOf('repairPatchPaths(ops, cands)') > 0 && f74src.indexOf("log('patch-path-repair'") > 0);
+check('74 接线：opsForMessage 走 repairPatchPaths，且只记计数不打日志', f74src.indexOf('repairPatchPaths(ops, cands)') > 0 && f74src.indexOf('stats.pathFixed') > 0 && f74src.indexOf("log('patch-path-repair'") < 0);
 check('74 接线：applyFloorVars 按 [InitVar] 补齐', /initVarOfCard\(\)[\s\S]{0,240}backfillInitKeys\(base, iv0\)/.test(f74src));
 check('74 开关 repairPaths 默认开', /repairPaths:\s*true,/.test(f74src));
+
+console.log('');
+console.log('— 夹具 75：热路径禁止打日志 + 重入保护（0.30.1，P0 卡死的回归锁定）');
+const fhSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+const fhOps = fhSrc.slice(fhSrc.indexOf('function opsForMessage'), fhSrc.indexOf('async function applyFloorVars'));
+const fhOpsCode = fhOps.split(String.fromCharCode(10)).filter((l) => !/^\s*\/\//.test(l)).join(String.fromCharCode(10));
+check('75 opsForMessage（热路径）代码里一个 log( 都不许有（注释不算）', fhOps.length > 200 && !/[^a-zA-Z]log\(/.test(fhOpsCode), (fhOpsCode.match(/log\(/g) || []).length);
+check('75 renderStats 有重入保护（busy 标志 + finally 复位）', /let renderStatsBusy = false;/.test(fhSrc) && /renderStatsBusy = true;/.test(fhSrc) && /finally \{ renderStatsBusy = false; \}/.test(fhSrc));
+check('75 neverWrittenFields 有缓存（不再每次重绘都全量解析）', fhSrc.indexOf('neverWrittenCache') > 0 && /neverWrittenCache\.key === cacheKey/.test(fhSrc));
+check('75 路径修补仍然只记计数（统计不丢）', fhSrc.indexOf('stats.pathFixed') > 0 && fhSrc.indexOf('stats.pathUnresolved') > 0);
+check('75 包裹路径还原也只记计数', fhSrc.indexOf('stats.pathWrapped') > 0);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

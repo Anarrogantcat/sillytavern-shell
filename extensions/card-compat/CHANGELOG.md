@@ -1,5 +1,29 @@
 # 更新日志
 
+## [0.30.1] - 2026-09-25
+
+### 修复（P0 卡死，用户实测「卡住了」）：热路径打日志 → 面板重绘 → 又回到热路径，无限递归
+
+**成因（我自己接上的环）**：
+```
+renderStats()                                 ← log() 每次都会调它
+   └─ renderCoverageTable()
+        └─ neverWrittenFields(12)              ← 0.28.0 加的（遍历最近 24 楼）
+             └─ opsForMessage()
+                  └─ log(...)                  ← 0.30.0 在热路径加的日志
+                       └─ renderStats()  ← 回到开头，无限递归 → 页面卡死
+```
+0.21.3 的 `path-wrapper-unwrapped` 日志也在这条路径上（只是触发条件罕见），0.30.0 的 `patch-path-unresolved` 几乎每楼都触发 → 必然卡死。
+
+**三重加固**：
+1. **热路径去日志**：`opsForMessage` 里**一个 `log(` 都不留**（三处全部改为只记 `stats` 计数：`pathWrapped` / `pathFixed` / `pathUnresolved` / `pathRepairFailed`）
+2. **`renderStats()` 重入保护**：`renderStatsBusy` 标志 + `try/finally`，任何「热路径 → 日志 → 重绘」的环都挡在这一层
+3. **`neverWrittenFields` 加缓存**：5 秒 TTL + 按「楼层数 : 末楼长度 : N」做 key，面板重绘不再每次全量解析
+
+### 夹具
+- 新增「夹具 75」（5 条）：`opsForMessage` 里零 `log(` / 重入保护在位 / 缓存在位 / 计数不丢
+- `scripts/compat-logic-test.mjs`：624 → **629** 项
+
 ## [0.30.0] - 2026-09-25
 
 ### 新增：修补写歪的补丁路径 + 按 [InitVar] 补齐缺失键
