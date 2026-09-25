@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -201,7 +201,8 @@ const prof14 = buildProfile({ regex_scripts: [{ scriptName: '美化', findRegex:
 const dec14 = new Set([...(prof14.anchors || []), ...(prof14.dataTags || []), ...(prof14.rawTags || [])]);
 const real14 = '<正文>正文</正文>\n<女主A_名字>雾子</女主A_名字>\n<world_setting>世界书原文…</world_setting>\n<status_block>x</status_block>\n<konatan_planning~>内部思考</konatan_planning~>\n<tucao>吐槽</tucao>\n<options>1. …</options>\n<div>界面</div>';
 const s14 = stripUndeclaredBlocks(real14, { declared: dec14, keep: KEEP_BLOCKS });
-check('删掉 3 个未声明块', s14.removed.length === 3 && ['world_setting', 'status_block', 'konatan_planning~'].every((t) => !s14.text.includes(t)), s14.removed);
+check('删掉 2 个未声明块（world_setting / status_block）', s14.removed.length === 2 && ['world_setting', 'status_block'].every((t) => !s14.text.includes(t)), s14.removed);
+check('0.23.1：konatan_planning~ 属于预设规划块，改为**保留**', s14.text.includes('<konatan_planning~>') && !s14.removed.some((r) => r.tag === 'konatan_planning~'));
 check('本卡声明的标签(含中文)保留', s14.text.includes('<正文>') && s14.text.includes('女主A_名字'), s14.text);
 check('预设块与通用 HTML 保留', s14.text.includes('<tucao>') && s14.text.includes('<options>') && s14.text.includes('<div>'));
 const s14b = stripUndeclaredBlocks('<world_setting>没闭合的一段', { declared: dec14 });
@@ -556,8 +557,8 @@ const echo = '<world_setting>' + NL + '一大段设定原文' + NL + '</world_se
 const fhR29d = st29(echo);
 check('④ 世界书回显仍然被清理（原有功能没被削弱）', fhR29d.removed.length === 1 && fhR29d.removed[0].tag === 'world_setting' && fhR29d.text.indexOf('一大段设定原文') < 0, fhR29d);
 check('⑤ 自创标签仍然被清理', st29('<status_block>x</status_block>').removed.length === 1);
-const halfOpen = '<konatan_planning~>半截块';
-check('⑥ 未声明但没闭合 → 只报告不删', (function () { const r = st29(halfOpen); return r.text === halfOpen && r.unclosed.join(',') === 'konatan_planning~'; })());
+const halfOpen = '<weird_unknown_block>半截块';
+check('⑥ 未声明但没闭合 → 只报告不删', (function () { const r = st29(halfOpen); return r.text === halfOpen && r.unclosed.join(',') === 'weird_unknown_block'; })());
 check('⑦ KEEP_BLOCKS 已含协议内部标签', ['jsonpatch', 'updatevariable'].every((t) => KEEP_BLOCKS.has(t)));
 check('⑧ 保护区逻辑在位', /insideProtected/.test(readFileSync(new URL('../extensions/card-compat/logic.js', import.meta.url), 'utf8')));
 
@@ -1289,6 +1290,61 @@ check('60 写入函数里也有开关兜底（开关关了直接拒绝写）', /
 check('60 状态文字随开关更新（renderStats 里写 cc-master-state）', swSrc.indexOf("getElementById('cc-master-state')") > 0);
 const swCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
 check('60 总开关样式限定在 #cc-panel 内', (swCss.split('.cc-master').length - 1) === (swCss.split('#cc-panel .cc-master').length - 1));
+
+console.log('');
+console.log('— 夹具 61：状态表写回（0.23.0，实测「回复里明明写了新状态却不更新」）');
+const stTable = [
+    '系统:',
+    '  时间: 14:25',
+    '  地点: user家客厅/房间',
+    '林婉婷:',
+    '  穿搭: 黑色露脐短上衣（略显凌乱），高腰牛仔短裤',
+    '  当前在做什么: 完成全套服务的第一次性交',
+    '  关系态度: 35',
+    '  身体状态:',
+    '    嘴巴: 干净... (省略其余相同状态)',
+    'user:',
+    '  累计支出_林婉婷: 2500',
+].join(NL);
+const stMes = '<status_current_variables>' + String.fromCharCode(10) + stTable + String.fromCharCode(10) + '</status_current_variables>' + String.fromCharCode(10) + '<tucao>正文</tucao>';
+const stFound = extractStatusTable(stMes);
+check('61 能抽出状态表块', !!stFound && stFound.tag === 'status_current_variables' && stFound.body.indexOf('穿搭') >= 0);
+check('61 没有状态表时返回 null', extractStatusTable('<tucao>无表</tucao>') === null);
+const stParsed = parseStatusTable(stMes);
+check('61 内置解析器就能解析（不依赖 js-yaml）', stParsed.ok === true && stParsed.issues.length === 0, stParsed.issues);
+check('61 解析出嵌套字段', stParsed.data['林婉婷']['穿搭'].indexOf('黑色露脐短上衣') >= 0 && stParsed.data['系统']['时间'] === '14:25');
+const stPrev = { 系统: { 时间: '14:00', 地点: 'user家门口', 天气: '晴' }, 林婉婷: { 穿搭: '旧穿搭', 心情: '正常', 身体状态: { 嘴巴: { 状态: '干净', 总次数: 0 } } }, 陈慧兰: { 位置: '未登场' } };
+const stMerged = mergeStatusTable(stPrev, stParsed.data);
+check('61 深合并：表里有的被更新', stMerged['系统']['时间'] === '14:25' && stMerged['林婉婷']['穿搭'].indexOf('黑色露脐') >= 0);
+check('61 深合并：表里没有的键保留旧值（应对「省略」行）', stMerged['系统']['天气'] === '晴' && stMerged['林婉婷']['心情'] === '正常' && stMerged['陈慧兰']['位置'] === '未登场');
+check('61 「省略」行没有被当成数据', !('嘴巴' in (stParsed.data['林婉婷']['身体状态'] || {})) || typeof stParsed.data['林婉婷']['身体状态']['嘴巴'] !== 'string');
+const stDiff = statusTableDiff(stPrev, stMerged, 40);
+check('61 变化清单能列出时间/穿搭等', stDiff.length >= 3 && stDiff.some((c) => c.path === '系统/时间') && stDiff.some((c) => c.path === '林婉婷/穿搭'), stDiff.map((c) => c.path));
+check('61 没变化时清单为空', statusTableDiff(stMerged, JSON.parse(JSON.stringify(stMerged))).length === 0);
+const stSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('61 面板有写回按钮与委托', stSrc.indexOf('cc-table-write') > 0 && stSrc.indexOf('applyTableWrite') > 0);
+check('61 写回走快照 + 撤销栈', /function applyTableWrite[\s\S]{0,2200}moneyFixStack\.push/.test(stSrc));
+check('61 开关默认开且可关', /tableWrite:\s*true,/.test(stSrc) && stSrc.indexOf('bind(\'cc-table-write\', \'tableWrite\', true)') > 0);
+check('61 只在「没有 JSONPatch」时才提示', /!\/<JSONPatch/.test(stSrc));
+
+console.log('');
+console.log('— 夹具 62：变量表绝不被清理 + 超大块安全阀（0.23.1，用户实测内容被删）');
+const ktFields = ['林婉婷/穿搭', '林婉婷/心情', '林婉婷/当前在做什么', '系统/时间'];
+const ktTable = '<status_current_variables>' + String.fromCharCode(10) + '系统:' + String.fromCharCode(10) + '  时间: 14:25' + String.fromCharCode(10) + '林婉婷:' + String.fromCharCode(10) + '  穿搭: 黑色皮衣' + String.fromCharCode(10) + '  心情: 亢奋' + String.fromCharCode(10) + '</status_current_variables>';
+const kt1 = stripUndeclaredBlocks(ktTable + String.fromCharCode(10) + '<world_setting>回显的世界书原文</world_setting>', { declared: [], keep: KEEP_BLOCKS, knownFields: ktFields });
+check('62 状态表标签永不清理（用户那块 2202 字就是它）', kt1.text.indexOf('<status_current_variables>') >= 0 && !kt1.removed.some((r) => r.tag === 'status_current_variables'));
+check('62 真正该清的未声明块仍然被清（功能没被削弱）', kt1.removed.some((r) => r.tag === 'world_setting'));
+const kt2 = stripUndeclaredBlocks('<konatan_planning~>计划内容</konatan_planning~>', { declared: [], keep: KEEP_BLOCKS });
+check('62 尾部带 ~ 的保留标签（konatan_planning~）不再被清', kt2.removed.length === 0, kt2.removed);
+const kt3 = stripUndeclaredBlocks('<我的状态表>' + String.fromCharCode(10) + '林婉婷:' + String.fromCharCode(10) + '  穿搭: 长裙' + String.fromCharCode(10) + '  心情: 平静' + String.fromCharCode(10) + '</我的状态表>', { declared: [], keep: KEEP_BLOCKS, knownFields: ktFields });
+check('62 白名单外的标签，只要内容是变量表也不清（内容启发式）', kt3.removed.length === 0 && (kt3.keptAsTable || []).indexOf('我的状态表') >= 0, { removed: kt3.removed, kept: kt3.keptAsTable });
+const ktBigBody = new Array(1501).join('x');
+const kt4 = stripUndeclaredBlocks('<huge_block>' + ktBigBody + '</huge_block>', { declared: [], keep: KEEP_BLOCKS });
+check('62 单块超过 1200 字不自动删，只报告（安全阀）', kt4.removed.length === 0 && kt4.keptTooBig.length === 1, kt4.keptTooBig);
+const kt5 = stripUndeclaredBlocks('<small_block>短内容</small_block>', { declared: [], keep: KEEP_BLOCKS });
+check('62 小块仍照常清理', kt5.removed.length === 1 && kt5.removed[0].tag === 'small_block');
+const kt6 = stripUndeclaredBlocks('<huge_block>' + ktBigBody + '</huge_block>', { declared: [], keep: KEEP_BLOCKS, maxRemoveChars: 5000 });
+check('62 上限可调（放宽后照常清理）', kt6.removed.length === 1);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

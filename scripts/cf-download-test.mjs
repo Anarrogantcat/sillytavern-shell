@@ -24,7 +24,11 @@ const url = 'http://127.0.0.1:' + srv.address().port + '/cloudflared.exe';
 const fetchImpl = (u, o) => fetch(u, o);
 
 eq('缺目录 -> 失败', (await downloadCloudflared({ dir: '' })).ok, false);
+// 显式 fetchImpl:null 必须失败；同时把全局 fetch 藏起来，确保这条断言永不联网
+const savedFetch = globalThis.fetch;
+globalThis.fetch = undefined;
 eq('没有 fetch -> 失败', (await downloadCloudflared({ dir: dir, fetchImpl: null })).ok, false);
+globalThis.fetch = savedFetch;
 
 const badDir = path.join(tmp, 'bad');
 fs.mkdirSync(badDir, { recursive: true });

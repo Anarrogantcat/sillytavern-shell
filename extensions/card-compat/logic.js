@@ -35,16 +35,40 @@ export const KEEP_BLOCKS = new Set([
     // <UpdateVariable>…<JSONPatch>[…]</JSONPatch>…</UpdateVariable> 里的 JSONPatch 往往没被单独声明，
     // 旧实现把整段补丁当「未声明块」删掉 → MVU 变量更新静默失效（91 张卡里 67 张会中招）
     'jsonpatch', 'json_patch', 'updatevariable', 'update_variable', 'variable_update', 'stat_data',
+    // 0.23.1（用户实测的 P0）：**变量表 / 状态表**类标签绝不清理 ——
+    // 模型常把整张新状态写在 <status_current_variables>…</status_current_variables> 里（你截图那块 2202 字），
+    // 卡的状态栏是从 stat_data 读值、不解析这个标签 → 旧逻辑判它「未声明」把整块删掉，
+    // 结果既是内容丢失，也让「按状态表写回」无表可读。
+    'status_current_variable', 'status_current_variables', 'status_variables', 'variables_table',
+    'variable_table', 'status_table', '状态表', '变量表', '变量列表', '状态栏', 'konatan_planning',
 ]);
 
 /**
  * 清理「本卡没声明、也没人渲染」的结构块 —— 实测病灶：
  *   模型把世界书原文回显成 <world_setting>…</world_setting>（整段设定铺在聊天里），
- *   或自创 <status_block>、<konatan_planning~> 之类的块；卡的渲染正则不认它们 → 原文裸露、还顺带把版面撑爆。
+ *   或自创 <status_block> 之类的块；卡的渲染正则不认它们 → 原文裸露、还顺带把版面撑爆。
+ *   **例外**：变量表/状态表（<status_current_variables> 等）与预设规划块（konatan_planning）永不清理（见 KEEP_BLOCKS）。
  * 规则：只处理**成对**块；标签必须不在 declared（卡的 findRegex / 酒馆助手脚本里出现过）也不在 KEEP_BLOCKS；
  *       不成对（只有开标签）→ 只报告不删（避免误伤半截 HTML）。
  * @returns {{text:string, removed:Array<{tag,chars}>, unclosed:string[]}}
  */
+/**
+ * 0.23.1：块内容像不像「变量表」—— 只要正文里出现 ≥2 个本卡要求的字段名就算。
+ * 为什么不用纯白名单：卡千奇百怪，标签名不可穷举；但「变量表里会出现本卡字段名」是结构事实。
+ */
+function looksLikeVariableTable(body, fields) {
+    const s = String(body == null ? '' : body);
+    if (s.length < 24) return false;   // 24 字起（真实变量表都远超这个量级）
+    if (!/^[^\s#:][^\n:]*:\s*$/m.test(s)) return false;   // 至少有一行形如「键:」
+    let hit = 0;
+    for (const f of (fields || [])) {
+        const leaf = String(f == null ? '' : f).split(/[\/.]/).filter(Boolean).pop();
+        if (!leaf || leaf.length < 2) continue;
+        if (s.indexOf(leaf) >= 0) { hit++; if (hit >= 2) return true; }
+    }
+    return false;
+}
+
 export function stripUndeclaredBlocks(text, opts = {}) {
     let out = String(text ?? '');
     const declared = new Set(opts.declared || []);
@@ -52,6 +76,8 @@ export function stripUndeclaredBlocks(text, opts = {}) {
     const removed = [];
     const unclosed = [];
     const keptAsTitle = [];
+    const keptAsTable = [];
+    const keptTooBig = [];   // 0.23.1：单块过大（默认 >1200 字）不自动删，只报告
     // 0.19.0 修复（实测 95 张卡，81 张会误删）：世界书里常写成 <阿库娅>设定…</阿库娅>、<world_setting>…</world_setting>
     // —— 这是**条目名**，不是模型乱写的结构块。旧实现只看「卡的正则声明过没」，于是把这些条目名当未声明块删掉。
     // 现在收两份名单：① 世界书条目的 comment/key（条目名）② 条目标题形态的候选（全大写/下划线风格）。
@@ -84,7 +110,10 @@ export function stripUndeclaredBlocks(text, opts = {}) {
     let spans = protectSpans();
     const insideProtected = (i) => spans.some((s) => i >= s.a && i < s.b);
     for (const name of names) {
+        // 0.23.1：尾部 ~ / ! 归一后再判（模型会写 <konatan_planning~>）
+        const bare = String(name).replace(/[~!]+$/, '');
         if (declared.has(name) || keep.has(name) || keep.has(name.toLowerCase())) continue;
+        if (bare !== name && (declared.has(bare) || keep.has(bare) || keep.has(bare.toLowerCase()))) continue;
         // ① 世界书条目名 → 绝不清理（这是本条修复的核心）
         if (titleKeys.has(name.toLowerCase())) { keptAsTitle.push(name); continue; }
         // ② 世界书里任意条目名与这个标签同名（标签被包进条目名，如 <world_setting> 出现在 comment 里）→ 也不清理
@@ -102,7 +131,25 @@ export function stripUndeclaredBlocks(text, opts = {}) {
         const hits = [];
         let mp;
         while ((mp = pairRe.exec(out))) hits.push({ a: mp.index, b: mp.index + mp[0].length });
-        const removable = hits.filter((h) => !insideProtected(h.a));
+        let removable = hits.filter((h) => !insideProtected(h.a));
+        // 0.23.1：块内容里出现 ≥2 个本卡要求的字段名 → 它就是**变量表**，绝不清（比白名单更稳）
+        if (removable.length && (opts.knownFields || []).length) {
+            const keepTable = removable.filter((h) => looksLikeVariableTable(out.slice(h.a, h.b), opts.knownFields));
+            if (keepTable.length) {
+                keptAsTable.push(name);
+                removable = removable.filter((h) => keepTable.indexOf(h) < 0);
+            }
+        }
+        // 0.23.1 安全阀：**单块过大就不自动删**（实测惨案：2202 字的变量表被整块删掉）——
+        // 宁可留一段没清干净的原文，也不要静默删掉用户可能需要的长内容。
+        if (removable.length) {
+            const bigCap = Number(opts.maxRemoveChars) > 0 ? Number(opts.maxRemoveChars) : 1200;
+            const big = removable.filter((h) => (h.b - h.a) > bigCap);
+            if (big.length) {
+                for (const h of big) keptTooBig.push({ tag: name, chars: h.b - h.a });
+                removable = removable.filter((h) => big.indexOf(h) < 0);
+            }
+        }
         if (removable.length) {
             for (const h of removable) removed.push({ tag: name, chars: h.b - h.a });
             for (const h of removable.slice().sort((x, y) => y.a - x.a)) out = out.slice(0, h.a) + out.slice(h.b);
@@ -112,7 +159,7 @@ export function stripUndeclaredBlocks(text, opts = {}) {
         if (hits.length) continue;                             // 有成对的（哪怕全在保护区里）就不报「只有开标签」
         if (new RegExp('<' + esc + '(?:\\s[^>]*)?>').test(out)) unclosed.push(name);
     }
-    return { text: out, removed, unclosed, keptAsTitle };
+    return { text: out, removed, unclosed, keptAsTitle, keptAsTable, keptTooBig };
 }
 
 /** 正则转义（标签名里可能有 status! 这类元字符） */
@@ -941,6 +988,84 @@ export function extractVarSpec(entries, maxLen = 600) {
     if (!block) return "";
     block = block.replace(/\r/g, "").split("\n").map(l => l.replace(/\s+$/, "")).filter(l => l.trim() !== "").slice(0, 24).join("\n");
     return [...block].length > maxLen ? [...block].slice(0, maxLen).join("") + " …" : block;
+}
+
+/**
+ * 0.23.0：状态表写回 —— 解决「明明回复里写了新状态，数据却不更新」。
+ * 实测病灶：模型把**整张变量表**以 YAML 形式写在 <status_current_variables>…</status_current_variables> 里，
+ * 却**完全没有输出 <UpdateVariable><JSONPatch>** —— MVU 只认补丁，于是那一条回复的状态全部没落地。
+ * 这里把那张表解析出来，与上一楼状态深合并（表里「（省略其余相同状态）」这类行会被忽略、保留旧值），供上层预览后写回。
+ */
+export const STATUS_TABLE_TAGS = ['status_current_variables', 'status_current_variable', 'status_variables', 'stat_data', 'variables_table', '变量表', '状态表'];
+/** 抽出第一个状态表块（成对标签） */
+export function extractStatusTable(text, tags) {
+    const s = String(text == null ? '' : text);
+    const list = (tags && tags.length) ? tags : STATUS_TABLE_TAGS;
+    for (const raw of list) {
+        const name = String(raw || '').trim();
+        if (!name) continue;
+        const e = escTag(name);
+        const m = new RegExp('<' + e + '(?:\\s[^>]*)?>([\\s\\S]*?)</' + e + '\\s*>', 'i').exec(s);
+        if (m) return { tag: name, body: m[1], index: m.index };
+    }
+    return null;
+}
+/** 状态表文本 → 对象（优先 js-yaml，失败退回内置 MVU 子集解析器）；省略行会被剔除 */
+export function parseStatusTable(text, opts) {
+    const o = opts || {};
+    const found = extractStatusTable(text, o.tags);
+    if (!found) return { ok: false, reason: 'no-table', tag: '', data: null, issues: [] };
+    const cleaned = String(found.body || '')
+        .split('\n')
+        .filter((l) => !/^\s*---\s*$/.test(l))
+        .filter((l) => !/省略/.test(l) && !/^\s*[.．。…]{2,}\s*$/.test(l))
+        .join('\n');
+    const issues = [];
+    let data = null;
+    if (o.yamlLib && typeof o.yamlLib.load === 'function') {
+        try { const v = o.yamlLib.load(cleaned); if (v && typeof v === 'object' && !Array.isArray(v)) data = v; }
+        catch (e) { issues.push('yaml: ' + String((e && e.message) || e).slice(0, 80)); }
+    }
+    if (!data) {
+        try { const v = parseInitVar(cleaned); if (v && typeof v === 'object' && Object.keys(v).length) data = v; }
+        catch (e) { issues.push('fallback: ' + String((e && e.message) || e).slice(0, 80)); }
+    }
+    if (!data) return { ok: false, reason: 'parse-failed', tag: found.tag, data: null, issues };
+    return { ok: true, reason: 'ok', tag: found.tag, data, issues, chars: cleaned.length };
+}
+/** 把状态表深合并到旧状态上（表里没写的键保留旧值 —— 应对「（省略其余相同状态）」） */
+export function mergeStatusTable(prev, parsed) {
+    const out = (prev && typeof prev === 'object' && !Array.isArray(prev)) ? JSON.parse(JSON.stringify(prev)) : {};
+    const walk = (dst, src) => {
+        if (!src || typeof src !== 'object' || Array.isArray(src)) return dst;
+        for (const k of Object.keys(src)) {
+            const v = src[k];
+            if (v === undefined) continue;
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+                if (!dst[k] || typeof dst[k] !== 'object' || Array.isArray(dst[k])) dst[k] = {};
+                walk(dst[k], v);
+            } else dst[k] = v;
+        }
+        return dst;
+    };
+    return walk(out, parsed);
+}
+/** 深比较：列出 next 相对 prev 的变化（供面板预览，默认最多 30 条） */
+export function statusTableDiff(prev, next, limit) {
+    const changes = [];
+    const cap = Number(limit) > 0 ? Number(limit) : 30;
+    const walk = (a, b, prefix) => {
+        if (changes.length >= cap) return;
+        for (const k of Object.keys(b || {})) {
+            const p = prefix ? (prefix + '/' + k) : k;
+            const av = a ? a[k] : undefined;
+            const bv = b[k];
+            if (bv && typeof bv === 'object' && !Array.isArray(bv)) { walk(av, bv, p); continue; }
+            if (JSON.stringify(av) !== JSON.stringify(bv)) changes.push({ path: p, from: av, to: bv });
+        }
+    };
+    walk(prev || {}, next || {}, '');
+    return changes;
 }
 
 /**

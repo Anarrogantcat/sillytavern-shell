@@ -7,11 +7,11 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, eventSource, event_types, chat, saveChatDebounced, updateMessageBlock, setExtensionPrompt, extension_prompt_types, extension_prompt_roles, generateQuietPrompt } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../scripts/popup.js';
-import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure, moneyFlowHint, moneyLedgerDrift, moneyCorrection } from './logic.js';
+import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, extractUpdateBlocks, validatePatchBlock, buildVarFixPrompt, extractAllowedPaths, validatePatchPaths, blockPresence, parsePatchOps, normalizePath, repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, coverageByProtocol, scanCardCompatibility, anchoredViewConsuming, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, stateDiffFields, diagnosisReportText, FAIL_CATS, emptyFailStreak, noteFailure, moneyFlowHint, moneyLedgerDrift, moneyCorrection, parseStatusTable, mergeStatusTable, statusTableDiff } from './logic.js';
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.22.0';
+const VERSION = '0.23.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -41,6 +41,7 @@ const DEFAULTS = {
     pathWarn: true,        // 补丁路径白名单校验（只提示，不改写）
     moneyCheck: true,      // 0.22.0：资金流体检 + 账目对账（关掉则完全不计算、不显示）
     moneyFix: true,        // 0.22.0：资金纠正按钮（写入前确认、可撤销）
+    tableWrite: true,      // 0.23.0：本楼没有 JSONPatch 但有状态表时，允许按表写回（写前确认、可撤销）
     mvuVerify: true,       // 用 MVU 的 parseMessage 试解析本轮变量块（能提前发现「块在但解析不了」）
     toastOnFail: true,     // 连续多楼缺变量块 → 弹一次气泡
     profileTtlMs: 60000,   // 角色卡档案缓存时长（P1 ④）
@@ -89,7 +90,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限', fontWarn: '注意：这两项会覆盖「所有角色卡自己的状态栏样式」（每张卡的美化都不同）。只在你确实觉得字太小时才开；开着时状态栏可能与卡的设计不一致。默认关闭。',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', stVersion: '版本', stFixes: '修正', stRerender: '重渲染', stAnchor: '补锚点', stClose: '补闭合', stDataMiss: '数据块缺失', stStale: '未更新告警', stDup: '重复锚点合并', stBlocks: '未声明块清理', stUnclosed: '未闭合块', stForeign: '串卡标签', stCover: '上轮覆盖', stMissing: '缺字段', stMvuFail: 'MVU 失败', stYamlStrict: 'YAML 严格失败', stWrapped: '路径包裹还原', stWrappedTip: '模型把补丁路径写成 ${/a/b} / {{/a/b}} 时会被还原成 /a/b；旧版这种 op 会整条静默跳过（数据不更新的常见原因）', stOk: '正常', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', moneyWarn: '资金流体检', moneyWarnBody: '正文出现 {n} 元，但本楼补丁里没有任何「现金/欠款/钱包/资产/余额」字段（{hint}）—— 钱动了吗？模型可能漏写，可在 MVU 面板补一条 replace。', moneyHintFlow: '只有支出/收入记账', moneyHintNone: '完全没写资金字段', switchTitle: '插件总开关', switchOn: '运行中', switchOff: '已停用（不守护、不修文本、不写变量）', moneyCheck: '资金流体检与对账', moneyFix: '资金纠正按钮（写入前确认、可撤销）', moneyFixOff: '资金纠正已在面板关闭', ledgerWarn: '资金对账不一致', ledgerWarnTail: '（模型打算写的金额与账本实际变化对不上，可能是某楼补丁被跳过、或有别的机制改过变量）', moneyFixOffer: '正文出现 {n} 元，但本楼补丁没写现金字段。按卡的规则（累计支出_X = X 收到的钱）可以补一条：', moneyFixBtn: '给 {who} 加 {delta} 现金（{path}）', moneyUndoBtn: '撤销上次修正', moneyFixNoBase: '拿不到该楼的变量基线，无法安全修正', moneyFixWriteFail: '写回失败（TavernHelper 写入接口不可用？）', moneyUndoNone: '没有可撤销的修正', moneyUndoOk: '已撤销上一次资金修正', moneyFixBadTarget: '目标字段不是数字，拒绝代写（避免把对象/文本写成数字）', moneyFixConfirm: '确认写入这条资金修正？（会立即改该楼变量，可在面板点「撤销上次修正」回退）', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', legendTitle: '符号说明：', stVersion: '版本', stFixes: '修正', stRerender: '重渲染', stAnchor: '补锚点', stClose: '补闭合', stDataMiss: '数据块缺失', stStale: '未更新告警', stDup: '重复锚点合并', stBlocks: '未声明块清理', stUnclosed: '未闭合块', stForeign: '串卡标签', stCover: '上轮覆盖', stMissing: '缺字段', stMvuFail: 'MVU 失败', stYamlStrict: 'YAML 严格失败', stWrapped: '路径包裹还原', stWrappedTip: '模型把补丁路径写成 ${/a/b} / {{/a/b}} 时会被还原成 /a/b；旧版这种 op 会整条静默跳过（数据不更新的常见原因）', stOk: '正常', lgDone: '模型本轮写了这个字段', lgDoneShort: ' 已写', lgMiss: '模型本轮没写（❌ 只说明「没写」，不代表卡不兼容）', lgMissShort: ' 没写', lgSame: '写了，但值和上一楼一样（等于没变）', lgSameShort: ' 值没变', lgStuck: '写了，但存储里的值没变（状态栏不会更新）', lgStuckShort: ' 写了没生效', lgNoBase: '本轮没写，无法核对变量', lgNoBaseShort: ' 没写·无法核对', lgPlaceholder: '值的形态就是「还没内容」（未登场/未描述等），不更新属正常', lgPlaceholderShort: ' 未登场·正常', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', moneyWarn: '资金流体检', moneyWarnBody: '正文出现 {n} 元，但本楼补丁里没有任何「现金/欠款/钱包/资产/余额」字段（{hint}）—— 钱动了吗？模型可能漏写，可在 MVU 面板补一条 replace。', moneyHintFlow: '只有支出/收入记账', moneyHintNone: '完全没写资金字段', switchTitle: '插件总开关', switchOn: '运行中', switchOff: '已停用（不守护、不修文本、不写变量）', moneyCheck: '资金流体检与对账', moneyFix: '资金纠正按钮（写入前确认、可撤销）', moneyFixOff: '资金纠正已在面板关闭', tableSwitch: '按状态表写回（本楼没给补丁时）', tableWarn: '状态表写回', tableWarnBody: '本楼没有 <JSONPatch>，但检测到 <{tag}> 状态表（{n} 处变化）—— 模型只打印了表、没给补丁，所以数据一直不动。可一键按表写回：', tableWriteBtn: '按状态表写回本楼变量', tableWriteConfirm: '将写入 {n} 处变化（写前留快照，可撤销）', tableMore: '还有 {n} 处…', tableWriteOk: '已按状态表写回 {n} 处', tableNoChange: '状态表与当前变量没有差异', tableParseFail: '状态表解析失败', tableWriteOff: '按状态表写回已在面板关闭', tableFromSwipe: '（当前文本里没有表，已从 swipe 备档里找到 —— 旧版误删的内容还在）', ledgerWarn: '资金对账不一致', ledgerWarnTail: '（模型打算写的金额与账本实际变化对不上，可能是某楼补丁被跳过、或有别的机制改过变量）', moneyFixOffer: '正文出现 {n} 元，但本楼补丁没写现金字段。按卡的规则（累计支出_X = X 收到的钱）可以补一条：', moneyFixBtn: '给 {who} 加 {delta} 现金（{path}）', moneyUndoBtn: '撤销上次修正', moneyFixNoBase: '拿不到该楼的变量基线，无法安全修正', moneyFixWriteFail: '写回失败（TavernHelper 写入接口不可用？）', moneyUndoNone: '没有可撤销的修正', moneyUndoOk: '已撤销上一次资金修正', moneyFixBadTarget: '目标字段不是数字，拒绝代写（避免把对象/文本写成数字）', moneyFixConfirm: '确认写入这条资金修正？（会立即改该楼变量，可在面板点「撤销上次修正」回退）', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', covTrendNone: '还没有覆盖度记录（发几条消息后这里会出现趋势条）', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -123,7 +124,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size', fontWarn: 'Note: these two override EVERY card\'s own status-bar styling (each card is themed differently). Only turn them on if the text really is too small; while on, the status bar may disagree with the card design. Default off.',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', stVersion: 'version', stFixes: 'fixes', stRerender: 'rerenders', stAnchor: 'anchors', stClose: 'closures', stDataMiss: 'data missing', stStale: 'stale', stDup: 'dup anchors', stBlocks: 'blocks stripped', stUnclosed: 'unclosed', stForeign: 'foreign tags', stCover: 'coverage', stMissing: 'missing', stMvuFail: 'MVU failures', stYamlStrict: 'YAML strict fails', stWrapped: 'paths unwrapped', stWrappedTip: 'patch paths written as ${/a/b} or {{/a/b}} are unwrapped to /a/b; older builds silently skipped those ops (a common cause of "data not updating")', stOk: 'OK', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', moneyWarn: 'Money-flow check', moneyWarnBody: 'the reply mentions {n} (currency) but this floor patched no cash/debt/wallet field ({hint}) - did the money actually move? The model may have skipped it; add a replace op in the MVU panel.', moneyHintFlow: 'only expense/income counters', moneyHintNone: 'no money field at all', switchTitle: 'Master switch', switchOn: 'running', switchOff: 'disabled (no guarding / text edits / variable writes)', moneyCheck: 'Money-flow check and ledger audit', moneyFix: 'Money fix button (confirm + undo)', moneyFixOff: 'Money fix is switched off in the panel', ledgerWarn: 'Money ledger mismatch', ledgerWarnTail: ' (the amount the model planned to write differs from what the ledger actually recorded - a patch may have been skipped, or something else changed the variables)', moneyFixOffer: 'the reply mentions {n} but this floor patched no cash field. Per the card rule (spend counter = money received) we can add:', moneyFixBtn: 'Give {who} +{delta} cash ({path})', moneyUndoBtn: 'Undo last fix', moneyFixNoBase: 'no variable baseline for this floor; refusing to patch blindly', moneyFixWriteFail: 'write-back failed (TavernHelper write API unavailable?)', moneyUndoNone: 'nothing to undo', moneyUndoOk: 'Last money fix undone', moneyFixBadTarget: 'target field is not a number; refusing to write', moneyFixConfirm: 'Apply this money fix? (writes the floor variables now; use Undo last fix to revert)', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', legendTitle: 'Symbols: ', stVersion: 'version', stFixes: 'fixes', stRerender: 'rerenders', stAnchor: 'anchors', stClose: 'closures', stDataMiss: 'data missing', stStale: 'stale', stDup: 'dup anchors', stBlocks: 'blocks stripped', stUnclosed: 'unclosed', stForeign: 'foreign tags', stCover: 'coverage', stMissing: 'missing', stMvuFail: 'MVU failures', stYamlStrict: 'YAML strict fails', stWrapped: 'paths unwrapped', stWrappedTip: 'patch paths written as ${/a/b} or {{/a/b}} are unwrapped to /a/b; older builds silently skipped those ops (a common cause of "data not updating")', stOk: 'OK', lgDone: 'the model wrote this field in this reply', lgDoneShort: ' written', lgMiss: 'the model did not write it this reply (means only "not written", NOT that the card is broken)', lgMissShort: ' not written', lgSame: 'written, but the value equals the previous reply', lgSameShort: ' unchanged', lgStuck: 'written, but the stored value did not change (status bar will not update)', lgStuckShort: ' written, no effect', lgNoBase: 'not written this reply, cannot verify', lgNoBaseShort: ' unverifiable', lgPlaceholder: 'the value is a placeholder (not on stage / not described), so skipping it is normal', lgPlaceholderShort: ' placeholder, normal', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', moneyWarn: 'Money-flow check', moneyWarnBody: 'the reply mentions {n} (currency) but this floor patched no cash/debt/wallet field ({hint}) - did the money actually move? The model may have skipped it; add a replace op in the MVU panel.', moneyHintFlow: 'only expense/income counters', moneyHintNone: 'no money field at all', switchTitle: 'Master switch', switchOn: 'running', switchOff: 'disabled (no guarding / text edits / variable writes)', moneyCheck: 'Money-flow check and ledger audit', moneyFix: 'Money fix button (confirm + undo)', moneyFixOff: 'Money fix is switched off in the panel', tableSwitch: 'Write back from status table (when no patch)', tableWarn: 'Status-table write-back', tableWarnBody: 'this reply has no <JSONPatch>, but a <{tag}> table was found ({n} changes) - the model printed the table without a patch, so nothing applied. Write it back in one click:', tableWriteBtn: 'Write this reply\'s variables from the table', tableWriteConfirm: 'will write {n} changes (snapshot taken, undoable)', tableMore: '{n} more…', tableWriteOk: 'Wrote {n} changes from the status table', tableNoChange: 'the table matches current variables', tableParseFail: 'failed to parse the status table', tableWriteOff: 'status-table write-back is switched off', tableFromSwipe: '(no table in the current text; found it in the swipe backup - the old build had deleted it)', ledgerWarn: 'Money ledger mismatch', ledgerWarnTail: ' (the amount the model planned to write differs from what the ledger actually recorded - a patch may have been skipped, or something else changed the variables)', moneyFixOffer: 'the reply mentions {n} but this floor patched no cash field. Per the card rule (spend counter = money received) we can add:', moneyFixBtn: 'Give {who} +{delta} cash ({path})', moneyUndoBtn: 'Undo last fix', moneyFixNoBase: 'no variable baseline for this floor; refusing to patch blindly', moneyFixWriteFail: 'write-back failed (TavernHelper write API unavailable?)', moneyUndoNone: 'nothing to undo', moneyUndoOk: 'Last money fix undone', moneyFixBadTarget: 'target field is not a number; refusing to write', moneyFixConfirm: 'Apply this money fix? (writes the floor variables now; use Undo last fix to revert)', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', covTrendNone: 'No coverage history yet (send a few replies)', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -246,6 +247,11 @@ function updatePromptInjection() {
 /** 懒加载扩展自带的 js-yaml（页面里已有 window.jsyaml 就直接用，避免重复加载） */
 const VENDOR_YAML_URL = (() => { try { return new URL('./assets/js-yaml.min.js', import.meta.url).href; } catch (_) { return 'assets/js-yaml.min.js'; } })();
 let yamlLibPromise = null;
+/** 同步取已加载的 js-yaml（没加载就返回 null，交给内置解析器兜底） */
+function yamlLibSync() {
+    try { if (typeof window !== 'undefined' && window.jsyaml && typeof window.jsyaml.load === 'function') return window.jsyaml; } catch (_) {}
+    return null;
+}
 function loadYamlLib() {
     if (!yamlLibPromise) {
         yamlLibPromise = (async () => {
@@ -636,6 +642,36 @@ function renderTrend() {
 // 0.21.0：资金纠正 = 用 ThHelper 的公开写入接口补一条 delta。每次写入前留快照，可在面板撤销。
 const moneyFixStack = [];   // { at, floor, path, delta, before }
 /** 应用一条资金纠正（返回是否写入） */
+/** 按状态表写回：读该楼（或上一楼）状态 → 与表深合并 → 确认后写入（快照 + 可撤销） */
+async function applyTableWrite(messageId) {
+    try {
+        if ((settings() || {}).tableWrite === false) { toast(T('tableWriteOff'), 'info'); return false; }
+        const m = chat && chat[messageId];
+        if (!m || typeof m.mes !== 'string') return false;
+        const tbl0 = parseStatusTable(m.mes, { yamlLib: yamlLibSync() });
+        const tbl = (tbl0 && tbl0.ok) ? tbl0 : (Array.isArray(m.swipes) ? (m.swipes.map((x) => parseStatusTable(String(x || ''), { yamlLib: yamlLibSync() })).find((x) => x && x.ok) || { ok: false }) : { ok: false });
+        if (!tbl.ok) { toast(T('tableParseFail'), 'warning'); return false; }
+        const scope = varScope();
+        const before = readStateOf(messageId, scope.scope) || readStateOf(messageId - 1, scope.scope);
+        if (!before) { toast(T('moneyFixNoBase'), 'warning'); return false; }
+        const merged = mergeStatusTable(before, tbl.data);
+        const diff = statusTableDiff(before, merged, 40);
+        if (!diff.length) { toast(T('tableNoChange'), 'info'); return false; }
+        const head = diff.slice(0, 6).map((c) => escHtml(c.path) + '：' + escHtml(String(c.from).slice(0, 10)) + ' → ' + escHtml(String(c.to).slice(0, 16))).join('<br>');
+        const more = diff.length > 6 ? ('<br>… ' + escHtml(T('tableMore', { n: diff.length - 6 }))) : '';
+        const ok = await callGenericPopup('<b>' + escHtml(T('tableWriteBtn')) + '</b><br>' + escHtml(T('tableWriteConfirm', { n: diff.length })) + '<br><br>' + head + more, POPUP_TYPE.CONFIRM);
+        if (!ok) return false;
+        if (!writeStateOf(messageId, merged, scope.scope)) { toast(T('moneyFixWriteFail'), 'warning'); return false; }
+        moneyFixStack.push({ at: Date.now(), floor: messageId, path: T('tableWriteBtn'), delta: 0, before: before });
+        while (moneyFixStack.length > 20) moneyFixStack.shift();
+        stats.tableWrite = (stats.tableWrite || 0) + 1;
+        log('table-write', '第' + messageId + '层', '按状态表写回 ' + diff.length + ' 处变化（可撤销）');
+        rerenderFloor(messageId);
+        renderStats();
+        toast(T('tableWriteOk', { n: diff.length }), 'success');
+        return true;
+    } catch (e) { log('table-write-failed', '', String((e && e.message) || e)); toast(T('moneyFixWriteFail'), 'warning'); return false; }
+}
 function applyMoneyFix(messageId, path, delta) {
     try {
         if ((settings() || {}).moneyFix === false) { toast(T('moneyFixOff'), 'info'); return false; }
@@ -710,6 +746,21 @@ function buildReport(messageId, opts) {
         const sMoney = settings() || {};
         // 0.20.0：资金账目对账 —— 最近 12 层「模型打算写的金额」vs「账本实际变化」
         try { if (sMoney.moneyCheck !== false) report.ledger = moneyLedgerCheck(messageId); } catch (_) {}
+        // 0.23.0：实测病灶 —— 模型只打印 <status_current_variables> 状态表，完全没给 <JSONPatch>，
+        // 于是 MVU 没有任何补丁可应用 → 回复里明明写着新状态，数据却不更新。这里把表解析出来供一键写回。
+        try {
+            if ((settings() || {}).tableWrite !== false && !/<JSONPatch\b/i.test(m.mes)) {
+                const tbl = parseStatusTable(m.mes, { yamlLib: yamlLibSync() }) ;
+                // 0.23.1：当前文本里没有表时，退回 swipes 备档（旧版误删的内容还在 swipe 里，可据此写回）
+                const tblFb = (tbl && tbl.ok) ? tbl : (Array.isArray(m.swipes) ? m.swipes.map((x) => parseStatusTable(String(x || ''), { yamlLib: yamlLibSync() })).find((x) => x && x.ok) : null);
+                if (tblFb && tblFb.ok) {
+                    const base = mvuVarsOf(messageId) || mvuVarsOf(messageId - 1) || null;
+                    const merged = mergeStatusTable(base || {}, tblFb.data);
+                    const diff = statusTableDiff(base || {}, merged, 40);
+                    report.table = { tag: tblFb.tag, changes: diff.length, sample: diff.slice(0, 6), base: !!base, fromSwipe: !(tbl && tbl.ok) };
+                }
+            }
+        } catch (_) {}
         // 0.21.0：能纠正的才给「应用」按钮（规则明确 = 有 累计支出_X 锚点且能找到对应现金路径）
         try {
             if (report.money && report.money.missingCash) {
@@ -819,7 +870,7 @@ function guardMessage(messageId, { rerender = true } = {}) {
         const declared = new Set([...(profile.anchors || []), ...(profile.dataTags || []), ...(profile.hideTargets || []), ...(profile.strippers || []), ...(profile.rawTags || [])]);
         // 0.19.0：把世界书条目的 comment / keys 作为「条目名」传进去 —— 实测 95 张卡里有 78 张的正文会写成
         // <条目名>设定…</条目名>（模型回显世界书原文），旧实现把这些条目名当「未声明块」删掉，属于误伤。
-        const sr = stripUndeclaredBlocks(base, { declared: declared, keep: KEEP_BLOCKS, bookTitles: profile.bookTitles || [] });
+        const sr = stripUndeclaredBlocks(base, { declared: declared, keep: KEEP_BLOCKS, bookTitles: profile.bookTitles || [], knownFields: (profile.required || []).map((x) => (x && x.path) || '') });
         if (sr.removed.length) {
             base = sr.text;
             changed = true;
@@ -827,6 +878,14 @@ function guardMessage(messageId, { rerender = true } = {}) {
             strippedByFloor.set(messageId, { tags: sr.removed.map((r) => r.tag), chars: sr.removed.reduce((a, b) => a + b.chars, 0) });
             while (strippedByFloor.size > 200) strippedByFloor.delete(strippedByFloor.keys().next().value);
             log('undeclared-block-stripped', sr.removed.map((r) => r.tag).join(','), '共 ' + sr.removed.reduce((a, b) => a + b.chars, 0) + ' 字（本卡未声明，会以原文裸露）');
+        if (sr.keptTooBig && sr.keptTooBig.length) {
+            stats.keptTooBig = (stats.keptTooBig || 0) + sr.keptTooBig.length;
+            log('undeclared-too-big', sr.keptTooBig.map((x) => x.tag + ':' + x.chars + '字').slice(0, 4).join(','), '单块超过 1200 字，**不自动清理**（只报告；怕删掉你要的长内容）');
+        }
+        if (sr.keptAsTable && sr.keptAsTable.length) {
+            stats.keptAsTable = (stats.keptAsTable || 0) + sr.keptAsTable.length;
+            log('undeclared-kept-as-table', sr.keptAsTable.slice(0, 6).join(','), '这些块的内容包含本卡字段名，判定为变量表，**不清理**');
+        }
         if (sr.keptAsTitle && sr.keptAsTitle.length) {
             stats.keptAsTitle = (stats.keptAsTitle || 0) + sr.keptAsTitle.length;
             log('undeclared-kept-as-title', sr.keptAsTitle.slice(0, 6).join(','), '这些是同名世界书条目，按设置**不清理**（避免误删条目名/卡片自己的容器）');
@@ -1460,6 +1519,13 @@ function renderCoverageTable() {
         const bad = rep.ledger.mismatches.slice(0, 4).map((m) => ('#' + m.floor + ' 计划 ' + m.planned + ' / 实际 ' + (m.actual == null ? '?' : m.actual))).join('；');
         parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('ledgerWarn')) + '</b>：' + escHtml(bad) + escHtml(T('ledgerWarnTail')) + '</div>');
     }
+    if (rep.table && rep.table.changes > 0 && rep.table.base) {
+        const tbl = rep.table;
+        const head = tbl.sample.map((c) => escHtml(c.path) + '：' + escHtml(String(c.from).slice(0, 10)) + ' → ' + escHtml(String(c.to).slice(0, 16))).join('<br>');
+        parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('tableWarn')) + '</b>：' + escHtml(T('tableWarnBody', { tag: tbl.tag, n: tbl.changes })) + '<br>' + head + '<br>'
+            + (tbl.fromSwipe ? ('<br>' + escHtml(T('tableFromSwipe'))) : '')
+            + '<button class="menu_button cc-table-write" data-floor="' + escHtml(String(rep.id)) + '">' + escHtml(T('tableWriteBtn')) + '</button></div>');
+    }
     if (rep.money && rep.money.missingCash) {
         const fix = (rep.fix && rep.fix.ok) ? rep.fix : null;
         if (fix) {
@@ -1796,7 +1862,7 @@ function buildSettingsUi() {
         '<div id="cc-trend" class="cc-trend"></div>',
         '<details class="cc-grp" open><summary>① ' + escHtml(T('secGuard')) + '</summary>',
         cb('cc-inject-prompt', 'injectPrompt'), cb('cc-inject', 'injectAnchor'), cb('cc-repair', 'repair'), cb('cc-stale', 'stale'),
-        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-overdraft', 'overdraftGuard'), cb('cc-schema-guard', 'schemaGuard'), cb('cc-var-barcb', 'varBar'), cb('cc-money-check', 'moneyCheck'), cb('cc-money-fix', 'moneyFix'),
+        cb('cc-var-auto', 'varAuto'), cb('cc-var-repair', 'varRepair'), cb('cc-overdraft', 'overdraftGuard'), cb('cc-schema-guard', 'schemaGuard'), cb('cc-var-barcb', 'varBar'), cb('cc-money-check', 'moneyCheck'), cb('cc-money-fix', 'moneyFix'), cb('cc-table-write', 'tableWrite'),
         "<button id=\"cc-check\" class=\"menu_button\">" + escHtml(T('btnCheck')) + "</button>",
         "<button id=\"cc-refresh\" class=\"menu_button\">" + escHtml(T('btnRefresh')) + "</button>",
         "<button id=\"cc-check-front\" class=\"menu_button\">" + escHtml(T('btnCheckFront')) + "</button>",
@@ -1874,6 +1940,7 @@ function buildSettingsUi() {
     bind('cc-var-barcb', 'varBar', true);
     bind('cc-money-check', 'moneyCheck', true);
     bind('cc-money-fix', 'moneyFix', true);
+    bind('cc-table-write', 'tableWrite', true);
     bind('cc-fix-quotes', 'fixSmartQuotes', true);
     bind('cc-bracket-tags', 'fixBracketTags', true);
     bind('cc-quote-scalars', 'quoteScalars', true);
@@ -1906,9 +1973,10 @@ function buildSettingsUi() {
     document.getElementById('cc-diag-copy')?.addEventListener('click', () => { copyDiagnosisReport(); });
     // 0.21.0：资金纠正按钮（事件委托，面板重绘后依然有效）
     document.getElementById('cc-table')?.addEventListener('click', (e) => {
-        const el = e.target && e.target.closest ? e.target.closest('.cc-money-fix, .cc-money-undo') : null;
+        const el = e.target && e.target.closest ? e.target.closest('.cc-money-fix, .cc-money-undo, .cc-table-write') : null;
         if (!el) return;
         if (el.classList.contains('cc-money-undo')) { undoMoneyFix(); return; }
+        if (el.classList.contains('cc-table-write')) { applyTableWrite(Number(el.getAttribute('data-floor'))); return; }
         const path = el.getAttribute('data-path') || '';
         const delta = Number(el.getAttribute('data-delta'));
         const floor = Number(el.getAttribute('data-floor'));
