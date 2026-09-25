@@ -1,6 +1,6 @@
 # sillytavern-shell 项目专属规则（AGENTS.md）
 
-> 生效 2026-09-25（v2）｜ 依据：用户 2026-09-25 两次直接下达
+> 生效 2026-09-25（v3）｜ 依据：用户 2026-09-25 两次直接下达
 > ①「像这种就不出安装包了，后面不要问我了，此项目专属规则，非特殊项不需要询问我，不能动本体，但可以通过插件，仅限于此项目，只需要告诉我你做了什么，为什么这样做，优化这条规则」
 > ②「ST本体，不能动，原因，后面本体更新一切改动都会报废，使用插件扩展，就不会这样，最多更新下扩展进行适配」
 >
@@ -58,14 +58,23 @@
 
 **只有「套壳本体」有变化才可能发包**；只改扩展时**一律不打 tag、不发版**。
 
-判据（提交前自检）：本轮 diff 是否触及套壳本体文件？
+判据（提交前自检）—— 只看"壳的行为"是否变了：
 
 ```
-git diff --name-only <本轮起始>..HEAD | Select-String -Pattern '^(index\.js|preload\.js|shell\.|i18n|webview-preload|prompt|lib/|scripts/|assets/|electron-builder-lite\.json|package\.json|\.github/)'
+git diff --name-only <本轮起始>..HEAD |
+  Select-String -Pattern '^(index\.js|preload\.js|shell\.|i18n|webview-preload|prompt|lib/|assets/|electron-builder-lite\.json|\.github/)' |
+  Select-String -NotMatch '^scripts/(compat-logic|plot-pilot|toolbox|ext-|cf-).*test\.mjs$'
+# 若命中里含 package.json，再看它是否只改了 version（只改版本号不算本体变更）：
+git diff <本轮起始>..HEAD -- package.json | Select-String '^[+-]\s*"version"'
 ```
 
 - **有命中** → 属于套壳本体变更，可以发包（**发不发仍由用户拍板**，不是自动）
-- **无命中**（只有 `extensions/**`、`docs/**`、`CHANGELOG.md`、`README.md`、`AGENTS.md`）→ **不发包、不打 tag**，汇报写明「本轮只改扩展，已通过在线通道生效」
+- **无命中** → **不发包、不打 tag**，汇报写明「本轮只改扩展，已通过在线通道生效」
+
+**两条明确的例外（2026-09-25 实测踩到，属误报）**
+
+1. `package.json` **只改了 `version`** —— 这是升版本号的必要动作，不是壳行为变更
+2. `scripts/*test*.mjs`（扩展夹具：`compat-logic-test` / `plot-pilot-test` / `toolbox-test` / `ext-*-test` / `cf-download-test`）—— 属于扩展的测试，随扩展变更走
 
 理由：扩展有独立在线通道（推 `main` + `extensions/index.json` 即生效）；用户装的是套壳，重发安装包只是多一个内容相同、体量 93 MB 的产物。
 
@@ -148,3 +157,4 @@ git diff --name-only <本轮起始>..HEAD | Select-String -Pattern '^(index\.js|
 |---|---|---|
 | 2026-09-25 | 建立本文件 v1：自主执行边界、发包闸门、特殊项白名单（6 条）、汇报精简、自检与修订机制 | 用户下达「此项目专属规则，非特殊项不需要询问我，不能动本体，但可以通过插件…优化这条规则」 |
 | 2026-09-25 | **v2**：把"本体"明确为 **ST 本体**并提到第零章；新增路径台账（0.1）、ST 禁止清单（0.2）、适配层=扩展（0.3）、套壳自身边界（0.4）；特殊项白名单加"改 ST 本体"；自检由三问改四问 | 用户补充「ST本体，不能动，原因，后面本体更新一切改动都会报废，使用插件扩展，就不会这样，最多更新下扩展进行适配」 |
+| 2026-09-25 | **v3**：发包闸门判据修正 —— 排除「`package.json` 只改 version」与「`scripts/*test*.mjs` 扩展夹具」两类误报，并给出只看壳行为的组合命令 | 0.16.2 提交自检把这两类误判为"壳行为变更"（本应不发包） |
