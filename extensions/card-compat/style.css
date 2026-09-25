@@ -142,5 +142,11 @@
     color: #ffca28;
 }
 #cc-var-bar .ccv-btn.ccv-table:hover { background: rgba(255, 193, 7, .16); }
+/* 0.25.0：发送栏第三个按钮（恢复被误删的块）—— 仍限定在 #cc-var-bar 内 */
+#cc-var-bar .ccv-btn.ccv-restore {
+    border-color: rgba(102, 187, 106, .55);
+    color: #81c784;
+}
+#cc-var-bar .ccv-btn.ccv-restore:hover { background: rgba(102, 187, 106, .16); }
 #cc-var-bar .ccv-btn:hover { background: rgba(0, 229, 255, .16); }
 #cc-var-bar .ccv-btn:active { transform: scale(.97); }

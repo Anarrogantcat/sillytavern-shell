@@ -1397,5 +1397,25 @@ check('65 按钮文案中英各一', (sbSrc.split("varTableBtn: '").length - 1) 
 const sbCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
 check('65 配色限定在 #cc-var-bar 内（不污染消息区）', (sbCss.split('.ccv-table').length - 1) === (sbCss.split('#cc-var-bar .ccv-btn.ccv-table').length - 1));
 
+console.log('');
+console.log('— 夹具 66：从 swipe 恢复被误删的块（0.25.0）');
+const rsSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('66 有硬判据：清理 swipe 原文后正好等于 mes', rsSrc.indexOf('function strippedFromSwipe') > 0 && /String\(r\.text\)\.trim\(\) === cur\.trim\(\)/.test(rsSrc));
+check('66 恢复走确认框', /function restoreFromSwipe[\s\S]{0,1200}callGenericPopup/.test(rsSrc));
+check('66 恢复进撤销栈且 kind=text', /restoreFromSwipe[\s\S]{0,1200}kind: 'text'/.test(rsSrc));
+check('66 撤销认得文本恢复', /function undoMoneyFix[\s\S]{0,500}last\.kind === 'text'/.test(rsSrc));
+check('66 发送栏第三个按钮就位', rsSrc.indexOf("cc-var-restore") > 0);
+check('66 按钮默认隐藏且无命中不显示', rsSrc.indexOf("br.style.display") > 0 && rsSrc.indexOf("function restoreTarget") > 0);
+check('66 恢复文案中英各一', rsSrc.split("restoreBtn: '").length - 1 === 2);
+const rsCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+check('66 恢复按钮配色限定在 #cc-var-bar 内', (rsCss.split('.ccv-restore').length - 1) === (rsCss.split('#cc-var-bar .ccv-btn.ccv-restore').length - 1));
+const junk = '正文' + String.fromCharCode(10) + '<tiny_junk>短</tiny_junk>';
+const junkCleaned = stripUndeclaredBlocks(junk, { declared: [], keep: KEEP_BLOCKS });
+check('66 小块会被砍（判据在这种情况下成立）', junkCleaned.removed.length === 1 && junkCleaned.text.trim() !== junk.trim());
+const bigBody = new Array(1300).join('y');
+const bigRaw = '正文' + String.fromCharCode(10) + '<huge2>' + bigBody + '</huge2>';
+const bigCleaned = stripUndeclaredBlocks(bigRaw, { declared: [], keep: KEEP_BLOCKS });
+check('66 超大块被安全阀保住 → 不会被误判成「被砍过」', bigCleaned.removed.length === 0 && bigCleaned.text.trim() === bigRaw.trim());
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
