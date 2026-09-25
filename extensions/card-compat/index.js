@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.16.0';
+const VERSION = '0.16.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -82,7 +82,7 @@ const STRINGS = {
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
         fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
-        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
+        noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
         covTrend: '覆盖度趋势', mvuNone: '没找到 MVU API（Mvu）——若本卡依赖 MVU，请确认「酒馆助手」与 MVU 脚本已加载。',
         mvuApi: 'MVU API 可用', mvuExtraOn: '检测到 MVU「额外模型解析」已开启：为避免双写，本扩展的自动补变量会让位。',
@@ -116,7 +116,7 @@ const STRINGS = {
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
         fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
-        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
+        noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
         covTrend: 'Coverage trend', mvuNone: 'MVU API (Mvu) not found - if this card depends on MVU, check that TavernHelper and MVU are loaded.',
         mvuApi: 'MVU API available', mvuExtraOn: 'MVU extra model parsing is ON: auto variable fix stands down to avoid double writes.',
@@ -1261,20 +1261,25 @@ function renderCoverageTable() {
         if (!f || seenRow.has(f.path)) continue;
         seenRow.add(f.path);
         const ok = (rep.covered || []).indexOf(f.path) >= 0;
+        // 0.16.1：占位形态（未登场/未描述 …）本来就不该更新 → 中性标记，不打红叉
+        const isPending = !!(st && !st.noBase && (st.pending || []).indexOf(f.path) >= 0);
         let mark = '<span class="cc-muted">—</span>';
+        const doneCell = isPending
+            ? '<span class="cc-muted" title="' + escHtml(T('colPending')) + '">—</span>'
+            : (ok ? '✅' : '❌');
         if (st && !st.noBase) {
             if ((st.advanced || []).indexOf(f.path) >= 0) mark = '✅';
             else if ((st.stuck || []).indexOf(f.path) >= 0) mark = '<span class="cc-warn" title="' + escHtml(T('stateStuck')) + '">⚠️</span>';
             else if ((st.same || []).indexOf(f.path) >= 0) mark = '<span class="cc-muted" title="' + escHtml(T('stateSame')) + '">➖</span>';
             else mark = '<span class="cc-muted" title="' + escHtml(T('stateAbsent')) + '">○</span>';
         }
-        parts.push('<tr><td>' + escHtml(f.path) + '</td><td>' + (ok ? '✅' : '❌') + '</td><td>' + mark + '</td></tr>');
+        parts.push('<tr><td>' + escHtml(f.path) + '</td><td>' + doneCell + '</td><td>' + mark + '</td></tr>');
     }
     parts.push('</tbody></table>');
     if (st) {
         parts.push(st.noBase
             ? ('<div class="cc-line cc-muted">' + escHtml(T('stateNoBase')) + '</div>')
-            : ('<div class="cc-line ' + ((st.stuck || []).length ? 'cc-warn' : 'cc-muted') + '"><b>' + escHtml(T('stateSummary')) + '</b>：' + escHtml(T('stChanged')) + ' ' + (st.advanced || []).length + ' ｜ ' + escHtml(T('stateStuck')) + ' ' + (st.stuck || []).length + ' ｜ ' + escHtml(T('stateAbsent')) + ' ' + (st.absent || []).length + ((st.same || []).length ? (' ｜ ' + escHtml(T('stateSame')) + ' ' + (st.same || []).length) : '') + ((st.stuck || []).length ? escHtml(T('stateStuckWarn')) : '') + '</div>'));
+            : ('<div class="cc-line ' + ((st.stuck || []).length ? 'cc-warn' : 'cc-muted') + '"><b>' + escHtml(T('stateSummary')) + '</b>：' + ((st.pending || []).length ? (escHtml(T('stPending')) + ' ' + st.pending.length + ' ｜ ') : '') + escHtml(T('stChanged')) + ' ' + (st.advanced || []).length + ' ｜ ' + escHtml(T('stateStuck')) + ' ' + (st.stuck || []).length + ' ｜ ' + escHtml(T('stateAbsent')) + ' ' + (st.absent || []).length + ((st.same || []).length ? (' ｜ ' + escHtml(T('stateSame')) + ' ' + (st.same || []).length) : '') + ((st.stuck || []).length ? escHtml(T('stateStuckWarn')) : '') + '</div>'));
     }
     if (rep.written && rep.written.length) parts.push('<div class="cc-line"><b>' + escHtml(T('wrotePaths')) + '</b>：' + escHtml(rep.written.join('、')) + '</div>');
     if (rep.unknownPaths && rep.unknownPaths.length) parts.push('<div class="cc-line cc-warn"><b>' + escHtml(T('unknownPaths')) + '</b>：' + escHtml(rep.unknownPaths.join('、')) + '</div>');

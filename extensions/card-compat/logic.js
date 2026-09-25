@@ -2022,7 +2022,8 @@ export function valueAtPath(state, path) {
  *   advanced = 值真的变了；stuck = 补丁没生效且写了；same = 写了但值本来就一样；absent = 本轮没写
  */
 export function stateDiffFields(cur, prev, required, covered, opts = {}) {
-    const out = { advanced: [], stuck: [], same: [], absent: [], noBase: !cur || typeof cur !== 'object' };
+    const out = { advanced: [], stuck: [], same: [], absent: [], pending: [], noBase: !cur || typeof cur !== 'object' };
+    // pending = 值的形态就是「还没内容」（未登场/未描述/未触发/未设定）→ 不该打红叉，渲染层标成中性
     const floorApplied = opts.applied === true;
     const cov = new Set(covered || []);
     for (const f of (required || [])) {
@@ -2033,6 +2034,8 @@ export function stateDiffFields(cur, prev, required, covered, opts = {}) {
         try { const ex = expandTemplateGroups([path]); if (ex && ex.length) cands = ex; } catch (_) {}
         const defined = cands.some((c) => valueAtPath(cur, c) !== undefined || valueAtPath(prev, c) !== undefined);
         if (out.noBase) { if (!wrote) out.absent.push(path); continue; }
+        // 占位形态优先：角色未登场 / 字段未描述时，本轮不写是正常的（不该在面板打红叉）
+        if (!wrote && isPlaceholderAt(cur, path)) { out.pending.push(path); continue; }
         if (!defined) { if (!wrote) out.absent.push(path); continue; }
         const changed = cands.some((c) => stableStringify(valueAtPath(cur, c)) !== stableStringify(valueAtPath(prev, c)));
         if (changed) out.advanced.push(path);
@@ -2555,4 +2558,35 @@ export function diagnosisActions(input) {
     if ((i.guards || 0) > 0 && !out.length) out.push('本轮正常：守护动作 ' + i.guards + ' 次，没有发现异常');
     if (!out.length) out.push('没有发现明显问题');
     return out;
+}
+
+/* ── 0.16.1：占位值识别 ──────────────────────────────────────────────
+ * 实测（用户那张卡）：规则用 `${林婉婷|陈慧兰}` 模板组同时管两个角色，于是对照表里必然出现
+ * 「陈慧兰.位置 / 外貌.发型 / 心情 …」这些字段 —— 但卡的规则写着「陈慧兰在剧情天数<7 时保持未登场」，
+ * 这些字段本来就不该更新。面板却对它们打红叉 ❌，看起来像报错，其实完全正常。
+ * 这里只做一件事：把「值的形态就表示还没内容」的路径标出来，让渲染层用中性符号代替红叉。
+ */
+/** 只认「明确表示还没内容」的形态；特意**不含 '无'** —— 「当前在做什么: 无」是合法值，误判会掩盖真问题 */
+const PLACEHOLDER_VALUES = ['未登场', '未描述', '未触发', '未设定', '待登场', '待描述'];
+export function isPlaceholderValue(v) {
+    if (v === undefined || v === null) return false;
+    const s = String(v).trim();
+    return PLACEHOLDER_VALUES.indexOf(s) >= 0;
+}
+/** 身体状态这类对象里，只有「状态」子键取到占位值才算占位 */
+const OBJECT_PLACEHOLDER_KEYS = new Set(['状态', 'status']);
+/** 判断某条路径当前值是否属于「还没内容」的占位形态；带模板组会逐个候选试 */
+export function isPlaceholderAt(state, path) {
+    if (!state || typeof state !== 'object') return false;
+    let cands = [String(path || '')];
+    try { const ex = expandTemplateGroups(cands); if (ex && ex.length) cands = ex; } catch (_) {}
+    for (const c of cands) {
+        const v = valueAtPath(state, c);
+        if (v === undefined) continue;
+        if (isPlaceholderValue(v)) return true;
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+            for (const k of Object.keys(v)) if (OBJECT_PLACEHOLDER_KEYS.has(k) && isPlaceholderValue(v[k])) return true;
+        }
+    }
+    return false;
 }

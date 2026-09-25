@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -1075,6 +1075,20 @@ check('㊺ 有无法离线校验约束时如实说明', diagActs.some((a) => /�
 check('㊺ 无问题时给「没有发现明显问题」而不是空数组', diagnosisActions({ verdict: 'ok', profile: {} }).length > 0);
 check('㊺ 纯正文卡只给一条「无需处理」', diagnosisActions({ verdict: 'plain', profile: {} }).length === 1);
 check('㊺ no-rules 时提示去体检看原因分类', diagnosisActions({ verdict: 'no-rules', profile: {} }).some((a) => /兼容性体检/.test(a)));
+
+console.log('');
+console.log('— 夹具 46：占位值识别（未登场/未描述 不该打红叉，0.16.1）');
+check('㊻ 未登场/未描述/未触发/未设定 判为占位', ['未登场', '未描述', '未触发', '未设定'].every((v) => isPlaceholderValue(v) === true));
+check('㊻ 「无」不算占位（当前在做什么: 无 是合法值）', isPlaceholderValue('无') === false);
+check('㊻ 正常值不算占位', isPlaceholderValue('user家客厅') === false && isPlaceholderValue(0) === false);
+const phCur = { 陈慧兰: { 位置: '未登场', 外貌: { 发型: '未描述', 表情: '平静' }, 身体状态: { 嘴巴: { 状态: '干净' } } }, 林婉婷: { 位置: 'user家客厅' } };
+check('㊻ 对象里的「状态」子键取到占位才算（身体状态.嘴巴=干净 → 不是）', isPlaceholderAt(phCur, '陈慧兰.身体状态.嘴巴') === false);
+check('㊻ 路径式判定：位置=未登场 → 占位', isPlaceholderAt(phCur, '陈慧兰.位置') === true);
+check('㊻ 模板组路径也能判定', isPlaceholderAt(phCur, '${林婉婷|陈慧兰}.位置') === true);
+const phReq = [{ path: '陈慧兰.位置' }, { path: '陈慧兰.外貌.发型' }, { path: '陈慧兰.外貌.表情' }, { path: '林婉婷.位置' }];
+const phDiff = stateDiffFields(phCur, JSON.parse(JSON.stringify(phCur)), phReq, []);
+check('㊻ 未登场/未描述 进 pending 而不是 absent', phDiff.pending.length === 2 && phDiff.absent.indexOf('陈慧兰.位置') < 0, phDiff);
+check('㊻ 正常值仍走 absent（真缺才报）', phDiff.absent.indexOf('林婉婷.位置') >= 0, phDiff.absent);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
