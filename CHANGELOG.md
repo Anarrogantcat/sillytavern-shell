@@ -1,5 +1,16 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.28 (2026-09-25) — card-compat 0.16.4：不许覆写卡的状态栏美化（警告 + 样式表白名单夹具）+ AGENTS v5
+
+### 变更（card-compat 0.16.4）
+- 依据你补充的「状态栏有自身美化，每个角色卡还不一样」：字号缩放 / 字号下限这两项会覆写 `#chat .mes_text`（本该默认关闭），**打开时面板顶部显示明确警告**
+- 新增「夹具 49」把样式表**自有容器白名单**锁死：选择器必须落在 `#cc-panel` / `#cc-var-bar` / `.cc-log-doc` / `.cc-log-head`，且不得出现 `.mes` / `.mes_text` / `body` / `html` / `:root`；同夹具还锁住字号默认值中性、警告文案中英各一、不往 `.mes_text` 注入 HTML
+
+### 文档（AGENTS.md v5）
+- 新增 **0.3.2「状态栏的美化属于卡，不许覆写」**：只改数据不改外观；扩展 CSS 必须限定自有容器；覆写型开关默认关闭并加警告；重渲染才是尊重卡的美化
+
+### 夹具
+- compat **449/0**（新增夹具 49，5 条）・deploy 37 ・remote 33 ・manage 49 ・cf 13 ・plot-pilot 67 ・toolbox 16
 ## v2.2.27 (2026-09-25) — card-compat 0.16.3（RFC 6902 语义补齐）+ AGENTS v4（状态栏可动）
 
 ### 修复 / 新增（card-compat 0.16.3）

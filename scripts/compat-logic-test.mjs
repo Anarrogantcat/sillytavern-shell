@@ -1133,5 +1133,18 @@ const rf8 = applyVarOps(rfBase, [{ op: 'copy', from: '/a/nope', path: '/a/x' }])
 check('㊽ copy 源不存在 → 记账跳过', rf8.skipped.length === 1 && rf8.state.a.x === undefined);
 check('㊽ 校验器接受 copy / test（不再报未知 op）', validatePatchBlock('[{"op":"copy","from":"/a","path":"/b"}]').ok === true && validatePatchBlock('[{"op":"test","path":"/a","value":1}]').ok === true);
 
+console.log('');
+console.log('— 夹具 49：扩展样式表不得覆写卡的状态栏美化（0.16.4）');
+const rfCss = readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8');
+const rfCssClean = rfCss.replace(/\/\*[\s\S]*?\*\//g, '');   // 先剥注释，否则注释会跟到选择器前面
+const rfSel = rfCssClean.split('}').map((chunk) => chunk.split('{')[0].trim()).filter((s) => s && !s.startsWith('@') && s !== '');
+const rfBad = rfSel.filter((s) => s.split(',').some((one) => { const q = one.trim(); return q && !/^#cc-panel\b|^#cc-var-bar\b|^\.cc-log-doc\b|^\.cc-log-head\b/.test(q); }));
+check('㊾ 样式表所有选择器都在自有容器内（无全局泄漏）', rfBad.length === 0, rfBad.slice(0, 5));
+check('㊾ 样式表不出现 .mes / .mes_text / body / html / :root', !/\.mes\b|\.mes_text\b|(^|[,{\s])body\b|(^|[,{\s])html\b|:root/.test(rfCssClean));
+const rfSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('㊾ 字号/缩放默认关闭（fontZoom=1、fontFloor=0）', /fontZoom:\s*1,/.test(rfSrc) && /fontFloor:\s*0,/.test(rfSrc));
+check('㊾ 覆写型开关带面板警告文案（fontWarn 中英各一）', (rfSrc.split("fontWarn:").length - 1) === 2);
+check('㊾ 不手写状态栏 DOM（不出现往 .mes_text 注入 HTML 的写法）', !/\.mes_text[^\n]*innerHTML/.test(rfSrc));
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.16.3';
+const VERSION = '0.16.4';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -85,7 +85,7 @@ const STRINGS = {
         toastOnFail: '连续多楼缺变量块时弹气泡提醒', btnVarfix: '立即补当前楼层变量块',
         btnYaml: '严格校验当前楼层', btnMvu: '用 MVU 解析并写回当前层', btnMvuTest: '测试 MVU 连接',
         btnCheck: '自检当前楼层', btnRefresh: '重新读取角色卡数据', panelFont: '面板字号',
-        fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限',
+        fontFollow: '跟随 ST（默认）', fontBig: '大', fontBigger: '更大', zoom: '消息区缩放', floor: '字号下限', fontWarn: '注意：这两项会覆盖「所有角色卡自己的状态栏样式」（每张卡的美化都不同）。只在你确实觉得字太小时才开；开着时状态栏可能与卡的设计不一致。默认关闭。',
         lang: '面板语言', langAuto: '自动', stats: '统计', log: '最近动作',
         noReport: '本轮还没有记录（发一条消息后这里会显示对照表）', noRequired: '本卡没有可解析的必更字段（可能是散文式规则 / 纯前端卡）', colField: '卡要求的字段', colDone: '本轮是否更新', colPending: '值的形态就是「还没内容」（未登场/未描述等），本轮不更新属正常', reportCard: '本卡', reportFloor: '第', colState: '变量是否真的变了', stateSummary: '状态核对', stChanged: '已变', stPending: '未登场/未描述', fail_data: '连续多楼「面板数据缺失」', fail_varfix: '连续多楼「自动补变量失败」', fail_yaml: '连续多楼「结构块 YAML 解析失败」', fail_undeclared: '连续多楼出现「本卡未声明的块」', failTimes: '：已连续 {n} 楼，建议检查模型输出或卡的规则', failRow: '连续失败', undeclaredRow: '本卡未声明的块（已清理）', stateStuck: '写了但没变', stateAbsent: '本轮没写', stateSame: '写的值和原来一样', stateNoBase: '拿不到 stat_data，无法核对变量', stateStuckWarn: '→ 这些字段模型写了却没写进变量，点「补应用变量」可只对这些楼层补应用（幂等，可重复点）',
         wrotePaths: '模型实际写入', unknownPaths: '不在本卡规则里的路径', extraPaths: '组内但未逐条声明的路径',
@@ -119,7 +119,7 @@ const STRINGS = {
         toastOnFail: 'Toast when several replies in a row miss the variable block', btnVarfix: 'Fix variable block for current reply',
         btnYaml: 'Strict-check current reply', btnMvu: 'Parse with MVU and write back', btnMvuTest: 'Test MVU connection',
         btnCheck: 'Self-check current reply', btnRefresh: 'Reload character card data', panelFont: 'Panel font size',
-        fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size',
+        fontFollow: 'Follow ST (default)', fontBig: 'Large', fontBigger: 'Larger', zoom: 'Message zoom', floor: 'Minimum font size', fontWarn: 'Note: these two override EVERY card\'s own status-bar styling (each card is themed differently). Only turn them on if the text really is too small; while on, the status bar may disagree with the card design. Default off.',
         lang: 'Panel language', langAuto: 'Auto', stats: 'Stats', log: 'Recent actions',
         noReport: 'Nothing recorded yet (send a message to see the comparison table)', noRequired: 'This card has no parseable required fields (prose rules or front-end only)', colField: 'Required field', colDone: 'Updated this reply', colPending: 'value is a placeholder (not on stage / not described), so skipping it is expected', reportCard: 'Card', reportFloor: 'floor', colState: 'Variable actually changed', stateSummary: 'State check', stChanged: 'changed', stPending: 'placeholder (not on stage/described)', fail_data: 'panel data missing for several floors', fail_varfix: 'auto variable fix kept failing', fail_yaml: 'block YAML kept failing to parse', fail_undeclared: 'blocks this card never declared, again and again', failTimes: ': {n} floors in a row - check model output or the card rules', failRow: 'Failure streaks', undeclaredRow: 'Blocks this card never declared (stripped)', stateStuck: 'written but unchanged', stateAbsent: 'not written', stateSame: 'written value is unchanged', stateNoBase: 'stat_data unavailable, cannot verify', stateStuckWarn: ' - the model wrote these but they never reached the variables; click Apply vars to fix those floors (idempotent)',
         wrotePaths: 'Paths written by the model', unknownPaths: 'Paths outside this card rules', extraPaths: 'Paths under a declared group',
@@ -1362,6 +1362,14 @@ function renderStats() {
     if (logBox) logBox.textContent = recent.map((r) => r.t + ' ' + r.type + ' ' + r.tag + (r.extra ? ' — ' + r.extra : '')).join(String.fromCharCode(10));
     const trendBox = document.getElementById('cc-trend');
     if (trendBox) trendBox.textContent = covHistory.length ? (T('covTrend') + '：' + coverageTrendText()) : '';
+    // 0.16.4：这两项会**覆写卡自己的状态栏样式**（用户实测每张卡的美化都不同）→ 打开时明确警告
+    const fw = document.getElementById('cc-font-warn');
+    if (fw) {
+        const s2 = settings() || {};
+        const on = (Number(s2.fontZoom) || 1) !== 1 || Number(s2.fontFloor) > 0;
+        fw.style.display = on ? '' : 'none';
+        fw.textContent = on ? T('fontWarn') : '';
+    }
     renderCoverageTable();
     renderMvuBox();
     renderSchemaLine();
@@ -1627,6 +1635,7 @@ function buildSettingsUi() {
         '<label>' + escHtml(T('lang')) + '</label><select id="cc-lang"><option value="auto">' + escHtml(T('langAuto')) + '</option><option value="zh">中文</option><option value="en">English</option></select>',
         '<label>' + escHtml(T('zoom')) + ' <span id="cc-zoom-val"></span></label><input type="range" id="cc-zoom" min="0.9" max="1.6" step="0.05">',
         '<label>' + escHtml(T('floor')) + ' <span id="cc-floor-val"></span></label><input type="range" id="cc-floor" min="0" max="16" step="1">',
+        '<div id="cc-font-warn" class="cc-line cc-warn" style="display:none"></div>',
         '<details><summary>' + escHtml(T('log')) + '</summary><pre id="cc-log" class="cc-log"></pre></details>',
         '</details>',
 '<details class="cc-grp"><summary>⑥ ' + escHtml(T('secScan')) + '</summary>',
