@@ -1600,5 +1600,25 @@ const f77src = readFileSync(new URL('../extensions/card-compat/index.js', import
 check('77 接线：新增「MVU 没吃下本楼补丁」判定', f77src.indexOf('function latestFloorPatchMissed') > 0 && f77src.indexOf('stats.mvuMissed') > 0);
 check('77 接线：自动兜底条件允许「MVU 在场但没吃下」时补写', f77src.indexOf('(!mvuOn || missed)') > 0 && f77src.indexOf("log('mvu-missed-fill'") > 0);
 
+console.log('');
+console.log('— 夹具 78：卡的正则 replaceString 是整份 HTML 文档时，HTML 结构标签不得进 rawTags / 提醒（0.33.0，实测「前端状态栏不更新」）');
+const momRepl = '<!DOCTYPE html>' + String.fromCharCode(10) + '<html lang="zh-CN"><head><script>(function(){var raw = `$1`; fetch("https://example.invalid/M1.1.html?t=" + Date.now());})();</script></head><body><div id="status-data"></div></body></html>';
+const momProf = buildProfile({ regex_scripts: [
+    { scriptName: '三年的水/状态栏', findRegex: '<StatusBar>([\\s\\S]*?)<\\/StatusBar>', placement: [2], replaceString: momRepl },
+    { scriptName: '三年的水/选项', findRegex: '/<options>((?:(?!<options>).)*?)<\\/options>/gs', placement: [2], replaceString: momRepl },
+    { scriptName: 'AI隐藏状态栏', findRegex: '<StatusBar>[\\s\\S]*?<\\/StatusBar>', placement: [2], replaceString: '' },
+]});
+const momJunk = (momProf.rawTags || []).filter((t) => ['html', 'head', 'body', 'div', 'script', 'style', 'template'].indexOf(String(t).toLowerCase()) >= 0);
+check('78 rawTags 里不再有 html/head/body/div/script', momJunk.length === 0, momJunk);
+check('78 真标签 StatusBar 仍保留（该提醒的还是要提醒）', (momProf.rawTags || []).indexOf('StatusBar') >= 0, momProf.rawTags);
+const momRmd = buildTailReminder(momProf, {});
+check('78 生成前提醒里不再出现 <head>/<body>/<html>', momRmd.indexOf('<head>') < 0 && momRmd.indexOf('<body>') < 0 && momRmd.indexOf('<html>') < 0, momRmd);
+check('78 提醒里仍然点名 <StatusBar>', momRmd.indexOf('<StatusBar>') >= 0, momRmd);
+check('78 通用 HTML 全部进 KEEP_BLOCKS（不会被当未声明块删掉）', ['html', 'head', 'body', 'div', 'script', 'style', 'title', 'meta'].every((t) => KEEP_BLOCKS.has(t)));
+const momStrip = stripUndeclaredBlocks('<html><head><title>x</title></head><body>正文</body></html>', { declared: new Set(momProf.rawTags || []), keep: KEEP_BLOCKS, bookTitles: [], knownFields: [] });
+check('78 <html>…</html> 包裹不再被删', String(momStrip.text).indexOf('<html>') >= 0 && (momStrip.removed || []).length === 0, momStrip.removed);
+const momSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('78 版本号已升 0.33.0（const VERSION 一处）', momSrc.indexOf("const VERSION = '0.33.0'") > 0);
+
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

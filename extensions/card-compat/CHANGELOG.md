@@ -2,6 +2,30 @@
 
 # 更新日志
 
+## [0.33.0] - 2026-09-25
+
+### 修复：把「通用 HTML 标签」当成本卡的格式标签 → 生成前提醒教模型输出 `<head>`/`<body>`/`<html>` → 卡的前端状态栏被搞坏
+
+**用户实测（角色卡「妈妈！请你怀孕！」，唯一聊天 32 楼）**：从 #25 楼起模型开始输出 `<head>`/`<body>`（#27、#31 还带 `<html>`），到 #31 楼状态栏内容彻底跑偏成非本卡格式（`Current Event: … Location: … Time: … Status`），而卡的正则把 `<StatusBar>` 交给外部模板解析固定字段（`日期和时间`/`地点`/`用户列表`）→ 前端状态栏不再更新。
+
+**根因（本扩展自己造成的）**：该卡的正则 `replaceString` 是**整份 HTML 文档**（`<!DOCTYPE html><html><head><script>…</script></head><body>…`），
+`broadTagsOf()` 从里面抽出了 `html`/`head`/`body`（`div`/`script`/`options` 已被 KEEP_BLOCKS 挡住 → 漏网 4 个），
+`buildTailReminder()` 于是每轮往 prompt 里注入：
+
+```
+本卡前端要求正文里包含这些标签（标签名与顺序以本卡世界书为准）：<head>、<body>、<StatusBar>、<html>
+```
+
+模型照做 → 正文被 HTML 包裹 → 卡的模板解析失败。**实测楼号与现象一一对应**（#3–#23 无 `<html>/<head>/<body>`、状态栏规范；#25/#27/#29/#31 出现 HTML 包裹，其中 #31 状态栏格式跑偏）。
+
+**修复（两处，治「不被当标签」+「不被当未声明块」）**：
+1. `buildProfile()` 的 `rawTags` 增加 `HTML_TAGS` 过滤 —— 卡的界面代码里的 HTML 结构标签不再算「本卡声明的格式标签」（`HTML_TAGS` 此前只用在 `tagsOfLoose()`，这条路漏了）。
+2. `KEEP_BLOCKS` 并进全部 `HTML_TAGS` —— 此前只列了 `div/script/span/p` 等一部分，`html/head/body/title/meta` 漏网；现在这些块既不会被「未声明块清理」删掉，也不进「格式标签缺」报表。
+
+**修复后同一张卡**：`rawTags = [StatusBar]`（`options` 被 KEEP 过滤），提醒变成「本卡前端要求正文里包含这些标签：<StatusBar>」，不再出现 `<head>`/`<body>`/`<html>`。
+
+**回归锁定**：夹具 78（5 条：rawTags 无 HTML 标签 / StatusBar 仍在 / 提醒无 head-body-html / 提醒保留 StatusBar / KEEP 收编全部 HTML + `<html>…</html>` 不被删）。
+
 ## [0.32.0] - 2026-09-25
 
 ### 修复：模型改用「英文/拼音键名 + 模板包裹值」写补丁 → 整楼被 MVU 拒收（状态栏整楼不动）

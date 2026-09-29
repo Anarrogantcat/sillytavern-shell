@@ -41,6 +41,10 @@ export const KEEP_BLOCKS = new Set([
     // 结果既是内容丢失，也让「按状态表写回」无表可读。
     'status_current_variable', 'status_current_variables', 'status_variables', 'variables_table',
     'variable_table', 'status_table', '状态表', '变量表', '变量列表', '状态栏', 'konatan_planning',
+    // 0.33.0：把**全部**通用 HTML 标签并进来（此前只列了 div/script/span/p 等一部分，html/head/body/title/meta 漏网）——
+    // 卡的渲染正则 replaceString 里的整份 HTML 文档，会让模型照抄出 <html>/<head>/<body> 包裹；
+    // 这些块既不该被「未声明块清理」删掉，也不该进「格式标签缺」报表。
+    ...HTML_TAGS,
 ]);
 
 /**
@@ -745,10 +749,16 @@ export function buildProfile(ext) {
         helperCount: helpers.length,
         helperRenders: helpers.length > 0 && /状态栏|StatusPlaceHolder|StatusBar/i.test(helperText),
         // 卡自己声明的「格式标签」（含中文，如 <正文>/<女主A_名字>）：来自正则的 findRegex/replaceString 与酒馆助手脚本
+        // 0.33.0（用户实测「前端状态栏不更新」）：**通用 HTML 标签必须排除** ——
+        // 病灶：卡的渲染正则 replaceString 常是**整份 HTML 文档**（<!DOCTYPE html><html><head><script>…）,
+        // broadTagsOf 会把 <html>/<head>/<body>/<div>/<script> 当成「本卡声明的格式标签」→
+        // 生成前提醒于是往 prompt 里塞「本卡前端要求正文里包含这些标签：<head>、<body>、<html>」→
+        // 模型真的开始输出 <html>/<head>/<body> 包裹（实测 #25/#27/#29/#31 楼），把卡的状态栏模板搞坏。
+        // HTML_TAGS 只用于 tagsOfLoose，此前漏在 broadTagsOf 这条路上。
         rawTags: [...new Set([
             ...broadTagsOf((ext?.regex_scripts || []).map((s) => normalizeRegexForTags(s.findRegex) + ' ' + String(s.replaceString || '')).join('\n')),
             ...broadTagsOf(helperText),
-        ])],
+        ])].filter((t) => !HTML_TAGS.has(String(t).toLowerCase())),
         // 只有剥除脚本盯着、没有任何渲染脚本的标签 → 不补（补了反而多出裸标签）
         injectableAnchors: [...anchors],
         // 0.6.0：卡自带的前端界面（动态状态栏 / 开局配置面板）
