@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.31.0';
+const VERSION = '0.32.0';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -243,6 +243,31 @@ function renderHealth() {
         } catch (e) { out.push('6) DOM 检查失败: ' + String((e && e.message) || e)); }
     } catch (e) { out.push('体检失败: ' + String((e && e.message) || e)); }
     return out.join(String.fromCharCode(10));
+}
+/**
+ * 0.32.0（实测）：MVU 在场时本扩展一贯让位；但 **MVU 会整楼拒收**某些补丁
+ * （实测 #3：模型用了英文键名 system/lin_wanting，值还被模板符号包裹 → MVU 全部丢弃，状态栏整楼不动）。
+ * 这里只做一个判定：拿「上一楼存储 + 本楼补丁」试算，与「本楼实际存储」比对，
+ * 半数以上（且 ≥2 处）没落地 → 认定 MVU 没吃下 → 允许本扩展补写。
+ */
+function latestFloorPatchMissed() {
+    try {
+        if (!chat || !chat.length) return false;
+        let i = chat.length - 1;
+        while (i >= 0 && (!chat[i] || chat[i].is_user || typeof chat[i].mes !== 'string' || !chat[i].mes)) i--;
+        if (i < 0) return false;
+        const ops = opsForMessage(chat[i].mes);
+        if (ops.length < 2) return false;
+        const sc = varScope();
+        const prev = readStateOf(i - 1, sc.scope);
+        const cur = readStateOf(i, sc.scope);
+        if (!prev || !cur) return false;
+        const trial = applyVarOps(prev, ops, {});
+        const diff = statusTableDiff(cur, trial.state, 40);
+        const need = Math.max(2, Math.round(ops.length * 0.5));
+        if (diff.length >= need) { stats.mvuMissed = (stats.mvuMissed || 0) + 1; return true; }
+        return false;
+    } catch (e) { return false; }
 }
 function profileOf() {
     try {
@@ -2396,7 +2421,16 @@ function exposeApi() {
     // ② 流式：生成结束（hideStopButton 触发），此时 messageId = chat.length-1
     eventSource.on(event_types.GENERATION_ENDED, () => { try { const id = chat.length - 1; if (lastSeen.get(id) !== chat[id]?.mes) guardMessage(id); } catch (e) { console.error(e); } try { const id = chat.length - 1; setTimeout(() => { try { checkPatchApplied(id, { notify: false }); } catch (_) {} }, 2500); setTimeout(() => { try { checkPatchApplied(id); } catch (_) {} }, 7000); } catch (_) {}
     // 0.10.0：MVU 不在（或被关）时自动兜底 —— 自己把本轮补丁应用进变量，状态栏才会动
-    try { if (settings().varAuto !== false && !mvuActive() && !settings().compatMode) { setTimeout(() => { try { recomputeAllFloors({ silent: true, toast: false, auto: true }); } catch (_) {} }, 1800); } } catch (_) {} });
+    try {
+        const mvuOn = mvuActive();
+        // 0.32.0：「MVU 在场就让位」保留，但补一条例外 ——
+        // 若「上一楼存储 + 本楼补丁」试算与本楼实际存储差异过半，说明 MVU 没吃下这一楼（整楼不更新），此时本扩展补写。
+        const missed = mvuOn ? latestFloorPatchMissed() : false;
+        if (settings().varAuto !== false && (!mvuOn || missed) && !settings().compatMode) {
+            if (missed) log('mvu-missed-fill', '第' + (chat.length - 1) + '层', 'MVU 没吃下本楼补丁（试算与实际存储差异过半）→ 本扩展补写');
+            setTimeout(() => { try { recomputeAllFloors({ silent: true, toast: false, auto: true }); } catch (_) {} }, 1800);
+        }
+    } catch (_) {} });
     // ③ 渲染后兜底校验
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (id) => { try { watchCard(); } catch (_) {} try { verifyRendered(id); } catch (_) {} try { setTimeout(() => { try { checkFrontBlocks(id); } catch (_) {} }, 1500); } catch (_) {} });
     // 0.10.0：变量兜底按钮条（照剧情推进插件：注入 #send_form + 事件/MutationObserver 重注入）

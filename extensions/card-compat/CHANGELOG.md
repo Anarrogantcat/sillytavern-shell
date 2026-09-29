@@ -1,5 +1,48 @@
 # 更新日志
 
+# 更新日志
+
+## [0.32.0] - 2026-09-25
+
+### 修复：模型改用「英文/拼音键名 + 模板包裹值」写补丁 → 整楼被 MVU 拒收（状态栏整楼不动）
+
+**实测（用户最新聊天 #3，补丁 20 条）**：
+
+```
+{"op":"replace","path":"/system/time","value":"${16:00}"}
+{"op":"replace","path":"/lin_wanting/location","value":"${user家客厅}"}
+{"op":"replace","path":"/lin_wanting/body_status/cunt/count_total","value":"${1}"}
+{"op":"replace","path":"/interaction_count/lin_wanting_user","value":"${1}"}
+{"op":"replace","path":"/user/total_expenditure_lin_wanting","value":"${2500}"}
+```
+
+**两个毛病**：① 键名被写成英文/拼音（system / lin_wanting / body_status / cunt…）→ MVU 的 stat_data 是中文键，**整楼全部落空**；
+② **值**也被模板符号包裹（${16:00}、${1}）→ 时间被污染成字符串、${1} 不是数字 → delta 直接失效。
+
+**修复（只译键名与剥包裹，绝不编造值）**：
+
+- `KEY_ALIAS` 词表（60+ 条 MVU 常见词汇）：system→系统、time→时间、location→位置、appearance→外貌、hair→发型、outfit→穿搭、body_status→身体状态、cunt→小穴、count_total→总次数、count_current→当次次数…
+- `chineseNamesFromCandidates()` + `resolveNameInSegment()`：**用拼音姓氏**把段内人名认回中文（lin_wanting → 林婉婷，姓氏唯一才认）
+- 段内模式：`<name>_user` → `<中文名>与user`；`total_expenditure_<name>` → `累计支出_<中文名>`
+- 顶层兜底：`resolveTopAlias()` 拼音姓氏优先，其次**结构打分**（译后子键与各顶层键的子键重合度，唯一最高且 ≥2 才认）
+- `unwrapValueWrapper()`：值被模板符号包裹时剥掉；**纯数字还原成 number**（delta 才能算）
+- 全部改写都**必须命中卡片字段表**才生效，否则原样保留并记 `patch-path-unresolved`
+
+**实测（用用户那 20 条真实补丁回放）**：修前 applied=14 / skipped=6 且时间被写成 ${16:00}；
+修后 **applied=20 / skipped=0**：时间=16:00、现金=0、欠款=500、嘴巴与小穴「总次数=1 当次次数=1」、互动=1、累计支出=2500。
+
+### 顺带：MVU 在场也让位，但**没吃下的楼层要补**
+
+- 新增 `latestFloorPatchMissed()`：拿「上一楼存储 + 本楼补丁」试算，与本楼实际存储比对，**半数以上（且 ≥2 处）没落地**即认定 MVU 没吃下
+- 自动兜底条件由「MVU 不在才兜底」改为「**MVU 不在，或 MVU 在场但没吃下本楼**」；触发时记日志 `mvu-missed-fill`
+- 这样「模型写歪 → MVU 整楼拒收 → 状态栏不动」会被自动补上，不必每次手点「补应用变量」
+
+### 夹具
+
+- 新增「夹具 77」（17 条）：词表译键 / 拼音人名 / 段内人名 / 顶层识别与不硬认 / 值剥包裹与数字还原 / 端到端 5 条全落地 / 接线
+- 两条旧接线夹具的距离窗口放宽（新增函数把代码推远了，属误报）
+- `scripts/compat-logic-test.mjs`：636 → **651** 项
+
 ## [0.31.0] - 2026-09-25
 
 ### 修复（P0 回归，用户实测「数据完全不更新 / 越更新越烂」）：恢复「MVU 在场就让位」

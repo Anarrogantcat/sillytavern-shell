@@ -1,5 +1,20 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.2.56 (2026-09-25) — card-compat 0.32.0：修「英文/拼音键名 + 模板包裹值」导致整楼状态栏不动
+
+### 修复
+- 实测：模型把补丁写成 /system/time、/lin_wanting/body_status/cunt/count_total，值写成 ${16:00} / ${1} → MVU 整楼拒收，状态栏整楼不动
+- 新增键名词表（60+ 条）+ 拼音姓氏人名识别（lin_wanting→林婉婷）+ 段内人名模式 + 顶层结构打分兜底
+- 新增 unwrapValueWrapper：剥模板包裹，纯数字还原成 number（delta 才能算）
+- 全部改写必须命中卡片字段表，否则原样保留并记 patch-path-unresolved
+- 实测同样 20 条补丁：修前 applied=14/skipped=6；修后 **applied=20/skipped=0**
+
+### 顺带
+- latestFloorPatchMissed()：MVU 在场也让位的例外 —— 若试算与实际存储差异过半，认定 MVU 没吃下 → 本扩展自动补写（日志 mvu-missed-fill）
+
+### 夹具
+- compat **651/0**（新增夹具 77，17 条）
+
 ## v2.2.55 (2026-09-25) — card-compat 0.31.0：恢复「MVU 在场就让位」（修「数据完全不更新」）
 
 ### 修复（P0 回归）

@@ -1,6 +1,6 @@
 // scripts/compat-logic-test.mjs — card-compat 逻辑层夹具断言（不依赖 ST/Electron）
 import { readFileSync } from 'node:fs';
-import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape, isNonYamlTag, repairPatchPaths, backfillInitKeys } from '../extensions/card-compat/logic.js';
+import { repairYamlStructure, renderChangelogMarkdown, detectVariableProtocol, extractSetPaths, coverageByProtocol, scanCardCompatibility, normalizeRegexForTags, tagsOfLoose, detectFrontEndViews, anchoredViewConsuming, regexFromFindRegex, classifyNoRules, repairBracketTags, detectDisabledViews, viewNameCore, longestCommonRun, frontBlockVerdict, pickReminderFields, patchApplyVerdict, stableStringify, parseInitVar, applyVarOps, parseSetCommands, schemaHints, replayFloorStates, planFloorFixes, detectVarScope, pathMatches, stateDiffFields, valueAtPath, negativeFields, fillSchemaDefaults, diagnosisReportText, diagnosisActions, isPlaceholderValue, isPlaceholderAt, emptyFailStreak, noteFailure, FAIL_CATS, moneyFlowHint, moneyAmountOf, moneyPathsIn, moneyLedgerDrift, moneyCorrection , unwrapPathWrapper, extractStatusTable, parseStatusTable, mergeStatusTable, statusTableDiff, coerceToShape, isNonYamlTag, repairPatchPaths, backfillInitKeys, translateAliasPath, unwrapValueWrapper, resolveTopAlias, chineseNamesFromCandidates } from '../extensions/card-compat/logic.js';
 import { buildProfile, guardText, findUnclosed, freshnessFields, isStale, normalizeMalformedClosings, detectForeignTags, buildTailReminder, dedupeSelfClosingAnchors, extractVarSpec, extractRequiredFields, patchCoverage, repairSmartQuotes, guardBlockYaml, strictYamlCheck, stripUndeclaredBlocks, KEEP_BLOCKS, extractUpdateBlock, validatePatchBlock, buildVarFixPrompt, normalizePath, expandTemplateGroups, parsePatchOps, extractUpdateBlocks, extractAllowedPaths, validatePatchPaths, blockPresence } from '../extensions/card-compat/logic.js';
 
 let pass = 0, fail = 0;
@@ -671,7 +671,7 @@ const rv4 = applyVarOps({ a: { b: 1 } }, [{ op: 'move', from: '/a/b', path: '/a/
 check('④ move 搬移', rv4.state['a']['c'] === 1 && rv4.state['a']['b'] === undefined, rv4.state);
 const scc = parseSetCommands(['_.set("角色.金钱", 100)', '_.add(角色.体力, -10)', '_.assign(角色, 姓名, "小明")', '_.remove(角色.临时)'].join(NL));
 check('⑤ 命令式 _.set/_.add/_.assign/_.remove 解析', scc.length === 4 && scc[0].op === 'replace' && scc[0].value === 100 && scc[1].op === 'delta' && scc[1].value === -10 && scc[2].path === '角色.姓名' && scc[3].op === 'remove', scc);
-check('⑥ 扩展接线（引擎/按钮条/自动兜底/开关/事件重注入）', idxSrc.indexOf('function applyFloorVars') > 0 && idxSrc.indexOf('function ensureVarBar') > 0 && idxSrc.indexOf('cc-var-bar') > 0 && idxSrc.indexOf('function mvuActive') > 0 && idxSrc.indexOf('varAuto') > 0 && idxSrc.indexOf('varBar') > 0 && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && /MutationObserver[\s\S]{0,300}cc-var-bar/.test(idxSrc));
+check('⑥ 扩展接线（引擎/按钮条/自动兜底/开关/事件重注入）', idxSrc.indexOf('function applyFloorVars') > 0 && idxSrc.indexOf('function ensureVarBar') > 0 && idxSrc.indexOf('cc-var-bar') > 0 && idxSrc.indexOf('function mvuActive') > 0 && idxSrc.indexOf('varAuto') > 0 && idxSrc.indexOf('varBar') > 0 && /GENERATION_ENDED[\s\S]{0,4000}recomputeAllFloors/.test(idxSrc) && /MutationObserver[\s\S]{0,300}cc-var-bar/.test(idxSrc));
 check('⑥ 样式里有按钮条', readFileSync(new URL('../extensions/card-compat/style.css', import.meta.url), 'utf8').indexOf('#cc-var-bar') > 0);
 
 console.log('— 夹具 36：幂等重算引擎（0.11.0；正面解决旧 A 路的三个风险）');
@@ -727,7 +727,7 @@ check('⑤ character 变量 → character', detectVarScope("getVariables({ type:
 check('⑤ chat_metadata / getvar 宏 → chat', detectVarScope('chat_metadata.stat_data').scope === 'chat' && detectVarScope('{{getvar::foo}}').scope === 'chat');
 check('⑤ 说不准时默认 message（与 MVU 写在同一处，最安全）', detectVarScope('面板渲染代码').scope === 'message');
 // ⑥ 扩展接线
-check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,3000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,600}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
+check('⑥ 扩展接线（幂等重算 + 自动修 + 作用域 + 夹取 + 面板开关 + 按钮/生成结束钩子都改走重算）', idxSrc.indexOf('function recomputeAllFloors') > 0 && idxSrc.indexOf('function scheduleVarRepair') > 0 && idxSrc.indexOf('schemaHintsOfCard') > 0 && idxSrc.indexOf('function varScope') > 0 && idxSrc.indexOf('cc-var-repair') > 0 && idxSrc.indexOf('varRepair') > 0 && /checkPatchApplied[\s\S]{0,9000}scheduleVarRepair/.test(idxSrc) && /GENERATION_ENDED[\s\S]{0,4000}recomputeAllFloors/.test(idxSrc) && idxSrc.indexOf('await recomputeAllFloors({})') > 0);
 check('⑥ 试算模式 dryRun：只统计不写（E2E / 排查用）', idxSrc.indexOf('o.dryRun') > 0 && /dryRun: !!o.dryRun/.test(idxSrc));
 check('⑥ 版本号已到 0.12.0', versionWired());
 
@@ -1567,6 +1567,38 @@ check('76 never 只诊断（也让位）', /if \(wm === 'never'\) return true;/.
 check('76 设置项存在且默认 auto', /writeMode: 'auto',/.test(wmSrc));
 check('76 面板有三档下拉与绑定', wmSrc.indexOf('cc-write-mode') > 0 && wmSrc.indexOf("settings().writeMode = wmsel.value") > 0);
 check('76 文案中英各一', (wmSrc.split("writeModeAuto: '").length - 1) === 2 && (wmSrc.split("writeModeNever: '").length - 1) === 2);
+
+console.log('');
+console.log('— 夹具 77：英文/拼音键名 + 模板包裹值的修补（0.32.0，实测「整楼状态栏不动」）');
+const f77names = chineseNamesFromCandidates(['/系统/时间', '/林婉婷/位置', '/互动次数/林婉婷与user', '/user/累计支出_林婉婷', '/陈慧兰/位置']);
+check('77 能从候选路径里收集中文人名', f77names.indexOf('林婉婷') >= 0 && f77names.indexOf('陈慧兰') >= 0, f77names);
+check('77 词表译键：/system/time → /系统/时间', translateAliasPath('/system/time', { names: f77names }).path === '/系统/时间');
+check('77 拼音人名：/lin_wanting/location → /林婉婷/位置', translateAliasPath('/lin_wanting/location', { names: f77names }).path === '/林婉婷/位置');
+check('77 段内人名：interaction_count/lin_wanting_user → 互动次数/林婉婷与user', translateAliasPath('/interaction_count/lin_wanting_user', { names: f77names }).path === '/互动次数/林婉婷与user');
+check('77 段内人名：total_expenditure_lin_wanting → 累计支出_林婉婷', translateAliasPath('/user/total_expenditure_lin_wanting', { names: f77names }).path === '/user/累计支出_林婉婷');
+check('77 body_status/cunt/count_total 也能译', translateAliasPath('/lin_wanting/body_status/cunt/count_total', { names: f77names }).path === '/林婉婷/身体状态/小穴/总次数');
+check('77 顶层拼音识别（姓氏唯一）', (function () { const r = resolveTopAlias('lin_wanting', ['位置', '外貌'], ['系统', '林婉婷', '陈慧兰'], null); return r && r.to === '林婉婷'; })());
+check('77 姓氏不唯一时不硬认', resolveTopAlias('wang_xx', ['位置'], ['王小明', '王大力'], null) === null);
+check('77 值去模板：引号数字 → number（delta 才能算）', unwrapValueWrapper('\${1}').value === 1 && typeof unwrapValueWrapper('\${1}').value === 'number');
+check('77 值去模板：时间串 → 去掉包裹', unwrapValueWrapper('\${16:00}').value === '16:00');
+check('77 值没包裹时不动', unwrapValueWrapper('14:00').changed === false && unwrapValueWrapper(5).changed === false);
+const f77state = { 系统: { 时间: '14:00', 日期: 'x' }, 林婉婷: { 位置: '旧', 身体状态: { 小穴: { 状态: 'a', 总次数: 0, 当次次数: 0 } } }, 互动次数: { 林婉婷与user: 0 }, user: { 累计支出_林婉婷: 0 } };
+const f77cands = [];
+(function w77(n, pre) { if (!n || typeof n !== 'object') return; Object.keys(n).forEach((k) => { const pp = (pre ? pre + '/' : '') + k; if (n[k] && typeof n[k] === 'object' && !Array.isArray(n[k])) w77(n[k], pp); else f77cands.push('/' + pp); }); })(f77state, '');
+const f77ops = [
+    { op: 'replace', path: '/system/time', value: '\${16:00}' },
+    { op: 'replace', path: '/lin_wanting/location', value: '\${客厅}' },
+    { op: 'replace', path: '/lin_wanting/body_status/cunt/count_total', value: '\${1}' },
+    { op: 'delta', path: '/interaction_count/lin_wanting_user', value: '\${1}' },
+    { op: 'replace', path: '/user/total_expenditure_lin_wanting', value: '\${2500}' },
+];
+const f77rp = repairPatchPaths(f77ops, f77cands, { state: f77state });
+const f77ap = applyVarOps(f77state, f77rp.ops, {});
+check('77 修完 5 条全部落地（实测同等场景：20/20）', f77ap.applied.length === 5 && f77ap.skipped.length === 0, f77ap.skipped);
+check('77 值落地正确：时间/位置/次数/互动/支出', f77ap.state['系统']['时间'] === '16:00' && f77ap.state['林婉婷']['位置'] === '客厅' && f77ap.state['林婉婷']['身体状态']['小穴']['总次数'] === 1 && f77ap.state['互动次数']['林婉婷与user'] === 1 && f77ap.state['user']['累计支出_林婉婷'] === 2500, f77ap.state);
+const f77src = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
+check('77 接线：新增「MVU 没吃下本楼补丁」判定', f77src.indexOf('function latestFloorPatchMissed') > 0 && f77src.indexOf('stats.mvuMissed') > 0);
+check('77 接线：自动兜底条件允许「MVU 在场但没吃下」时补写', f77src.indexOf('(!mvuOn || missed)') > 0 && f77src.indexOf("log('mvu-missed-fill'") > 0);
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

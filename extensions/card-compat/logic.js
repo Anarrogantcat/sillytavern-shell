@@ -174,6 +174,86 @@ function escTag(name) {
  * 这里只剥「整串包裹」与残缺的 `${`/`{` 前缀、尾部多余的 `}`，不碰路径中间的字符。
  */
 /**
+ * 0.32.0（实测：状态栏整楼不动）——模型偶尔改用**英文/拼音键名**写补丁，
+ * MVU 的 stat_data 是中文键 → 整楼被拒（实测 #3：["system","lin_wanting","interaction_count","user"] 全丢）。
+ * 这里做**键名翻译**（只译名，不编值）：
+ *   ① 词表：system→系统、location→位置、appearance→外貌、hair→发型、outfit→穿搭…（覆盖 MVU 常见字段词汇）
+ *   ② 顶层 token 不在词表里时，用**结构打分**：把它译后的子键与状态里各中文顶层键的子键比对，
+ *      唯一最高分才认（例如 location/appearance/hair → 与「林婉婷」的子键吻合 → lin_wanting→林婉婷）
+ *   ③ 译完的路径**必须存在于卡片字段表**里才会改写，否则原样保留并记未解决
+ */
+export const KEY_ALIAS = {
+    system: '系统', date: '日期', time: '时间', location: '位置', place: '地点', weather: '天气',
+    plot_day: '剧情天数', day: '剧情天数', days: '剧情天数',
+    appearance: '外貌', hair: '发型', hairstyle: '发型', makeup: '妆容', expression: '表情', face: '表情',
+    outfit: '穿搭', clothing: '穿搭', clothes: '穿搭',
+    mood: '心情', action: '当前在做什么', current_action: '当前在做什么', doing: '当前在做什么',
+    economy: '经济', cash: '现金', money: '现金', debt: '欠款', loan: '欠款',
+    body: '身体状态', body_state: '身体状态', mouth: '嘴巴', hand: '手', hands: '手', foot: '玉足', feet: '玉足',
+    chest: '胸部', breast: '胸部', breasts: '胸部', pussy: '小穴', vagina: '小穴', anus: '后庭', ass: '后庭',
+    state: '状态', status: '状态', total: '总次数', total_count: '总次数', count: '当次次数', current_count: '当次次数',
+    relationship: '关系态度', attitude: '关系态度', corruption: '堕落进度', fall: '堕落进度',
+    interaction_count: '互动次数', interactions: '互动次数',
+    body_status: '身体状态', count_total: '总次数', count_current: '当次次数', cunt: '小穴',
+    total_expenditure: '累计支出', cumulative_expenditure: '累计支出', total_spending: '累计支出', spending: '累计支出',
+    period: '月经状态', menstruation: '月经状态', mother_daughter: '母女关系', atmosphere: '母女氛围',
+};
+/** 从候选路径里收集「中文人名」样本（林婉婷与user / 累计支出_林婉婷 → 林婉婷） */
+export function chineseNamesFromCandidates(cands) {
+    const set = new Set();
+    for (const c of (cands || [])) {
+        for (const seg of String(c).split('/').filter(Boolean)) {
+            if (!/[\u4e00-\u9fa5]/.test(seg)) continue;
+            set.add(seg);
+            const parts = seg.split(/[_与·\s]+/).filter(Boolean);
+            for (const p of parts) if (/^[\u4e00-\u9fa5]{2,4}$/.test(p)) set.add(p);
+        }
+    }
+    return [...set];
+}
+/** 用拼音姓氏把一个罗马化人名段认到中文名（lin_wanting → 林婉婷；要求姓唯一） */
+export function resolveNameInSegment(romanSeg, names) {
+    const parts = String(romanSeg == null ? '' : romanSeg).toLowerCase().split('_').filter(Boolean);
+    if (!parts.length) return null;
+    const sur = SURNAME_PINYIN[parts[0]];
+    if (!sur) return null;
+    const hits = (names || []).filter((n) => String(n).charAt(0) === sur && /^[\u4e00-\u9fa5]{2,4}$/.test(String(n)));
+    return hits.length === 1 ? hits[0] : null;
+}
+/** 把一段（可能是英文的）路径按词表译成中文键；逐段译，译不出的段保留原样 */
+export function translateAliasPath(path, opts = {}) {
+    const names = Array.isArray(opts.names) ? opts.names : [];
+    const segs = normalizePath(path).split('/').filter(Boolean);
+    let translated = 0;
+    const out = segs.map((s) => {
+        const rawSeg = String(s);
+        const key = rawSeg.toLowerCase().replace(/[\s-]+/g, '_');
+        if (KEY_ALIAS[key]) { translated++; return KEY_ALIAS[key]; }
+        // 段内嵌人名：<name>_user → <中文名>与user
+        const mUser = key.match(/^(.+?)_(?:user|with_user|and_user)$/);
+        if (mUser) { const nm = resolveNameInSegment(mUser[1], names); if (nm) { translated++; return nm + '与user'; } }
+        // <前缀>_<name> → 累计支出_<中文名>
+        for (const pre of Object.keys(KEY_ALIAS)) {
+            if (key.indexOf(pre + '_') !== 0) continue;
+            const rest = key.slice(pre.length + 1);
+            const nm = resolveNameInSegment(rest, names);
+            if (nm) { translated++; return KEY_ALIAS[pre] + '_' + nm; }
+        }
+        const nm2 = resolveNameInSegment(key, names);
+        if (nm2 && rawSeg !== nm2) { translated++; return nm2; }
+        return rawSeg;
+    });
+    return { path: '/' + out.join('/'), translated: translated, segs: out };
+}
+/** 结构打分：a 的子键集合 与 b 的子键集合 的重合度（用于给未知顶层 token 找中文母键） */
+export function structureScore(aChildren, bChildren) {
+    const A = new Set((aChildren || []).map((x) => String(x)));
+    let hit = 0;
+    for (const k of (bChildren || [])) if (A.has(String(k))) hit++;
+    return hit;
+}
+
+/**
  * 0.30.0（实测：用户贴出的 MVU zod 报错）——**修补模型写歪的补丁路径**。
  * 实测三条原始报错：
  *   {"op":"replace","path":"累计支出_林婉婷","value":2500}  → 没前导 /、缺 user/ 层级 → MVU: 期望 object，实际 undefined
@@ -184,6 +264,60 @@ function escTag(name) {
  *   仍然不唯一 → **不改**，原样报出（宁可不修，也不猜）
  * @returns {{ops:Array, fixed:Array<{from,to,how}>, unresolved:Array<{path,reason,candidates}>}}
  */
+/**
+ * 0.32.0（实测）：模型把**值**也写成模板式 —— 实测 #3 的补丁值是 \`\${16:00}\`、\`\${晴，高温}\`、\`\${1}\`。
+ * 时间被写成 \`\${16:00}\` 会原样进 stat_data（字符串污染），而 \`\${1}\` 不是数字 → delta 直接失效。
+ * 这里只剥包裹：\`\${x}\`/\`{{x}}\` → \`x\`；若 x 是纯数字则转成 number（delta 才能算）。
+ */
+export function unwrapValueWrapper(v) {
+    if (typeof v !== 'string') return { value: v, changed: false };
+    let s = String(v).trim();
+    let hit = false;
+    for (let i = 0; i < 3; i++) {
+        const m = s.match(/^\$\{([\s\S]*)\}$/) || s.match(/^\{\{([\s\S]*)\}\}$/);
+        if (!m) break;
+        s = m[1].trim();
+        hit = true;
+    }
+    if (!hit) return { value: v, changed: false };
+    if (/^-?\d+(\.\d+)?$/.test(s)) return { value: Number(s), changed: true };
+    return { value: s, changed: true };
+}
+
+/** 常见中文姓氏的拼音（用于把 lin_wanting 这类拼音顶层键认到「林婉婷」） */
+export const SURNAME_PINYIN = {
+    lin: '林', chen: '陈', wang: '王', li: '李', zhang: '张', liu: '刘', yang: '杨', huang: '黄', zhao: '赵', zhou: '周',
+    wu: '吴', xu: '徐', sun: '孙', ma: '马', zhu: '朱', hu: '胡', guo: '郭', he: '何', gao: '高', lin2: '蔺',
+    luo: '罗', zheng: '郑', liang: '梁', xie: '谢', song: '宋', tang: '唐', han: '韩', feng: '冯', yu: '于', dong: '董',
+    xiao: '萧', cheng: '程', cao: '曹', yuan: '袁', deng: '邓', fu: '傅', shen: '沈', zeng: '曾', peng: '彭', lv: '吕',
+    su: '苏', lu: '卢', jiang: '蒋', cai: '蔡', jia: '贾', ding: '丁', wei: '魏', xue: '薛', ye: '叶', yan: '阎',
+    pan: '潘', du: '杜', dai: '戴', xia: '夏', zhong: '钟', wang2: '汪', tian: '田', ren: '任', jiang2: '姜', fan: '范',
+    fang: '方', shi: '石', yao: '姚', tan: '谭', liao: '廖', zou: '邹', xiong: '熊', jin: '金', lu2: '陆', hao: '郝',
+    kong: '孔', bai: '白', cui: '崔', kang: '康', mao: '毛', qiu: '邱', qin: '秦', gu: '顾', hou: '侯', shao: '邵',
+    meng: '孟', long: '龙', wan: '万', duan: '段', qian: '钱', tang2: '汤', yin: '尹', li2: '黎', yi: '易', chang: '常',
+    qiao: '乔', he2: '贺', lai: '赖', gong: '龚', wen: '文', qin2: '覃', hua: '花', mei: '梅', lan: '蓝', ning: '宁',
+};
+/** 拼音键 → 中文顶层键：先用姓氏表（lin_wanting → 林*），再用结构打分兜底 */
+export function resolveTopAlias(romanTop, childKeys, topKeys, state) {
+    const token = String(romanTop || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const first = token.split('_')[0];
+    const surname = SURNAME_PINYIN[first];
+    if (surname) {
+        const hits = (topKeys || []).filter((k) => String(k).charAt(0) === surname);
+        if (hits.length === 1) return { to: hits[0], how: '姓氏拼音 ' + first + '→' + surname };
+    }
+    // 结构打分：译后子键与该顶层键的子键重合度，唯一最高且 ≥2 才认
+    let best = null, second = 0;
+    for (const k of (topKeys || [])) {
+        const kids = (state && state[k] && typeof state[k] === 'object') ? Object.keys(state[k]) : [];
+        const sc = structureScore(childKeys, kids);
+        if (!best || sc > best.sc) { second = best ? best.sc : 0; best = { k: k, sc: sc }; }
+        else if (sc > second) second = sc;
+    }
+    if (best && best.sc >= 2 && best.sc > second) return { to: best.k, how: '结构匹配 ' + best.sc + ' 个子键' };
+    return null;
+}
+
 export function repairPatchPaths(ops, candidates, opts = {}) {
     const list = (ops || []).filter((o) => o && typeof o === 'object').map((o) => Object.assign({}, o));
     const cands = [];
@@ -192,10 +326,46 @@ export function repairPatchPaths(ops, candidates, opts = {}) {
         if (p && cands.indexOf(p) < 0) cands.push(p);
     }
     const cset = new Set(cands);
-    const fixed = [], unresolved = [];
+    const state = (opts.state && typeof opts.state === 'object') ? opts.state : null;
+    const fixed = [], unresolved = [], aliased = [];
     const leafOf = (p) => String(p).split('/').filter(Boolean).pop() || '';
     const topOf = (p) => { const s = String(p).split('/').filter(Boolean); return s.length >= 2 ? s[0] : ''; };
-    // 第一遍：正常路径 → 收集「本段补丁里出现过哪些角色」（作为第二遍的上下文）
+    const topKeysOf = () => {
+        const set = new Set();
+        for (const c of cands) { const s = String(c).split('/').filter(Boolean); if (s.length >= 2) set.add(s[0]); }
+        if (state) Object.keys(state).forEach((k) => { if (state[k] && typeof state[k] === 'object' && !Array.isArray(state[k])) set.add(k); });
+        return [...set];
+    };
+    // ⓪0 0.32.0：值被写成 ${x} / {{x}} 时剥掉包裹（数字还原成 number，delta 才能算）
+    for (const o of list) {
+        if (o.value === undefined) continue;
+        const uv = unwrapValueWrapper(o.value);
+        if (uv.changed) { aliased.push({ from: String(o.value).slice(0, 20), to: String(uv.value).slice(0, 20), how: '值去模板包裹' }); o.value = uv.value; }
+    }
+    // ⓪ 0.32.0：先把「英文/拼音键名」按词表译一遍（只译名，不编值）
+    for (const o of list) {
+        const raw = String(o.path == null ? '' : o.path);
+        const tr = translateAliasPath(raw, { names: chineseNamesFromCandidates(cands) });
+        if (tr.translated > 0) { o.path = tr.path; aliased.push({ from: raw, to: tr.path, how: '键名词表' }); }
+    }
+    // ① 顶层 token 不认识时：姓氏拼音 / 结构匹配（把 lin_wanting 认到 林婉婷）
+    const knownTops = new Set(topKeysOf());
+    const unknownTops = new Set();
+    for (const o of list) { const s = String(o.path || '').split('/').filter(Boolean); if (s.length >= 2 && !knownTops.has(s[0])) unknownTops.add(s[0]); }
+    for (const u of unknownTops) {
+        const kids = new Set();
+        for (const o of list) { const s = String(o.path || '').split('/').filter(Boolean); if (s[0] === u && s.length >= 2) kids.add(s[1]); }
+        const r = resolveTopAlias(u, [...kids], topKeysOf(), state);
+        if (!r) continue;
+        for (const o of list) {
+            const s = String(o.path || '').split('/').filter(Boolean);
+            if (s[0] !== u) continue;
+            const nx = '/' + [r.to].concat(s.slice(1)).join('/');
+            aliased.push({ from: o.path, to: nx, how: r.how });
+            o.path = nx;
+        }
+    }
+    // ② 再按「卡片字段表」核对/补齐（原有逻辑）
     const subjects = new Map();
     for (const o of list) {
         const p = normalizePath(o.path);
@@ -216,16 +386,12 @@ export function repairPatchPaths(ops, candidates, opts = {}) {
         }
         if (hits.length > 1 && subjectKeys.length === 1) {
             const sub = hits.find((c) => topOf(c) === subjectKeys[0]);
-            if (sub) {
-                fixed.push({ from: raw, to: sub, how: '同一补丁里只出现角色 ' + subjectKeys[0] });
-                o.path = sub;
-                continue;
-            }
+            if (sub) { fixed.push({ from: raw, to: sub, how: '同一补丁里只出现角色 ' + subjectKeys[0] }); o.path = sub; continue; }
         }
         if (!cands.length) { o.path = p; continue; }   // 拿不到卡的字段表：只做归一化，不做匹配
         unresolved.push({ path: raw, reason: hits.length ? ('卡里有 ' + hits.length + ' 个同名字段，无法判定角色') : '卡里没有这个字段', candidates: hits.slice(0, 3) });
     }
-    return { ops: list, fixed: fixed, unresolved: unresolved };
+    return { ops: list, fixed: fixed, unresolved: unresolved, aliased: aliased };
 }
 
 /**
