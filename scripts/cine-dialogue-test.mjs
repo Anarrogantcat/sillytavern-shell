@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.37');
+eq('version 与 manifest 一致', VERSION, '0.8.38');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1810,6 +1810,8 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★ 一组 = 一个回合（不再绑死 5 行）', LENGTH_SPEC.indexOf('一个回合 = 一组') >= 0);
     ok('★★ 台词句数 = 在场开口的人数（2/3/5 人举例）', LENGTH_SPEC.indexOf('2 人 ⇒ 2 句') >= 0 && LENGTH_SPEC.indexOf('5 人 ⇒ 5 句') >= 0);
     ok('★★ 组数随人数下调（10 / 8 / 6–7）', LENGTH_SPEC.indexOf('2 人 ⇒ 10 组') >= 0 && LENGTH_SPEC.indexOf('5 人以上 ⇒ 6–7 组') >= 0);
+    ok('★★ 不再出现与人数无关的绝对组数（旧的"7 组/3 组"已清）', LENGTH_SPEC.indexOf('7 组是重场') < 0 && LENGTH_SPEC.indexOf('3 组是过渡') < 0);
+    ok('★ 节奏改成按比例表述', LENGTH_SPEC.indexOf('约七成组是重场') >= 0 && LENGTH_SPEC.indexOf('约三成组是过渡') >= 0);
     ok('★★ 台词行数 = 在场开口的人数', LENGTH_SPEC.indexOf('台词行数 = 在场') >= 0);
     ok('★★ 重要角色可以多说一句', LENGTH_SPEC.indexOf('重要角色可以多说一句') >= 0);
     ok('★ 没开口的人不给台词行', LENGTH_SPEC.indexOf('不给台词行') >= 0);
