@@ -1257,6 +1257,7 @@ const FALLBACK_CSS = [
     '.custom-cd-row{display:contents;color:var(--c,inherit)}',
     '.custom-cd-who{font-weight:600;font-size:.95em;opacity:.85;text-align:right;padding-right:.6em;white-space:nowrap}',
 '.custom-cd-body{color:var(--c,inherit)}',
+'.custom-cd-body q,.custom-cd-body em,.custom-cd-body i,.custom-cd-body strong{color:inherit;font-style:inherit}',
     '.custom-cd-body{min-width:0;border-left:var(--cd-mark-w,3px) var(--cd-mark,solid) var(--cd-mark-color,transparent);',
     'font-style:var(--cd-italic,normal);padding-left:calc(.7em - var(--cd-pad-comp,0px))}',
     '.custom-cd-body.custom-cd-wrap{text-indent:var(--cd-indent,2em)}',

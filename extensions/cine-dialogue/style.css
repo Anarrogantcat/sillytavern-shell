@@ -502,3 +502,21 @@
     vertical-align: middle;
     margin: 0 .2em;
 }
+
+/* ---------------------------------------------------------------- 行内文字一律跟随角色色
+   起因（用户定位到根因）：ST 主题里有「**引用文本**」颜色设置 ✗
+   我们的行里带「…」/""，那部分会被 ST 染成引用色 ⇒ 出现「名字=角色色 + 正文=引用色」的**一行两色** ✗
+   修法：正文格**显式**取行色（--c），并让行内的 q/em/i/strong **继承**它（inherit 优先级足够压过 ST 的 .mes_text q ✓）
+   ★ 选择器仍是自有前缀（.custom-cd-*）✓ 且只作用于我们自己的行 ✓（AGENTS §0.3.2） */
+.custom-cd-body {
+    color: var(--c, inherit);
+}
+
+.custom-cd-body q,
+.custom-cd-body em,
+.custom-cd-body i,
+.custom-cd-body strong,
+.custom-cd-body font {
+    color: inherit;
+    font-style: inherit;
+}

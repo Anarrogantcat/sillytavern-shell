@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.21';
+export const VERSION = '0.8.22';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */

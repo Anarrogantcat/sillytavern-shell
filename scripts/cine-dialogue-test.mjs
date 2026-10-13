@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.21');
+eq('version 与 manifest 一致', VERSION, '0.8.22');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1632,6 +1632,17 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const vis = html.replace(/<[^>]*>/g, '');
     ok('★★ 可见文字里没有「行动:」这个前缀（被层名吃掉了）', vis.indexOf('行动') < 0);
     ok('★ 正文仍然可见（实体编码后也算在）', /趴在沙发上/.test(vis));
+}
+
+/* ★★ 禁掉 ST「引用文本」色在我们行内的渗入（0.8.22，用户定位到的根因） */
+{
+    const css = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8');
+    ok('★★ 正文格显式取行色', /\.custom-cd-body\s*\{[^}]*color:\s*var\(--c/.test(css));
+    ok('★★ 行内的 q/em/i/strong 继承行色（压过 ST 的 .mes_text q）',
+        /\.custom-cd-body q[^{]*\{[^}]*color:\s*inherit/.test(css));
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★ 内置兜底同步', src.indexOf('.custom-cd-body q,.custom-cd-body em') >= 0);
+    ok('★ 只作用于自有前缀（没有写 .mes_text）', !/\.mes_text\s*[^{]*\{/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
