@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.26';
+export const VERSION = '0.8.27';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -453,7 +453,7 @@ export function looseRegexFor(layers, lenient = false) {
 }
 
 /** 选项行：1. 文本 | 备注 */
-export const RE_OPT = /^(\d+)[.、)]\s*(.+?)\s*(?:\|\s*(.*))?$/;
+export const RE_OPT = /^([A-Za-z]|\d+)[.、)]\s*(.+?)\s*(?:\|\s*(.*))?$/;
 
 /** 选项行的另一种（预设 `<options>` 块里用的是 `>选项一：[…]`） */
 export const RE_OPT_ALT = /^[>＞]\s*(选项?[一二三四五六七八九十\d]+|\d+)\s*[:：]\s*(.+)$/;
@@ -564,17 +564,26 @@ export function splitSections(raw) {
     rest = grab(rest, RE_OPTIONS_TAG_BLOCK, optionsRaw);
 
     const options = [];
+    /* ★★ 认不出的行**绝不能丢**（真机踩到：模型用 `A. …` / `B. …` 写选项 ⇒
+       原来的两个正则（`^(\d+)[.、)]` 与 `^[>＞]`）都不认 ⇒ 而整个 `<options>` 块
+       已经从正文里删掉了 ⇒ **内容彻底消失** ✗✗）
+       现在：认得出的做成按钮 ✓，认不出的**原样还回正文** ✓ —— 永不丢字 */
+    const leftover = [];
+    /* 包装行（<options> / </options> / [OPTIONS] / [FRONTEND] …）本身不是内容 ⇒ 丢掉；
+       其余**认不出的行一律还回正文** ✓（永不丢字） */
+    const WRAP = /^\s*(\[\s*\/?\s*(OPTIONS|FRONTEND)\s*\]|<\/?\s*(options|htmlcontent)\s*>)\s*$/i;
     for (const block of optionsRaw) {
         for (const line of block.split('\n')) {
             const t = line.trim();
-            if (!t) continue;
+            if (!t || WRAP.test(t)) continue;
             const m = t.match(RE_OPT) || t.match(RE_OPT_ALT);
-            if (!m) continue;
-            if (m[1] && m[2]) options.push({ index: String(m[1]).trim(), text: String(m[2]).trim(), note: (m[3] || '').trim() });
+            if (m && m[1] && m[2]) options.push({ index: String(m[1]).trim(), text: String(m[2]).trim(), note: (m[3] || '').trim() });
+            else leftover.push(t);
         }
     }
+    const body = leftover.length ? (rest.replace(/\s*$/, '') + '\n\n' + leftover.join('\n')) : rest;
 
-    return { body: rest, frontend, options };
+    return { body, frontend, options };
 }
 
 /**

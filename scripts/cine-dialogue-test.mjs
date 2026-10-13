@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.26');
+eq('version 与 manifest 一致', VERSION, '0.8.27');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1682,6 +1682,21 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const r = resolveColors(['甲', '乙'], { ...DEFAULT_CONFIG, rolePurpleNames: '乙' }, {});
     eq('★ 面板手填名单仍生效（乙=紫）', r['乙'], DEFAULT_CONFIG.rolePurpleColor);
     ok('★ 名单外的人仍是自动配色（甲 ≠ 紫）', r['甲'] !== DEFAULT_CONFIG.rolePurpleColor);
+}
+
+/* ★★ <options> 块里认不出的行必须还回正文（0.8.27：真机踩到整块内容消失） */
+{
+    const NL = String.fromCharCode(10);
+    const blk = ['<options>', 'A. 用字母写的选项甲，内容要保留。', 'B. 用字母写的选项乙，内容也要保留。', '</options>'].join(NL);
+    const html = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk, {}, DEFAULT_CONFIG).html);
+    eq('★★ A./B. 被识别成选项按钮（2 个）', (html.match(/class="cd-opt"/g) || []).length, 2);
+    ok('★★ 字母选项的正文也在（不丢字）', html.indexOf('内容要保留') >= 0 || html.replace(/<[^>]*>/g, '').indexOf('内容要保留') >= 0);
+    const blk2 = ['<options>', '完全不像选项的一段说明，也必须留下。', '</options>'].join(NL);
+    const vis2 = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk2, {}, DEFAULT_CONFIG).html).replace(/<[^>]*>/g, '');
+    ok('★★ 认不出的行**还回正文**（永不丢字）', vis2.indexOf('完全不像选项的一段说明') >= 0);
+    const blk3 = ['<options>', '>选项一：老写法', '2. 数字写法', '</options>'].join(NL);
+    const h3 = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk3, {}, DEFAULT_CONFIG).html);
+    eq('★ 原有两种写法仍是 2 个按钮（不回归）', (h3.match(/class="cd-opt"/g) || []).length, 2);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
