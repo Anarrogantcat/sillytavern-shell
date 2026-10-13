@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
+stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.39');
+eq('version 与 manifest 一致', VERSION, '0.8.40');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1277,7 +1277,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         prompt_order: [{ character_id: 1, order: [] }], extensions: {},
     }, { srcName: 'x', srcHash: 'y' });
     eq('★★ 我们自己那条：说明文本有更新时同步到最新',
-        mine.preset.prompts.find(p => p.identifier === 'cine-dialogue-format').content, FORMAT_SPEC);
+        mine.preset.prompts.find(p => p.identifier === 'cine-dialogue-format').content, stampSpec(FORMAT_SPEC));
 
     const again = applyPresetRecipe(mine.preset, { srcName: 'x', srcHash: 'y' });
     ok('★ 同步是幂等的（已是新文本 → 报「已是最新」）',
@@ -1314,7 +1314,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         prompt_order: [{ character_id: 1, order: [] }], extensions: {},
     }, { srcName: 'x', srcHash: 'y' });
     eq('★★ 旧版条目（UUID + 【分镜行格式…】）会被识别并同步到最新说明',
-        legacy.preset.prompts.find(x => x.identifier === legacyId).content, FORMAT_SPEC);
+        legacy.preset.prompts.find(x => x.identifier === legacyId).content, stampSpec(FORMAT_SPEC));
     ok('★ 报告写明「按内容特征识别为旧版」（透明，不偷偷改）',
         legacy.changes.some(c => c.indexOf('按内容特征识别为旧版') >= 0));
     ok('★ 不动它的 identifier（避免与 prompt_order 失联）',
@@ -1848,6 +1848,22 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     p50.content = '我自己改过的 50% 文案';
     const r2 = applyPresetRecipe(r.preset, { srcName: 't', srcHash: 'h' });
     eq('★★ 50% 已存在时内容不覆盖', r2.preset.prompts.find((p) => p.name === PRESET_RECIPE.dbl50Name).content, '我自己改过的 50% 文案');
+}
+
+/* ★★ 条目内容顶部盖版本号（用户要求「加版本号」；文件名也带 ⇒ C 方案） */
+{
+    ok('★★ stampSpec 盖上版本号', stampSpec('正文').indexOf('（分镜对话 v' + VERSION + ' 生成）') === 0);
+    ok('★ 盖过的内容不用星号', stampSpec('正文').indexOf('*') < 0);
+    const base = {
+        prompts: [{ identifier: 'cine-dialogue-format', name: PRESET_RECIPE.promptName, content: 'x' }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-format', enabled: true }] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
+    const fm = r.preset.prompts.find((p) => p.name === PRESET_RECIPE.promptName);
+    ok('★★ 格式说明条目顶部有版本号', String(fm.content).indexOf('（分镜对话 v' + VERSION + ' 生成）') === 0);
+    const lp = r.preset.prompts.find((p) => p.name === PRESET_RECIPE.lengthName);
+    ok('★★ 篇幅条目顶部也有版本号', String(lp.content).indexOf('（分镜对话 v' + VERSION + ' 生成）') === 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

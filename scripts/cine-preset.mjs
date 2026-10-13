@@ -24,7 +24,16 @@ import { applyPresetRecipe, PRESET_UPSTREAM } from '../extensions/cine-dialogue/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DIR = 'D:/AI/SillyTavern/Data/default-user/OpenAI Settings';
 const DEFAULT_SRC = path.join(DEFAULT_DIR, 'Izumi 0828.tailfree.json');
-const DEFAULT_OUT = path.join(DEFAULT_DIR, '分镜对话（专属适配）.json');
+/* ★ 文件名带版本（用户要求「加版本号」）—— 版本从 logic.js 的 VERSION 取 ⇒ 升版本即改名 ✓ */
+function versionedOutName() {
+    try {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'extensions', 'cine-dialogue', 'logic.js'), 'utf8');
+        const mm = src.match(/export const VERSION = '([^']+)'/);
+        if (mm) return '分镜对话（专属适配）v' + mm[1] + '.json';
+    } catch (_) { }
+    return '分镜对话（专属适配）.json';
+}
+const DEFAULT_OUT = path.join(DEFAULT_DIR, versionedOutName());
 
 const args = process.argv.slice(2);
 const val = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };

@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.39';
+export const VERSION = '0.8.40';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1427,6 +1427,14 @@ export const LENGTH_SPEC = [
     '宁可少写一组，也不要输出没有标签的散文（散文不会被识别成行，排版会崩）。',
 ].join('\n');
 
+/**
+ * 把版本号盖在条目内容顶部（用户要求「加版本号」⇒ 打开预设就能看到是哪版生成的 ✓）
+ * 只用「」不用星号 ✓（条目不许出现 * ⇒ 免得模型抄进正文 ✗）
+ */
+export function stampSpec(text) {
+    return '（分镜对话 v' + VERSION + ' 生成）' + String.fromCharCode(10) + String(text == null ? '' : text);
+}
+
 export const PRESET_RECIPE = {
     promptName: '【分镜】正文行格式',
     noteName: '📋分镜派生说明（勿启用）',
@@ -1518,7 +1526,7 @@ export function applyPresetRecipe(srcObj, opts = {}) {
         const byId = String(p.identifier || '') === 'cine-dialogue-format';
         const byMark = String(p.name || '') === R.promptName && OURS_RE.test(String(p.content || ''));
         const mine = byId || byMark;
-        const want = opts.formatSpec || FORMAT_SPEC;
+        const want = stampSpec(opts.formatSpec || FORMAT_SPEC);
         if (mine && String(p.content || '') !== want) {
             p.content = want;
             changes.push('更新提示条目「' + R.promptName + '」（说明文本有更新' + (byId ? '' : '，按内容特征识别为旧版') + '）');
@@ -1571,7 +1579,7 @@ export function applyPresetRecipe(srcObj, opts = {}) {
                 name: R.lengthName,
                 system_prompt: false,
                 role: 'system',
-                content: opts.lengthSpec || LENGTH_SPEC,
+                content: stampSpec(opts.lengthSpec || LENGTH_SPEC),
                 injection_position: 0,
                 injection_depth: 4,
                 injection_order: 100,
@@ -1584,7 +1592,7 @@ export function applyPresetRecipe(srcObj, opts = {}) {
                 || String(lp.content || '').indexOf('按需要来回波动') >= 0) {
             /* 内容还是我们写的 v1（台词 ~10 字）⇒ 更新为 v2（10–20 字）；
                一旦你改过（不含这个标记）⇒ 一个字都不动 ✗ */
-            lp.content = opts.lengthSpec || LENGTH_SPEC;
+            lp.content = stampSpec(opts.lengthSpec || LENGTH_SPEC);
             changes.push('更新提示条目「' + R.lengthName + '」（台词改为按需要波动）');
         } else {
             changes.push('提示条目「' + R.lengthName + '」已被你改过（**不覆盖** ✓）');
