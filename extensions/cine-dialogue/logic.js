@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.8';
+export const VERSION = '0.5.9';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -44,7 +44,15 @@ export const DEFAULT_CONFIG = {
     /** nameColMode=fixed 时的像素宽 */
     nameColWidth: 96,
     /** 行间距（em） */
-    rowGap: 0.8,
+    rowGap: 0.5,
+    /**
+     * 是否在「空行分组」之间画分隔线。
+     * ★ 默认 **false**：模型经常**每行之间都空一行** → 每行各自成一个分组 →
+     *   分隔线 + 行间距**双重叠加**，整屏被撑得很散（真机反馈：「间距有点大」）。
+     */
+    showSeparators: false,
+    /** 行高（正文行距；1.9 偏松，1.7 更紧凑） */
+    lineHeight: 1.9,
     /** 首行缩进（em） */
     leadIndent: 2,
     /** 只给「真的换行」的段落做缩进 */
@@ -192,6 +200,9 @@ export const PANEL_FIELDS = [
       options: [['auto', '自动（推荐）'], ['left', '自动（同左）'], ['fixed', '固定像素']] },
     { key: 'nameColWidth', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
     { key: 'rowGap', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
+    { key: 'lineHeight', kind: 'number', label: '行高', unit: '倍', min: 1.2, max: 2.6, step: 0.05 },
+    { key: 'showSeparators', kind: 'bool', label: '空行分组之间画分隔线',
+      note: '默认关：模型常每行都空一行 → 分隔线会与行间距叠加，整屏被撑散' },
     { key: 'leadIndent', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },
 
     /* ---- L3 提示词层 ---- */
@@ -516,12 +527,13 @@ function rowHTML(r, colorMap, config) {
 export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG, extrasHTML = '') {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const style = '--cd-gap:' + Number(cfg.rowGap) + 'em;'
-        + '--cd-indent:' + Number(cfg.leadIndent) + 'em;';
+        + '--cd-indent:' + Number(cfg.leadIndent) + 'em;'
+        + '--cd-lh:' + Number(cfg.lineHeight) + ';';
     const mode = cfg.nameColMode === 'fixed' ? 'fixed' : 'auto';
     const fixed = mode === 'fixed' ? ' style="--cd-namew:' + Number(cfg.nameColWidth) + 'px"' : '';
 
     const rowsHTML = groups.map((g, gi) =>
-        (gi > 0 ? '<div class="cd-sep"></div>' : '') + g.map(r => rowHTML(r, colorMap, cfg)).join('')
+        ((gi > 0 && cfg.showSeparators) ? '<div class="cd-sep"></div>' : '') + g.map(r => rowHTML(r, colorMap, cfg)).join('')
     ).join('');
 
     return '<div class="cd-root' + (mode === 'fixed' ? ' cd-fixed' : '') + '"'

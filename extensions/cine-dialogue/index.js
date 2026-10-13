@@ -98,30 +98,50 @@ function PP() {
 }
 
 /**
- * 选项按钮 → 发送
- * 优先走 plot-pilot 的 sendText（它有防连点 800ms + api/dom 双通道 + 生成中拦截），
- * 没有它就直接填 #send_textarea（两条路都不自己实现发送）。
+ * 选项按钮 → 发送（**由事件委托调用**，见 bindInteractions）
+ *
+ * ★ 为什么必须是委托而不是逐个 addEventListener：
+ *   钩子路径下 HTML 是 **ST** 插进 DOM 的（addOneMessage / 流式重写 / updateMessageBlock），
+ *   我们根本没有"插完之后"的时机去绑事件 —— 原来只在 DOM 降级路径里绑，
+ *   结果钩子路径的按钮**全是死的**（真机现象：「点击选项没反应」）。
+ *   委托绑在 document 上，无论谁在什么时候插入 HTML 都管用。
  */
-function wireOptions(root) {
-    root.querySelectorAll('.custom-cd-opt').forEach(btn => {
-        if (btn.dataset.cdBound) return;
-        btn.dataset.cdBound = '1';
-        btn.addEventListener('click', () => {
-            const text = (btn.getAttribute('data-cd-text') || '').trim();
-            if (!text) return;
+function sendOption(text, btn) {
+    const t = String(text == null ? '' : text).trim();
+    if (!t) return;
 
-            const pp = PP();
-            if (pp && typeof pp.sendText === 'function') {
-                try { pp.sendText(text); return; } catch (e) { console.error('[' + EXT_ID + '] PlotPilot.sendText failed', e); }
-            }
-            const ta = document.querySelector('#send_textarea');
-            if (ta) {
-                ta.value = ta.value ? (ta.value + '\n' + text) : text;
-                ta.dispatchEvent(new Event('input', { bubbles: true }));
-            }
+    /* 防连点：同一组按钮 1.2 秒内只发一次（plot-pilot 有自己的 800ms，但它可能没装） */
+    const now = Date.now();
+    if (now - sendOption.last < 1200) {
+        notify('刚发过一条，稍等一下', 'warning');
+        return;
+    }
+    sendOption.last = now;
+
+    /* 点了就禁用整组 —— 选项是一次性的，避免重复发送 */
+    const group = btn && btn.closest ? btn.closest('.custom-cd-options, .cd-options') : null;
+    if (group) {
+        group.querySelectorAll('button').forEach(b => {
+            b.disabled = true;
+            b.style.opacity = '.5';
+            b.style.cursor = 'default';
         });
-    });
+    }
+
+    const pp = PP();
+    if (pp && typeof pp.sendText === 'function') {
+        try { pp.sendText(t); return; } catch (e) { console.error('[' + EXT_ID + '] PlotPilot.sendText failed', e); }
+    }
+    const ta = document.querySelector('#send_textarea');
+    if (ta) {
+        ta.value = ta.value ? (ta.value + '\n' + t) : t;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        notify('已填入输入框（装了剧情推进器会直接发送）', 'info');
+    } else {
+        notify('找不到输入框，也没装剧情推进器 → 无法发送', 'error');
+    }
 }
+sendOption.last = 0;
 
 /** 取原文：优先走酒馆助手 API，没有就退回 ST 原生 */
 function getRawMes(mesId) {
@@ -304,8 +324,6 @@ function transformMessage(mesEl, mesId) {
     for (const n of keep) root.appendChild(n);
 
     textEl.replaceChildren(root);
-
-    wireOptions(root);
 
     return { ok: true, root, names: res.names, errs: res.errs };
 }
@@ -913,6 +931,16 @@ function bindInteractions() {
     /* 为什么用双击而不是 hover 复制按钮：
        按钮若放进 .cd-body，会污染 textContent —— 复制到的文本、搜索高亮重建的文本都会带上它。
        双击没有这个副作用，且不用往每行塞元素。提示放在 .cd-body 的 title 上。 */
+    /* ★ 选项按钮：**委托**处理。
+       钩子路径下 HTML 由 ST 插入，我们没有"插完之后"的时机逐个绑事件 ——
+       原来只在 DOM 降级路径里绑，导致钩子路径的按钮全是死的（真机：点击没反应）。 */
+    document.addEventListener('click', (ev) => {
+        const btn = ev.target && ev.target.closest ? ev.target.closest('.custom-cd-opt, .cd-opt') : null;
+        if (!btn || btn.disabled) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        sendOption(btn.getAttribute('data-cd-text'), btn);
+    }, true);
     document.addEventListener('dblclick', (ev) => {
         if (!effectiveConfig().copyOnClick) return;
         const body = ev.target && ev.target.closest ? ev.target.closest('.custom-cd-body') : null;

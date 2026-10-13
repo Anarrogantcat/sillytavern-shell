@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.8');
+eq('version 与 manifest 一致', VERSION, '0.5.9');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -108,7 +108,8 @@ eq('10 个角色都有色', Object.keys(many).length, 10);
 const r = renderMessage(body, {}, DEFAULT_CONFIG);
 ok('渲染出 HTML', typeof r.html === 'string' && r.html.length > 0);
 ok('只有一个网格（一条消息一个网格）', (r.html.match(/cd-grid/g) || []).length === 1);
-ok('两条组之间有线', r.html.includes('cd-sep'));
+ok('默认不画分隔线（避免与行间距叠加）', !r.html.includes('cd-sep'));
+ok('打开 showSeparators 才画分隔线', renderMessage(body, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html.includes('cd-sep'));
 ok('动作行带 cd-L-act', r.html.includes('cd-L-act'));
 ok('心理行带 cd-L-mind', r.html.includes('cd-L-mind'));
 ok('旁白行带 cd-L-narr', r.html.includes('cd-L-narr'));
@@ -512,6 +513,19 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 选项按钮带行内 style', /<button[^>]*style="[^"]*background/.test(o), o.slice(0, 160));
     ok('★ 行内 style 里同时有 background 与 color', /background:/.test(o) && /color:inherit/.test(o));
     ok('★ 不用"几乎全透明"的白（255,255,255 低透明看不出效果）', !/rgba\(255,\s*255,\s*255/.test(o), o.slice(0, 160));
+}
+
+/* ★ 结构性守卫：选项点击必须是**事件委托**
+   （钩子路径下 HTML 是 ST 插进 DOM 的，我们根本没有"插完之后"的时机逐个绑事件 ——
+    原来只在 DOM 降级路径里绑，导致钩子路径的按钮全是死的。真机现象：「点击选项没反应」。） */
+{
+    const idxSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★ 选项点击用事件委托（document 上绑一次）',
+        /addEventListener\('click'[\s\S]{0,500}custom-cd-opt/.test(idxSrc));
+    ok('★ 已不存在「只在 DOM 路径逐个绑事件」的 wireOptions',
+        !/function wireOptions/.test(idxSrc));
+    ok('★ 发送前有防连点（同一组 1.2 秒内只发一次）', /sendOption\.last/.test(idxSrc));
+    ok('★ 点过之后整组禁用（选项是一次性的，避免重复发送）', /querySelectorAll\('button'\)[\s\S]{0,200}disabled = true/.test(idxSrc));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

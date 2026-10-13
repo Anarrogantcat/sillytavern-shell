@@ -18,7 +18,7 @@
     --cd-gap: .8em;
     --cd-indent: 2em;
 
-    line-height: 1.9;
+    line-height: var(--cd-lh, 1.9);
     word-break: break-word;
 }/* 亮色主题：由 index.js 读到 ST 主题后加 .custom-cd-light（不选全局） */
 .custom-cd-root.custom-cd-light{
