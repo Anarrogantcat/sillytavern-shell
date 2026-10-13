@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS,
+    VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS, PANEL_GROUPS,
     FORMAT_SPEC, REGEX_DEFS, SLASH_COMMAND,
     MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
     allLayers, layerVars, resolveColors, validateLayerName, rowDimmed,
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.7');
+eq('version 与 manifest 一致', VERSION, '0.7.8');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1076,6 +1076,44 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 内置兜底 CSS 同步改（否则取不到 style.css 时双线又变回 3px）',
         idxSrc.indexOf('border-left:var(--cd-mark-w,3px)') >= 0
         && idxSrc.indexOf('var(--cd-pad-comp,0px)') >= 0);
+}
+
+/* ============================================================================
+   ★ 面板分组折叠
+   字段一多，平铺就是一屏控件（真机截图：整整 1200px 高的字段列表）。
+   分组 + 默认只开「基本」，面板才回到可用长度。
+   ============================================================================ */
+{
+    const idxSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    ok('★ 有组定义 PANEL_GROUPS', Array.isArray(PANEL_GROUPS) && PANEL_GROUPS.length >= 5);
+    ok('★ 默认只展开一组（其余收起 —— 否则等于没折叠）',
+        PANEL_GROUPS.filter(g => g.open).length === 1);
+    eq('★ 默认展开的是「基本」', PANEL_GROUPS[0].name, '基本');
+
+    const ung = PANEL_FIELDS.filter(f => !f.group).map(f => f.key);
+    ok('★★ 每个字段都必须标组（以后加字段忘了标 → 这里直接报错）', ung.length === 0, ung);
+
+    const unknown = PANEL_FIELDS.filter(f => f.group && !PANEL_GROUPS.some(g => g.name === f.group)).map(f => f.key);
+    ok('★★ 每个组名都必须登记在 PANEL_GROUPS', unknown.length === 0, unknown);
+
+    const empty = PANEL_GROUPS.filter(g => !PANEL_FIELDS.some(f => f.group === g.name)).map(g => g.name);
+    ok('★ 登记的组不能是空组（否则面板上是个点了没反应的标题）', empty.length === 0, empty);
+
+    const counts = PANEL_GROUPS.map(g => PANEL_FIELDS.filter(f => f.group === g.name).length);
+    ok('★ 没有哪一组塞了一半以上的字段（分组才有意义）',
+        Math.max(...counts) <= Math.ceil(PANEL_FIELDS.length / 2), counts);
+
+    ok('★ 面板改用 groupsHTML(c) 渲染（不再是平铺的 PANEL_FIELDS.map）',
+        /const rows = groupsHTML\(c\)/.test(idxSrc) && !/const rows = PANEL_FIELDS\.map/.test(idxSrc));
+    ok('★ 有折叠开关（data-cd-grp-toggle）与状态记忆（localStorage）',
+        /data-cd-grp-toggle/.test(idxSrc) && /cd-grp-open/.test(idxSrc));
+    ok('★ 折叠状态默认值来自 PANEL_GROUPS（不是写死）',
+        /Object\.prototype\.hasOwnProperty\.call\(saved, g\.name\)/.test(idxSrc));
+    ok('★ CSS 有 #cd-panel .cd-grp 规则',
+        cssText.indexOf('#cd-panel .cd-grp') >= 0 && cssText.indexOf('#cd-panel .cd-grp-body') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

@@ -427,3 +427,21 @@
     margin-top: 4px;
     background: rgba(128, 140, 160, .06);
 }
+
+/* 面板分组（字段多了必须折叠，否则一屏全是控件） */
+#cd-panel .cd-grp { margin: 6px 0 2px; }
+
+#cd-panel .cd-grp-toggle {
+    cursor: pointer;
+    user-select: none;
+    font-weight: 600;
+    font-size: .92em;
+    opacity: .8;
+    padding: 5px 2px;
+    border-bottom: 1px solid rgba(128, 140, 160, .18);
+}
+
+#cd-panel .cd-grp-toggle:hover { opacity: 1; }
+#cd-panel .cd-grp-toggle[aria-expanded="true"] { opacity: .95; }
+
+#cd-panel .cd-grp-body { padding: 2px 0 4px; }

@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.7.7';
+export const VERSION = '0.7.8';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -228,49 +228,64 @@ export const REGEX_DEFS = [
 ];
 
 /**
+ * 面板分组（**纯数据**）：面板字段多了必须分组折叠，否则一屏全是控件。
+ * · name  —— 组名（也是 PANEL_FIELDS[].group 的取值）
+ * · open  —— 默认是否展开（只开「基本」，其余默认收起）
+ * ★ 夹具会断言：**每个字段都有组、每个组都在这里登记** —— 以后加字段忘了标组会直接报错。
+ */
+export const PANEL_GROUPS = [
+    { name: '基本', open: true },
+    { name: '排版', open: false },
+    { name: '思考块', open: false },
+    { name: '模型漂移修复', open: false },
+    { name: '提示词', open: false },
+    { name: '性能', open: false },
+    { name: '交互', open: false },
+];
+/**
  * 设置面板的字段表（**纯数据**，由 index.js 拿去生成抽屉）
  *
  * 为什么要放在这里：面板 HTML 在 index.js（碰 DOM），但字段定义放纯函数层，
  * 夹具就能断言「每个 key 都真的存在于 DEFAULT_CONFIG」—— 挡住拼错 key 这类静默失效。
  */
 export const PANEL_FIELDS = [
-    { key: 'enabled', kind: 'bool', label: '启用分镜渲染', note: '关掉后一个字节都不改消息' },
-    { key: 'transformUserMessages', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
-    { key: 'indentOnlyWrapped', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },
-    { key: 'markErrors', kind: 'bool', label: '格式错的行标红', note: '关掉 = 不显示（不推荐，会静默吞掉格式错误）' },
-    { key: 'nameColMode', kind: 'select', label: '名字列宽', note: 'auto = 按整条消息最长名字',
+    { key: 'enabled', group: '基本', kind: 'bool', label: '启用分镜渲染', note: '关掉后一个字节都不改消息' },
+    { key: 'transformUserMessages', group: '基本', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
+    { key: 'indentOnlyWrapped', group: '排版', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },
+    { key: 'markErrors', group: '基本', kind: 'bool', label: '格式错的行标红', note: '关掉 = 不显示（不推荐，会静默吞掉格式错误）' },
+    { key: 'nameColMode', group: '排版', kind: 'select', label: '名字列宽', note: 'auto = 按整条消息最长名字',
       options: [['auto', '自动（推荐）'], ['left', '自动（同左）'], ['fixed', '固定像素']] },
-    { key: 'nameColWidth', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
-    { key: 'rowGap', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
-    { key: 'lineHeight', kind: 'number', label: '行高', unit: '倍', min: 1.2, max: 2.6, step: 0.05 },
-    { key: 'showSeparators', kind: 'bool', label: '空行分组之间画分隔线',
+    { key: 'nameColWidth', group: '排版', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
+    { key: 'rowGap', group: '排版', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
+    { key: 'lineHeight', group: '排版', kind: 'number', label: '行高', unit: '倍', min: 1.2, max: 2.6, step: 0.05 },
+    { key: 'showSeparators', group: '排版', kind: 'bool', label: '空行分组之间画分隔线',
       note: '默认关：模型常每行都空一行 → 分隔线会与行间距叠加，整屏被撑散' },
-    { key: 'leadIndent', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },
+    { key: 'leadIndent', group: '排版', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },
 
     /* ---- L3 提示词层 ---- */
-    { key: 'thinkingWrap', kind: 'select', label: '思考块兜底',
+    { key: 'thinkingWrap', group: '思考块', kind: 'select', label: '思考块兜底',
       note: '预设那条思维链正则只覆盖最近 2 层；更早的层由插件折叠（消费掉标记后预设不会重复包装）',
       options: [['auto', '自动（只补预设覆盖不到的）'], ['always', '全部楼层都由插件包'], ['off', '不管']] },
-    { key: 'thinkingDepth', kind: 'number', label: '预设已覆盖的深度', unit: '层', min: 0, max: 50, step: 1 },
-    { key: 'thinkingOpen', kind: 'bool', label: '兜底的思考默认展开', note: '默认关 = 折叠隐藏' },
-    { key: 'thinkingPattern', kind: 'text', label: '思考块识别正则', note: '捕获组 1 = 展示正文；留空 = 不做兜底' },
-    { key: 'lenientLayers', kind: 'bool', label: '宽松层名（认不出的层当自定义层）',
+    { key: 'thinkingDepth', group: '思考块', kind: 'number', label: '预设已覆盖的深度', unit: '层', min: 0, max: 50, step: 1 },
+    { key: 'thinkingOpen', group: '思考块', kind: 'bool', label: '兜底的思考默认展开', note: '默认关 = 折叠隐藏' },
+    { key: 'thinkingPattern', group: '思考块', kind: 'text', label: '思考块识别正则', note: '捕获组 1 = 展示正文；留空 = 不做兜底' },
+    { key: 'lenientLayers', group: '模型漂移修复', kind: 'bool', label: '宽松层名（认不出的层当自定义层）',
       note: '关掉后：层名不是内置层/别名时该行退回普通文本 → **标签会原样显示**。建议保持开启' },
-    { key: 'autoRepair', kind: 'select', label: '自动修复模型漂移',
+    { key: 'autoRepair', group: '模型漂移修复', kind: 'select', label: '自动修复模型漂移',
       note: 'safe：只修「只写了层名」与纯引号行（有依据）；aggressive：再把完全没标注的归为旁白（不猜角色）',
       options: [['off', '不修'], ['safe', 'safe（有依据才修）'], ['aggressive', 'aggressive（再归旁白）']] },
-    { key: 'injectPrompt', kind: 'bool', label: '自动注入格式说明',
+    { key: 'injectPrompt', group: '提示词', kind: 'bool', label: '自动注入格式说明',
       note: '默认关：专属预设里已有同样说明，两边同时开会重复占提示词' },
-    { key: 'promptDepth', kind: 'number', label: '注入深度', unit: '层', min: 0, max: 20, step: 1 },
-    { key: 'promptPosition', kind: 'select', label: '注入位置',
+    { key: 'promptDepth', group: '提示词', kind: 'number', label: '注入深度', unit: '层', min: 0, max: 20, step: 1 },
+    { key: 'promptPosition', group: '提示词', kind: 'select', label: '注入位置',
       options: [['0', '系统提示内'], ['1', '对话内（更靠后）']] },
 
     /* ---- L5 数据层 ---- */
-    { key: 'maxRenderFloors', kind: 'number', label: '批量渲染上限', unit: '楼',
+    { key: 'maxRenderFloors', group: '性能', kind: 'number', label: '批量渲染上限', unit: '楼',
       min: 0, max: 2000, step: 20, note: '0 = 不限；只影响 DOM 降级路径，装了核内钩子时由 ST 自己按窗口渲染' },
 
     /* ---- L2 交互层 ---- */
-    { key: 'copyOnClick', kind: 'bool', label: '双击复制该行', note: '关掉 = 双击不复制（Alt+↑/↓ 跳场景不受影响）' },
+    { key: 'copyOnClick', group: '交互', kind: 'bool', label: '双击复制该行', note: '关掉 = 双击不复制（Alt+↑/↓ 跳场景不受影响）' },
 ];
 
 /**

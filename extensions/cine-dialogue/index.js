@@ -64,6 +64,7 @@ import {
     applyPresetRecipe,
 
     layerClass,
+    PANEL_GROUPS,
 } from './logic.js';
 
 // ---------------------------------------------------------------- 配置
@@ -1408,6 +1409,35 @@ function wirePanel() {
 
     /* ★ 扩展信息卡：折叠状态 + 查看日志 */
     /* ★「怎么看」折叠块（默认折叠，状态记 localStorage） */
+    /* ★ 面板分组折叠：读写 localStorage，默认值来自 PANEL_GROUPS */
+    const GRP_KEY = 'cd-grp-open';
+    const readGrpState = () => {
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(GRP_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+        return saved;
+    };
+    const applyGrpState = () => {
+        const saved = readGrpState();
+        PANEL_GROUPS.forEach(g => {
+            const open = Object.prototype.hasOwnProperty.call(saved, g.name) ? !!saved[g.name] : !!g.open;
+            const body = panel.querySelector('[data-cd-grp-body="' + g.name + '"]');
+            const tg = panel.querySelector('[data-cd-grp-toggle="' + g.name + '"]');
+            if (body) body.style.display = open ? '' : 'none';
+            if (tg) { tg.setAttribute('aria-expanded', open ? 'true' : 'false'); tg.textContent = (open ? '▾ ' : '▸ ') + g.name; }
+        });
+    };
+    panel.addEventListener('click', (ev) => {
+        const tg = ev.target && ev.target.closest ? ev.target.closest('[data-cd-grp-toggle]') : null;
+        if (!tg) return;
+        const name = tg.getAttribute('data-cd-grp-toggle');
+        const saved = readGrpState();
+        const body = panel.querySelector('[data-cd-grp-body="' + name + '"]');
+        saved[name] = !(body && body.style.display !== 'none');
+        try { localStorage.setItem(GRP_KEY, JSON.stringify(saved)); } catch (_) { /* 存不了只影响本次 */ }
+        applyGrpState();
+    });
+    applyGrpState();
+
     const howtoTg = panel.querySelector('#cd-howto-toggle');
     if (howtoTg) {
         howtoTg.addEventListener('click', () => {
@@ -1762,6 +1792,20 @@ function infoSecHTML() {
         '      </div>',
     ].join('');
 }
+/** 面板分组：按 PANEL_GROUPS 把字段折成若干块（默认只展开「基本」） */
+function groupsHTML(c) {
+    const by = {};
+    for (const f of PANEL_FIELDS) { const g = f.group || '其它'; (by[g] = by[g] || []).push(fieldHTML(f, c)); }
+    return PANEL_GROUPS.map(g => {
+        const rows = by[g.name] || [];
+        if (!rows.length) return '';
+        return '<div class="cd-grp" data-cd-grp="' + esc(g.name) + '">'
+            + '<div class="cd-grp-toggle" role="button" tabindex="0" aria-expanded="' + (g.open ? 'true' : 'false') + '" data-cd-grp-toggle="' + esc(g.name) + '">'
+            + (g.open ? '▾ ' : '▸ ') + esc(g.name) + '</div>'
+            + '<div class="cd-grp-body" data-cd-grp-body="' + esc(g.name) + '"' + (g.open ? '' : ' style="display:none"') + '>'
+            + rows.join('') + '</div></div>';
+    }).join('');
+}
 function buildSettingsPanel() {
     if (document.getElementById('cd-panel')) return;                 // 幂等
     const host = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
@@ -1771,7 +1815,7 @@ function buildSettingsPanel() {
     }
 
     const c = cfg();
-    const rows = PANEL_FIELDS.map(f => fieldHTML(f, c)).join('');
+    const rows = groupsHTML(c);
 
     host.insertAdjacentHTML('beforeend', [
         '<div class="inline-drawer">',
