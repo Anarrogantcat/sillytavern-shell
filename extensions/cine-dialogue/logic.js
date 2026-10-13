@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.1';
+export const VERSION = '0.5.2';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -252,6 +252,16 @@ export const RE_NARR = /^旁白\s*[·・:：]\s*(.+)$/;
 
 const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** 层名分支：内置四层 + 自定义层。
+ *  ★ 不能用 ['台词','动作','感官','心理'].join('|') + '|' + extra.join('|') ——
+ *    自定义层为空时会在尾部留下一个 `|`，产生**空层名分支**，
+ *    于是 `林野· 内容`（漏了层名）会被当成**合法行**而不是格式错误。 */
+function layerAlternation(layers) {
+    const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
+    const all = ['台词', '动作', '感官', '心理'].concat(extra);
+    return all.map(escRe).join('|');
+}
+
 /** 内置层 + 配置里的自定义层（去重、保序） */
 export function allLayers(config = {}) {
     const custom = Array.isArray(config.customLayers) ? config.customLayers : [];
@@ -259,21 +269,44 @@ export function allLayers(config = {}) {
     return LAYERS.concat(names.filter(n => LAYERS.indexOf(n) < 0));
 }
 
-/* 动态层名正则的缓存：不给每一行都 new 一个 RegExp */
-let _layerRe = { key: '', re: null };
+/* 动态层名正则的缓存：不给每一行都 new 一个 RegExp。
+   ★ key 初值必须是 null，不能是 '' —— 否则会和「没有自定义层」时的真实 key（空串）撞上，
+     正则**永远不会被构建**（re 停在 null），松散匹配全部失效。
+     这是夹具抓到的真 bug：结果「层名后漏空格」这种最常见的格式错误根本标不出来。 */
+let _layerRe = { key: null, re: null };
+let _looseRe = { key: null, re: null };
 
 /** 取「认哪些层」的行正则；没有自定义层时直接返回内置 RE_ROW */
 export function rowRegexFor(layers) {
     const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
     if (!extra.length) return RE_ROW;
     const key = extra.join('\u0001');
-    if (_layerRe.key !== key) {
+    if (_layerRe.key !== key || !_layerRe.re) {
         _layerRe = {
             key,
-            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(台词|动作|感官|心理|' + extra.map(escRe).join('|') + ')\\s+(.+)$'),
+            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerAlternation(layers) + ')\\s+(.+)$'),
         };
     }
     return _layerRe.re;
+}
+
+/**
+ * 「长得像我们的行、但写错了」的**松散**正则 —— 只少了层名后那个必需的空格。
+ *
+ * ★ 用途：**只有这种行才配被标红**。
+ *   反例（绝不能标红）：模型思考块里的普通散文 —— 它们和分镜格式毫无关系，
+ *   刷红只会把整段思考内容变成一屏「格式错误」（真机踩过，就是这个现象）。
+ */
+export function looseRegexFor(layers) {
+    const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
+    const key = extra.join('\u0001');
+    if (_looseRe.key !== key || !_looseRe.re) {
+        _looseRe = {
+            key,
+            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerAlternation(layers) + ')\\s*(.*)$'),
+        };
+    }
+    return _looseRe.re;
 }
 
 /** 选项行：1. 文本 | 备注 */
@@ -307,7 +340,12 @@ export function parseLine(line, layers = LAYERS) {
     const r = line.match(rowRegexFor(layers));
     if (r) return { kind: 'row', name: r[1].trim(), layer: r[2], text: r[3].trim() };
 
-    return { kind: 'other', raw: line };
+    /* 长得像我们的行但写错了（最常见：层名后漏了空格）→ 显式标红，不静默降级 */
+    if (line.match(looseRegexFor(layers))) return { kind: 'err', raw: line };
+
+    /* ★ 其余一律当**普通文本原样通过** —— 不再把散文刷成红色。
+       （曾经把所有非匹配行都判成「格式错误」，结果模型思考块几百行全红了。） */
+    return { kind: 'text', raw: line };
 }
 
 /** 这行是不是「我们的行」 */
@@ -365,7 +403,7 @@ export function parseBlocks(body, layers = LAYERS) {
             continue;
         }
         const p = parseLine(line, layers);
-        if (p.kind === 'other') errs++;
+        if (p.kind === 'err') errs++;
         cur.push(p);
     }
     if (cur.length) groups.push(cur);
@@ -433,17 +471,26 @@ function rowHTML(r, colorMap, config) {
             + '</div>';
     }
     // other：格式不对的行 —— 显式暴露，不静默降级
-    if (!config.markErrors) return '';
-    return '<div class="cd-row cd-err">'
-        + '<span class="cd-who">格式错误</span>'
-        + '<span class="cd-body">' + esc(r.raw) + '</span>'
-        + '</div>';
+    if (r.kind === 'err') {
+        if (!config.markErrors) return '';
+        return '<div class="cd-row cd-err">'
+            + '<span class="cd-who">格式错误</span>'
+            + '<span class="cd-body">' + esc(r.raw) + '</span>'
+            + '</div>';
+    }
+
+    /* text：和分镜无关的普通文本（思考块、说明、散文…）—— **原样通过，不刷红**。
+       用整行跨两列，保持阅读流不被打断。 */
+    return '<div class="cd-line">' + esc(r.raw) + '</div>';
 }
 
 /**
  * 分组 → 网格 HTML（**一条消息一个网格**，名字列宽整条统一）
+ * @param {string} extrasHTML 追加进 .cd-root **内部**的 HTML（选项按钮）。
+ *  ★ 必须放 root 内部：主题变量（--cd-btn-bg / --cd-btn-line / --cd-sub …）定义在 .cd-root 上，
+ *    拼在 root 外面就继承不到 → var() 失效 → 选项按钮回落成浏览器默认的白底按钮（真机踩过）。
  */
-export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG) {
+export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG, extrasHTML = '') {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const style = '--cd-gap:' + Number(cfg.rowGap) + 'em;'
         + '--cd-indent:' + Number(cfg.leadIndent) + 'em;';
@@ -457,6 +504,7 @@ export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG) {
     return '<div class="cd-root' + (mode === 'fixed' ? ' cd-fixed' : '') + '"'
         + fixed + ' style="' + style + '">'
         + '<div class="cd-grid">' + rowsHTML + '</div>'
+        + (extrasHTML || '')
         + '</div>';
 }
 
@@ -474,20 +522,49 @@ export function renderOptions(options, config = DEFAULT_CONFIG) {
     return '<div class="cd-options">' + btns + '</div>';
 }
 
+/** 一条消息里「我们的行」的占比 */
+export function storyboardStats(groups) {
+    let ours = 0, total = 0;
+    for (const g of (groups || [])) {
+        for (const r of g) {
+            total++;
+            if (r.kind === 'row' || r.kind === 'narr') ours++;
+        }
+    }
+    return { ours, total, ratio: total ? ours / total : 0 };
+}
+
+/**
+ * ★ 消息级门槛：占比不够就**整条不碰**。
+ *
+ * 为什么必须有这一条：模型把思考块写在同一个 mes 里（预设的 `{思考内容}…</konatan_planning~>`）。
+ * 只要有一行匹配我们的格式就接管整条消息，思考块几百行就会全变红。
+ * 有了门槛：思考块占多数 → 整条原样交给 ST 渲染，我们一个字不改。
+ */
+export const MIN_LINES = 2;
+export const MIN_RATIO = 0.5;
+
 /** 总入口：正文 → 完整 HTML（不含 frontend —— 那块由 index.js 搬 DOM 节点） */
-export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG) {
+export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG, extrasHTML = '') {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const { groups, errs } = parseBlocks(body, allLayers(cfg));
     const names = collectNames(groups);
     const map = resolveColors(names, cfg, colorMap);
+    const s = storyboardStats(groups);
 
     /* 一条「我们的行」都没有 → 什么都不产出（调用方据此决定不碰 DOM）。
        注意判据不能只看 names.length：整条都是散文时 names=[] 但 errs>0，
        那样会把一条普通消息整条刷成红色「格式错误」。 */
-    const hasAny = groups.some(g => g.some(r => r.kind === 'row' || r.kind === 'narr'));
-    if (!hasAny) return { html: null, groups, errs, names, colors: map };
+    if (s.ours === 0) {
+        return { html: null, groups, errs, names, colors: map, skipped: 'no-lines', ...s };
+    }
 
-    return { html: renderGrid(groups, map, cfg), groups, errs, names, colors: map };
+    /* ★ 门槛：行数或占比不够 → 整条不改（思考块、夹杂大段散文的消息走这里） */
+    if (s.ours < MIN_LINES || s.ratio < MIN_RATIO) {
+        return { html: null, groups, errs, names, colors: map, skipped: 'ratio', ...s };
+    }
+
+    return { html: renderGrid(groups, map, cfg, extrasHTML), groups, errs, names, colors: map, skipped: null, ...s };
 }
 
 /**
@@ -510,12 +587,14 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
        → 若继续拼 `'' + 前端 + 选项`，就会返回一个非空字符串，**正文整段丢失**。 */
     if (!hasOurLines(sections.body, allLayers(cfg))) return null;
 
-    const res = renderMessage(sections.body, colorMap, cfg);
+    /* 选项按钮要放进 .cd-root **里面**（否则拿不到主题变量 → 白底默认按钮） */
+    const optHTML = sections.options.length ? renderOptions(sections.options, cfg) : '';
+    const res = renderMessage(sections.body, colorMap, cfg, optHTML);
     if (!res.html) return null;                     // 双保险：宁可整条不改，也不能只输出外壳
 
     let html = res.html;
     for (const f of sections.frontend) html += '\n' + f;          // 前端区：原样，一个字不动
-    if (sections.options.length) html += '\n' + renderOptions(sections.options, cfg);
+    // 选项已经在 res.html 的 .cd-root 内部了，这里不再拼
 
     return { html, names: res.names, errs: res.errs, colors: res.colors, sections };
 }

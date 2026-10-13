@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.1');
+eq('version 与 manifest 一致', VERSION, '0.5.2');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -43,9 +43,9 @@ eq('台词行', parseLine('林婉婷·台词 「不脱。」'),
     { kind: 'row', name: '林婉婷', layer: '台词', text: '「不脱。」' });
 eq('旁白行（无名字字段）', parseLine('旁白·门缝底下那道光暗了一下。'),
     { kind: 'narr', body: '门缝底下那道光暗了一下。' });
-eq('层后漏空格 → other（显式暴露，不猜）', parseLine('林野·动作我按住了她。').kind, 'other');
-eq('没有层标签 → other', parseLine('随便一句话。').kind, 'other');
-eq('空行 → other', parseLine('').kind, 'other');
+eq('层后漏空格 → err（显式暴露，不猜）', parseLine('林野·动作我按住了她。').kind, 'err');
+eq('没有层标签 → text（普通文本，原样通过、不刷红）', parseLine('随便一句话。').kind, 'text');
+eq('空行 → text', parseLine('').kind, 'text');
 ok('isOurLine 认 row', isOurLine('林野·感官 我后背起了一层薄汗。'));
 ok('isOurLine 认 narr', isOurLine('旁白·她站在门口。'));
 ok('isOurLine 不认散文', !isOurLine('她站在门口没动。'));
@@ -83,8 +83,13 @@ eq('第 1 组 2 行', groups[0].length, 2);
 eq('第 2 组 2 行', groups[1].length, 2);
 eq('没有格式错', errs, 0);
 
-const badOut = parseBlocks('林野·动作 正确的行。\n这行没有标签。');
-eq('格式错的行被计数', badOut.errs, 1);
+/* ★ 行为变更（0.5.2）：「格式错误」只算**长得像我们的行但写错了**的那些。
+   普通散文是 text（原样通过），不是 error —— 否则模型思考块几百行会全红。 */
+const badOut = parseBlocks('林野·动作 正确的行。\n林野·动作我漏了空格。');
+eq('格式错的行被计数（松散匹配才算错）', badOut.errs, 1);
+const proseOut = parseBlocks('林野·动作 正确的行。\n这行只是普通散文，和分镜无关。');
+eq('普通散文不算格式错', proseOut.errs, 0);
+eq('普通散文被判为 text', proseOut.groups[0][1].kind, 'text');
 
 /* ---------------------------- 名字与颜色 ---------------------------- */
 eq('按出现顺序收集名字', collectNames(groups), ['林野', '林婉婷', '苏晴']);
@@ -116,14 +121,40 @@ ok('渲染结果里没有 .mes_text 选择器', !r.html.includes('.mes_text'));
 const rNone = renderMessage('就是一段普通散文，没有任何标签。', {}, DEFAULT_CONFIG);
 eq('没有我们的行 → 不产出 HTML（调用方就不碰 DOM）', rNone.html, null);
 
-const rBad = renderMessage('林野·动作 对的。\n这行漏了标签。', {}, DEFAULT_CONFIG);
-ok('格式错行被标红', rBad.html.includes('cd-err'));
+/* 标红的判据变了：只有「长得像我们的行但写错了」才红 */
+const rGood = '林野·动作 我按住了她。\n苏晴·台词 「别。」\n林野·感官我漏了空格。';
+const rBad = renderMessage(rGood, {}, DEFAULT_CONFIG);
+ok('格式错行被标红（占比够 → 接管这条消息）', rBad.html.includes('cd-err'));
 ok('格式错行原文可见', rBad.html.includes('格式错误'));
-const rBadOff = renderMessage('林野·动作 对的。\n这行漏了标签。', {}, { ...DEFAULT_CONFIG, markErrors: false });
+const rBadOff = renderMessage(rGood, {}, { ...DEFAULT_CONFIG, markErrors: false });
 ok('markErrors=false 时不输出错误行', !rBadOff.html.includes('cd-err'));
 
+/* ★ 普通散文混在里面 → 走 passthrough（.cd-line），绝不当成格式错误 */
+const rMixed = renderMessage('林野·动作 我按住了她。\n苏晴·台词 「别。」\n这是一句普通说明，不是分镜行。', {}, DEFAULT_CONFIG);
+ok('混进来的普通散文用 .cd-line 原样通过', rMixed.html.includes('cd-line'));
+ok('普通散文不被标红', !rMixed.html.includes('cd-err'));
+ok('普通散文字面还在', rMixed.html.includes('这是一句普通说明'));
+
+/* ★★ 消息级门槛：思考块占多数 → 整条不碰（真机踩过的那个"全屏格式错误"） */
+const thinkingLike = [
+    '{思考内容}',
+    '棒进入了她的体内。这不仅是生理上的充实，更是一种心理上的彻底被占有。',
+    '格式错误我要把镜头聚焦在两人身体碰撞的每一个细节上：',
+    '1. 肌肉的震颤：染在冲刺时，胸肌的隆起和背部肌肉的线条如何由于发力而变得紧绷。',
+    '2. 液体的流转：她们的交接处因为缺乏充分润滑带来的最初的一点涩。',
+    '3. 沙良的心理防线崩溃：她必须在心里不断地和自己那个庸的丈夫做对比。',
+    '4. 男性凝视：染不是在盲目地做爱，他在精准地控制节奏。',
+    '林野·动作 我按住了她。',
+    '</konatan_planning~>',
+].join('\n');
+const rThinking = renderMessage(thinkingLike, {}, DEFAULT_CONFIG);
+eq('思考块占多数 → 返回 null（整条不改）', rThinking.html, null);
+eq('门槛原因标为 ratio', rThinking.skipped, 'ratio');
+ok('门槛统计：占比确实不到 50%', rThinking.ratio < 0.5, rThinking);
+eq('renderMessageHTML 同样被门槛拦住', renderMessageHTML(thinkingLike), null);
+
 /* XSS：内容里的标签必须被转义 */
-const rXss = renderMessage('林野·动作 <img src=x onerror=alert(1)>', {}, DEFAULT_CONFIG);
+const rXss = renderMessage('林野·动作 <img src=x onerror=alert(1)>\n苏晴·台词 「嗯。」', {}, DEFAULT_CONFIG);
 ok('内容里的 HTML 被转义', rXss.html.includes('&lt;img') && !rXss.html.includes('<img'));
 
 /* ---------------------------- 选项渲染 ---------------------------- */
@@ -142,7 +173,7 @@ eq('stats 有版本', stats().version, VERSION);
 /* ---------------------------- 钩子路径（核内补丁 #001） ---------------------------- */
 // 钩子跑在 messageFormatting 开头 —— 那时正则还没跑，
 // 所以它看到的是预设的**原始**标签 <htmlcontent>/<options>，不是我们替换后的 [FRONTEND]
-const hRaw = '林野·动作 我把她按在床上。\n<htmlcontent><div>前端</div></htmlcontent>\n<options>\n>选项一：吻她\n>选项二：按住她\n</options>';
+const hRaw = '林野·动作 我把她按在床上。\n苏晴·台词 「别动。」\n<htmlcontent><div>前端</div></htmlcontent>\n<options>\n>选项一：吻她\n>选项二：按住她\n</options>';
 const hSec = splitSections(hRaw);
 eq('认 <htmlcontent>（钩子路径的外壳形式）', hSec.frontend.length, 1);
 ok('前端 HTML 原样保留、不被转义', hSec.frontend[0].includes('<div>前端</div>'));
@@ -157,8 +188,13 @@ const hRes = renderMessageHTML(hRaw, {}, DEFAULT_CONFIG);
 ok('钩子产出网格', !!hRes && hRes.html.includes('cd-grid'));
 ok('钩子产出：前端 HTML 未被转义（原样拼回）', hRes.html.includes('<div>前端</div>'));
 ok('钩子产出：选项按钮已渲染', hRes.html.includes('data-cd-text="吻她"'));
+/* ★ 回归：选项必须在 .cd-root **内部** —— 主题变量定义在 .cd-root 上，
+   拼在外面就继承不到 → var() 失效 → 选项回落成浏览器默认白底按钮（真机踩过）。 */
+ok('选项在 .cd-root 内部（否则拿不到主题变量）',
+    hRes.html.indexOf('cd-options') < hRes.html.lastIndexOf('</div>')
+    && /class="cd-root[^"]*"[\s\S]*cd-options[\s\S]*<\/div>\s*$/.test(hRes.html.replace(/<htmlcontent>[\s\S]*$/, '')));
 ok('钩子产出：标签不出现', !hRes.html.includes('·动作'));
-ok('钩子产出：旁白无名字', /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(renderMessageHTML('旁白·灯灭了。').html));
+ok('钩子产出：旁白无名字', /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(renderMessageHTML('旁白·灯灭了。\n林野·动作 我按住她。').html));
 
 /* ---------------------------- 回归对照（自检发现的坑，§1.4.6 留对照夹具） ----------------------------
    坑：renderMessageHTML 原来用「整条原文」做 hasOurLines 判据。
@@ -268,7 +304,16 @@ eq('allLayers：追加自定义层', allLayers({ customLayers: [{ name: '系统'
 eq('allLayers：与内置重名时去重', allLayers({ customLayers: [{ name: '台词' }, { name: '系统' }] }).length, 6);
 ok('自定义层能被解析（名字·系统 内容）',
     parseLine('广播·系统 提示音响起。', allLayers({ customLayers: [{ name: '系统' }] })).kind === 'row');
-ok('没登记过的层名 → other（不乱认，避免把散文当分镜）', parseLine('广播·未登记 提示音。').kind === 'other');
+/* ★ 标红的判据刻意**收窄**：只有「我们自己的层名 + 漏了那个空格」才红。
+   不认识的层名 / 压根没有层名 → **不是我们的行** → 原样放过（text）。
+   取舍：宁可漏报，也不能把别的约定（卡自己的 `名字·称呼`、散文）刷红 ——
+   真机踩过的正是「过度标红」（整段思考块变红）。 */
+eq('没登记过的层名 → text（不是我们的行，原样放过）',
+    parseLine('广播·未登记 提示音。').kind, 'text');
+eq('漏了层名（名字· 内容）→ text（同上，不乱认）',
+    parseLine('林野· 内容').kind, 'text');
+eq('我们自己的层名 + 漏空格 → err（这才是要标红的）',
+    parseLine('林野·动作我按住她。').kind, 'err');
 ok('rowRegexFor 在有自定义层时返回不同的正则',
     rowRegexFor(allLayers({ customLayers: [{ name: '系统' }] })) !== rowRegexFor(LAYERS));
 

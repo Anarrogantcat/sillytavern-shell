@@ -771,7 +771,7 @@ function scanFormatErrors(limit = 30) {
         if (!pb.errs) continue;
         for (const g of pb.groups) {
             for (const r of g) {
-                if (r.kind === 'other') out.push({ mesId: i, raw: r.raw });
+                if (r.kind === 'err') out.push({ mesId: i, raw: r.raw });
                 if (out.length >= limit) break;
             }
             if (out.length >= limit) break;
