@@ -1,6 +1,25 @@
 # 更新日志
 
-# 更新日志
+## [0.33.1] - 2026-10-13
+
+### 互通：重渲染后通知 cine-dialogue 补渲染（本仓库三个扩展同属一家）
+
+**问题**：`nudgeRender()` 之前只在「补发 `MESSAGE_UPDATED`」这条路上起作用。而
+`updateMessageBlock(id, m, {rerenderMessage:true})` 会**重建 `.mes_text`** 且**全程不发任何事件**（本文件 611–616 行的注释早就写明了这一点）——
+于是同一楼里 cine-dialogue 已经写好的分镜 DOM 会被一起冲掉，而它收不到任何通知。
+
+**改法**：在 `nudgeRender()` 里加一句定向通知，**位置刻意放在配置早退之前**：
+
+```js
+try { window.CineDialogue?.refreshAt?.(messageId); } catch (_) {}
+```
+
+**为什么要放在早退之前**：下面的 `nudgeRender === false` / `compatMode` 开关管的是
+「要不要补发 ST 事件给酒馆助手重画前端块」，跟 cine-dialogue 无关，不该被那个开关连坐。
+
+**覆盖范围**：三处重渲染（原 582 / 1169 / 1388 行）后面都调 `nudgeRender()`，所以一句即可全覆盖。
+
+**影响**：无 cine-dialogue 时是一句空调用（可选链 + try），行为完全不变。
 
 ## [0.33.0] - 2026-09-25
 

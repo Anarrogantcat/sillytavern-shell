@@ -1,5 +1,65 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— 新扩展 cine-dialogue 0.1.0：分镜对话（核心渲染 L1）
+
+### 新增
+- **`extensions/cine-dialogue/`（v0.1.0，6 个文件）** —— 把「`名字·层 内容`」渲染成分镜式对话
+  - `logic.js` 纯逻辑层（不碰 DOM/ST，可在 Node 里跑）+ `style.css`（全 `cd-` 前缀，**无全局选择器**）+ `index.js` 挂载层 + README + CHANGELOG
+  - 五层：台词 / 动作 / 感官 / 心理 / 旁白；**颜色 = 角色**（按出现顺序，超出 8 色走黄金角 HSL）
+  - **一条消息一个网格** → 名字列宽整条统一；行间距用 `row-gap`（`display:contents` 下 margin 无效）
+  - **格式错的行显式标红**（不静默降级成旁白）；内容里的 HTML 一律转义
+  - **8 个事件触发点**（含流式收尾 `GENERATION_ENDED`）；**流式中不处理**；**幂等**（每次从 `chat[mesid].mes` 原文重算）
+  - **只替换「100% 是我们的行」的 DOM 块**；前端 iframe / 思考块 / 状态栏**原样保留**
+  - `loading_order: 110` —— 排在 酒馆助手(100) / plot-pilot(40) / card-compat(30) 之后
+- **适配层（探测 + 降级，不硬依赖）**
+  - 酒馆助手 `TavernHelper.getChatMessages` 取原文 → 无则退回 `getContext().chat[id].mes`
+  - MVU `Mvu` 探测（本版只报状态）
+  - **卡兼容助手 `CardCompat`**：只读 `version/protocol/compatMode/mvu`；**不改它**
+  - **时序适配（实测 card-compat 0.33.0）**：它在 `GENERATION_ENDED` 后有 2500/7000ms、`CHARACTER_MESSAGE_RENDERED` 后有 1500ms 延迟动作，可能重渲染冲掉我们的 DOM → 生成结束后**补跑 200/1600/2700/7300ms 四次**
+- `scripts/cine-dialogue-test.mjs`：**60 条断言**（行解析 / 切段 / 分组 / 颜色稳定性 / XSS 转义 / 格式错行 / 边界）
+- `package.json`：`ext:test` 与 `all:test` 挂入新夹具
+- `extensions/index.json`：新增 cine-dialogue（2 → **3 个扩展**）
+
+### 说明
+- 只改扩展 + 夹具 + 文档 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）
+- `node scripts/ext-index.mjs` 已重建，`--check` **exit 0**
+- 夹具结果：compat-logic **658** / plot-pilot **67** / **cine-dialogue 60** / ext-manage **49**，全过
+- **未触碰 ST 本体**（本轮全部在扩展层完成）
+
+## 未发版（2026-10-13）— card-compat 0.33.1：重渲染后通知 cine-dialogue 补渲染（本仓库三扩展互通）
+
+### 互通（card-compat / plot-pilot / cine-dialogue 同属一家）
+- **实测根因**：`updateMessageBlock(id, m, {rerenderMessage:true})` 会**重建 `.mes_text`**，而且**全程不发任何事件**（card-compat 611–616 行的注释早就写明了这一点）→ 同一楼里 cine-dialogue 已写好的分镜 DOM 被一起冲掉，它却收不到通知
+- **改法**：`nudgeRender()` 里加一句定向通知 `window.CineDialogue?.refreshAt?.(messageId)`
+  - **位置刻意放在配置早退之前** —— `nudgeRender === false` / `compatMode` 管的是「要不要补发 ST 事件给酒馆助手重画前端块」，跟 cine-dialogue 无关，不该被连坐
+  - 三处重渲染（原 582 / 1169 / 1388 行）后面都调 `nudgeRender()` → **一句覆盖全部**
+- **无 cine-dialogue 时是一句空调用**（可选链 + try），行为完全不变
+
+### 版本
+- `index.js` `const VERSION` 0.33.0 → **0.33.1**；`manifest.json` version + description 同步
+
+### plot-pilot（本轮不改代码，附实测依据）
+- 实测它**不碰 `.mes_text`** —— 三处 DOM 写入（`index.js:393`）都是它自己的 `#pp-wrap` 按钮条；发送走 `Generate('normal')`（:156）或模拟点击 `#send_textarea`
+- → **与 cine-dialogue 没有冲突，无需为兼容改它**
+- 它的互通落在 cine-dialogue 侧：**选项按钮走 `PlotPilot.sendText()`**（复用防连点 800ms + api/dom 双通道 + 生成中拦截）
+
+### 说明
+- 只改扩展 + 文档 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）
+- `extensions/index.json` 已重建（card-compat **0.33.1** / cine-dialogue 0.1.0 / plot-pilot 0.2.2），`--check` **exit 0**
+- **未触碰 ST 本体**
+
+## 未发版（2026-10-13）— AGENTS.md v9：新增 §0.5「例外登记」，给 cine-dialogue 授予"可改 ST 本体"豁免
+
+### 文档
+- `AGENTS.md` 升 **v9**：新增 **§0.5 例外登记**（逐插件登记、不泛化）+ 5 条附加要求 + "扩展层做不到"清单；§0.2 标题改为「不问也不做；**唯一例外见 §0.5**」
+- 登记：**`cine-dialogue`（分镜对话）** —— 允许改 ST 本体（§0.2 第 1~5 条全豁免，含 `config.yaml` 与启动脚本）
+- 依据（用户原话）：「我说过不设限，毁了重新适配不就好了」＋「**只允许目前这个插件不设限**」
+- **豁免不泛化**：card-compat / plot-pilot 等仍守 §0.2
+
+### 说明
+- 仅文档变更：不改壳行为、不改扩展 → **不升版本号、不打 tag、不发包**（依据 AGENTS §1.1 / §4.3）
+- `extensions/index.json` 内容未变，只跑 `--check`，不重写（依据 AGENTS §1.5.7）
+
 ## 未发版（2026-10-09）— AGENTS.md v8：新增 §1.5「上下文与缓存纪律」
 
 ### 文档

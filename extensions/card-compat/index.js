@@ -11,7 +11,7 @@ import { buildProfile, guardText, isStale, normalizeMalformedClosings, detectFor
 
 const NAME = 'card-compat';
 const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
-const VERSION = '0.33.0';
+const VERSION = '0.33.1';
 const DEFAULTS = {
     enabled: true,
     injectAnchor: true,      // 缺锚点补一个（默认开；只有卡自己定义过锚点、且不在隐藏白名单里才会补）
@@ -617,6 +617,16 @@ async function maybeFixVars(messageId) {
 function nudgeRender(messageId) {
     try {
         const s = settings();
+
+        /* ★ 0.33.1 互通约定（本仓库三个扩展同属一家）
+           我们刚用 updateMessageBlock(..., {rerenderMessage:true}) 重建了 .mes_text，
+           而 ST 那个调用**全程不发任何事件** —— 会把 cine-dialogue 已写好的分镜 DOM 一起冲掉。
+           这里主动通知它补渲染（定向，只刷这一楼）。
+
+           位置刻意放在配置早退**之前**：下面的 nudgeRender / compatMode 开关管的是
+           「要不要补发 ST 事件给酒馆助手重画前端块」，跟 cine-dialogue 无关，不该被连坐。 */
+        try { window.CineDialogue?.refreshAt?.(messageId); } catch (_) {}
+
         if (!s || s.nudgeRender === false || s.compatMode) return false;   // 兼容模式：不发事件、不碰别人的渲染
         const ev = event_types.MESSAGE_UPDATED;
         if (!ev) return false;

@@ -6,12 +6,12 @@
     {
       "id": "card-compat",
       "display_name": "卡兼容助手 (Card Compat)",
-      "version": "0.33.0",
+      "version": "0.33.1",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 111462,
-          "sha1": "6e13f77faa7ab61ba22750053d58789e3d3e228f"
+          "size": 112591,
+          "sha1": "c6e13a8b2c2543142215253e7eb3c2d6428065b2"
         },
         {
           "path": "README.md",
@@ -30,8 +30,8 @@
         },
         {
           "path": "index.js",
-          "size": 195964,
-          "sha1": "45b857cc21ac625395c63d785e5a4fd445ab907a"
+          "size": 196640,
+          "sha1": "1494a2d452996e1a5211bc68e400bc5f6fda281c"
         },
         {
           "path": "logic.js",
@@ -40,13 +40,50 @@
         },
         {
           "path": "manifest.json",
-          "size": 623,
-          "sha1": "c66f230f40155be330bb3c0753b54a868e3d737c"
+          "size": 680,
+          "sha1": "d6a96c939c7795e14274dd4ed1bdeb4de866c27c"
         },
         {
           "path": "style.css",
           "size": 7378,
           "sha1": "3ba2d1f68411419f32e45c332448805f99ffdf13"
+        }
+      ]
+    },
+    {
+      "id": "cine-dialogue",
+      "display_name": "分镜对话 (Cine Dialogue)",
+      "version": "0.1.0",
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "size": 2847,
+          "sha1": "d47f4fa515a036969fdada1dd663b6bdc6e0882e"
+        },
+        {
+          "path": "README.md",
+          "size": 3597,
+          "sha1": "f4d6e1f2545eefd101dfc6d7b0b981cc719873ca"
+        },
+        {
+          "path": "index.js",
+          "size": 15715,
+          "sha1": "ba155703bb42dabf45bcd5821c4bab73e9bbe1c1"
+        },
+        {
+          "path": "logic.js",
+          "size": 10161,
+          "sha1": "71e12570a3fba132c20fed9b2b3e3baf972e06f6"
+        },
+        {
+          "path": "manifest.json",
+          "size": 406,
+          "sha1": "cdfd6aa7dcd184ade3e0972db7aceadd96a9a2c5"
+        },
+        {
+          "path": "style.css",
+          "size": 4589,
+          "sha1": "fe5bee59994a8252bb04e03316967000a439cb9d"
         }
       ]
     },
@@ -88,5 +125,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-29T19:22:22.913Z"
+  "generatedAt": "2026-10-13T15:02:10.933Z"
 }

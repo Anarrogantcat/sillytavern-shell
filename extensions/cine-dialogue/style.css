@@ -1,0 +1,160 @@
+/* ============================================================================
+   分镜对话 · 样式
+   ★ 硬规则（AGENTS.md §0.3.2）：所有选择器一律 cd- 前缀，
+     不得出现 .mes_text / .mes / body / html / :root 等全局选择器。
+     变量只挂在自己的 .cd-root 上。
+   ============================================================================ */
+
+.cd-root {
+    /* 主题变量（默认暗色） */
+    --cd-sub: #9aa8bf;
+    --cd-err: #ff6b6b;
+    --cd-err-bg: rgba(255, 107, 107, .10);
+    --cd-sep: rgba(128, 140, 160, .28);
+    --cd-btn-bg: rgba(255, 255, 255, .04);
+    --cd-btn-line: rgba(128, 140, 160, .32);
+
+    /* 布局变量（会被 inline style 覆盖） */
+    --cd-gap: .8em;
+    --cd-indent: 2em;
+
+    line-height: 1.9;
+    word-break: break-word;
+}
+
+/* 亮色主题：由 index.js 读到 ST 主题后加 .cd-light（不选全局） */
+.cd-root.cd-light {
+    --cd-sub: #5a6472;
+    --cd-err: #c62828;
+    --cd-err-bg: rgba(198, 40, 40, .08);
+    --cd-sep: rgba(90, 100, 116, .24);
+    --cd-btn-bg: rgba(0, 0, 0, .03);
+    --cd-btn-line: rgba(90, 100, 116, .28);
+}
+
+/* ---------------------------------------------------------------- 网格
+   一条消息一个网格 → 名字列宽整条统一（不是每段各算各的） */
+
+.cd-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    row-gap: var(--cd-gap);
+}
+
+.cd-root.cd-fixed .cd-grid {
+    grid-template-columns: var(--cd-namew, 96px) 1fr;
+}
+
+/* ---------------------------------------------------------------- 行
+   .cd-row 不生成盒子（display:contents），who/body 直接落进两格
+   ★ 行间距只能用 row-gap —— display:contents 下 margin 无效 */
+
+.cd-row {
+    display: contents;
+    color: var(--c, inherit);
+}
+
+.cd-who {
+    font-weight: 600;
+    font-size: .95em;
+    opacity: .85;
+    text-align: right;
+    padding-right: .6em;
+    white-space: nowrap;
+}
+
+.cd-body {
+    min-width: 0;
+    /* 所有行的 border 宽度必须一致，只换颜色/样式 —— 否则有线行被推偏 */
+    border-left: 3px solid transparent;
+    padding-left: .7em;
+}
+
+/* 首行缩进：只给「真的换行」的段落（index.js 量高度后加 .cd-wrap） */
+.cd-body.cd-wrap {
+    text-indent: var(--cd-indent);
+}
+
+/* ---------------------------------------------------------------- 层 → 样式 */
+
+.cd-L-speech .cd-body {}                                   /* 台词：无标记（「」自己就有） */
+.cd-L-act    .cd-body { border-left-style: solid;  border-left-color: currentColor; }
+.cd-L-sense  .cd-body { border-left-style: dotted; border-left-color: currentColor; opacity: .94; }
+.cd-L-mind   .cd-body { border-left-style: double; border-left-color: currentColor; font-style: italic; }
+
+/* 旁白：没有名字格，内容用中性灰 */
+.cd-L-narr  .cd-body { color: var(--cd-sub); opacity: .92; }
+
+/* ---------------------------------------------------------------- 段间分隔 */
+
+.cd-sep {
+    grid-column: 1 / -1;
+    height: 0;
+    border-top: 1px solid var(--cd-sep);
+    margin: .45em 0;
+}
+
+/* ---------------------------------------------------------------- 格式错误
+   显式暴露 —— 不静默降级成旁白 */
+
+.cd-err .cd-who {
+    color: var(--cd-err);
+    font-weight: 400;
+    font-size: .78em;
+    opacity: .9;
+}
+
+.cd-err .cd-body {
+    color: var(--cd-err);
+    background: var(--cd-err-bg);
+    border-left-style: dashed;
+    border-left-color: var(--cd-err);
+    border-radius: 0 .2em .2em 0;
+}
+
+/* ---------------------------------------------------------------- 选项 */
+
+.cd-options {
+    display: flex;
+    flex-direction: column;
+    gap: .35em;
+    margin-top: .9em;
+}
+
+.cd-opt {
+    display: flex;
+    align-items: baseline;
+    gap: .7em;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    font-size: .9em;
+    padding: .5em .8em;
+    border-radius: .3em;
+    border: 1px solid var(--cd-btn-line);
+    background: var(--cd-btn-bg);
+    color: inherit;
+}
+
+.cd-opt:hover {
+    border-color: var(--cd-sub);
+}
+
+.cd-opt-i { opacity: .6; font-size: .85em; min-width: 1.4em; }
+.cd-opt-t { flex: 1 1 auto; }
+.cd-opt-n { opacity: .55; font-size: .8em; }
+
+/* ---------------------------------------------------------------- 窄屏
+   选择器仍是 cd- 前缀 —— 媒体查询本身不算全局选择器 */
+
+@media (max-width: 600px) {
+    .cd-who {
+        max-width: 4.5em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: .9em;
+    }
+    .cd-root { line-height: 1.8; }
+    .cd-body { padding-left: .55em; }
+}
