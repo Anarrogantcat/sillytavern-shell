@@ -336,3 +336,50 @@
     border-bottom: 1px dotted currentColor;
     cursor: help;
 }
+/* ---------------------------------------------------------------- 扩展信息 / 查看日志
+   与 card-compat 0.3.1、plot-pilot 0.1.3 的同一块对齐。 */
+
+#cd-panel .cd-info {
+    border: 1px solid rgba(128, 140, 160, .28);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 6px 0 8px;
+    background: rgba(128, 140, 160, .08);
+}
+
+#cd-panel .cd-info-name { font-size: 1.05em; }
+
+#cd-panel .cd-info-actions { margin: 4px 0 6px; }
+
+#cd-panel .cd-info-line {
+    font-size: .9em;
+    opacity: .85;
+    line-height: 1.5;
+    word-break: break-all;
+}
+
+#cd-panel .cd-info-note {
+    font-size: .9em;
+    opacity: .75;
+    line-height: 1.5;
+    margin-top: 6px;
+}
+
+#cd-panel .cd-info-toggle {
+    cursor: pointer;
+    user-select: none;
+    opacity: .55;
+    font-size: .9em;
+    padding: 4px 2px;
+}
+
+#cd-panel .cd-info-toggle:hover { opacity: .95; }
+#cd-panel .cd-info-toggle[aria-expanded="true"] { opacity: .85; }
+
+/* 日志弹窗在 body 下、不在 #cd-panel 里 → 用自有前缀 .cd-log-*（符合 §0.3.2） */
+.cd-log-doc { max-height: 70vh; overflow: auto; line-height: 1.6; font-size: .95em; }
+.cd-log-doc h2, .cd-log-doc h3, .cd-log-doc h4, .cd-log-doc h5 { margin: .8em 0 .3em; }
+.cd-log-head { margin-bottom: .5em; padding-bottom: .4em; border-bottom: 1px solid rgba(128, 140, 160, .28); }
+.cd-log-li { padding-left: .8em; }
+.cd-log-gap { height: .5em; }
+.cd-log-doc code { padding: .1em .3em; border-radius: .2em; background: rgba(128, 140, 160, .16); }

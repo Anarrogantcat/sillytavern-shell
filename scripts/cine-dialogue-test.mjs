@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.0');
+eq('version 与 manifest 一致', VERSION, '0.7.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -810,6 +810,45 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         !/fetch\(/.test(panelBlock) && !/XMLHttpRequest/.test(panelBlock) && !/\.send\(/.test(panelBlock));
     ok('★ 面板里写着原作者与许可（用户看得见）',
         /PRESET_UPSTREAM\.author/.test(idxSrc) && /PRESET_UPSTREAM\.license/.test(idxSrc));
+}
+
+/* ============================================================================
+   ★ 扩展信息块（作者 / 许可 / 项目主页 / 查看日志）
+   与 card-compat 0.3.1、plot-pilot 0.1.3 对齐 —— ST 的抽屉里没有任何这类说明，
+   而用户是在拿它动自己的聊天数据，必须能一眼看到作者、许可与作用范围。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    ok('★ 有扩展信息（折叠开关 + 内容体）',
+        src.indexOf('id="cd-info-toggle"') >= 0 && src.indexOf('id="cd-info-body"') >= 0);
+    ok('★ 作者 / 许可 / 项目主页 三项齐全',
+        src.indexOf('小肥鱼') >= 0 && src.indexOf('AGPL-3.0') >= 0
+        && src.indexOf('github.com/Anarrogantcat/sillytavern-shell') >= 0);
+    ok('★ 有「查看日志」按钮', src.indexOf('id="cd-info-log"') >= 0);
+    ok('★ 说明里写清了作用范围（只在显示层 / 不改原文 / 不改 MVU）',
+        src.indexOf('不改聊天原文') >= 0 && src.indexOf('显示层') >= 0);
+    ok('★ 说明里交代了副作用（安装专属正则会写 4 条）', src.indexOf('安装专属正则') >= 0);
+    ok('★ 日志读的是扩展目录里的 CHANGELOG.md',
+        /new URL\('\.\/CHANGELOG\.md', import\.meta\.url\)/.test(src));
+    ok('★ 默认折叠（body 初始 display:none）', /id="cd-info-body"[^>]*style="display:none"/.test(src));
+    ok('★ 折叠状态会记住（localStorage）', /localStorage\.setItem\(CD_INFO_KEY/.test(src));
+    ok('★ popup 用**全局**而非 import（避免模块链接失败 → 整个扩展不执行）',
+        /typeof callGenericPopup === 'function'/.test(src)
+        && !/import\s*\{[^}]*callGenericPopup[^}]*\}\s*from/.test(src));
+
+    ok('★ CSS 有 #cd-panel .cd-info 规则', cssText.indexOf('#cd-panel .cd-info') >= 0);
+    ok('★ 日志弹窗样式用自有前缀 .cd-log-*（弹窗不在 #cd-panel 内）', cssText.indexOf('.cd-log-doc') >= 0);
+
+    /* ★ 跨扩展一致性：三个扩展都必须有这块 —— 防止以后新增扩展又忘了 */
+    for (const id of ['card-compat', 'plot-pilot', 'cine-dialogue']) {
+        const p = fs.readFileSync(new URL('../extensions/' + id + '/index.js', import.meta.url), 'utf8');
+        ok('★ ' + id + ' 有扩展信息块（作者 + 许可 + 项目主页）',
+            p.indexOf('扩展信息') >= 0 && p.indexOf('AGPL-3.0') >= 0
+            && p.indexOf('github.com/Anarrogantcat/sillytavern-shell') >= 0);
+    }
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

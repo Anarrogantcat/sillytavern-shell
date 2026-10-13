@@ -1,5 +1,23 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.7.1：补上「扩展信息」块
+
+### 为什么
+`card-compat` 有、`plot-pilot` 有，**只有分镜对话没有**。而 ST 抽屉里没有任何作者/许可/作用范围说明，
+用户却在拿它动自己的聊天数据 —— 必须一眼可见。
+
+### 做了什么（对齐 card-compat 0.3.1 / plot-pilot 0.1.3）
+- 面板底部「ⓘ 扩展信息」（**默认折叠**，状态记 localStorage）
+- 「查看日志」→ 读扩展目录 `CHANGELOG.md` → 极简 markdown → 弹窗
+- 作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页（可点）
+- 作用范围：**只在显示层重排、不改聊天原文、不改 MVU 变量**；并**如实交代副作用**（安装专属正则会写 4 条）
+- popup 用**全局** `callGenericPopup`（不从 script.js import，避免模块链接失败），`window.open` 兜底
+
+### 夹具：**291 → 305 条**（含 ★ **跨扩展一致性守卫**：三个扩展都必须有这块）
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **305/305** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
 ## 未发版（2026-10-13）— cine-dialogue 0.7.0：面板「生成专属预设」（别人也能自助适配）
 
 ### 背景：版权红线决定做法

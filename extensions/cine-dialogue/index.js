@@ -1387,6 +1387,19 @@ function wirePanel() {
     const dryBtn = panel.querySelector('#cd-preset-dry');
     if (dryBtn) dryBtn.addEventListener('click', () => runPresetRecipe(false));
 
+    /* ★ 扩展信息卡：折叠状态 + 查看日志 */
+    const infoTg = panel.querySelector('#cd-info-toggle');
+    if (infoTg) {
+        infoTg.addEventListener('click', () => {
+            const body = document.getElementById('cd-info-body');
+            const open = !(body && body.style.display !== 'none');
+            try { localStorage.setItem(CD_INFO_KEY, open ? '1' : '0'); } catch (_) { /* 存不了只影响本次 */ }
+            applyInfoOpen();
+        });
+    }
+    const infoLog = panel.querySelector('#cd-info-log');
+    if (infoLog) infoLog.addEventListener('click', () => showChangelog());
+
     const diag = panel.querySelector('#cd-diag');
     if (diag) {
         diag.addEventListener('click', () => {
@@ -1563,6 +1576,82 @@ function presetSecHTML() {
         '      </div>',
     ].join('');
 }
+/* ── 扩展信息 / 查看日志（对齐 card-compat 0.3.1 与 plot-pilot 0.1.3 的同一块）──
+   为什么三个扩展都要有：ST 的抽屉里没有任何「作者 / 许可 / 我到底改了什么」的说明，
+   而用户是在拿它动自己的聊天数据 —— 必须能一眼看到作者、许可与作用范围。 */
+const REPO = 'https://github.com/Anarrogantcat/sillytavern-shell';
+const CD_INFO_KEY = 'cd-info-open';
+let changelogCache = null;
+async function loadChangelog() {
+    if (changelogCache) return changelogCache;
+    try {
+        const url = new URL('./CHANGELOG.md', import.meta.url).href;
+        const res = await fetch(url, { cache: 'no-cache' });
+        changelogCache = (res && res.ok) ? await res.text() : '';
+    } catch (_) { changelogCache = ''; }
+    return changelogCache;
+}
+/** 极简 markdown → HTML（只用得上标题 / 粗体 / 行内码 / 列表 / 链接） */
+function mdToHtml(md) {
+    const esc2 = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const inline = (t) => esc2(t)
+        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return String(md).split(/\r?\n/).map(line => {
+        const h = line.match(/^(#{1,4})\s+(.*)$/);
+        if (h) { const n = h[1].length + 1; return '<h' + n + '>' + esc2(h[2]) + '</h' + n + '>'; }
+        const li = line.match(/^\s*[-*]\s+(.*)$/);
+        if (li) return '<div class="cd-log-li">• ' + inline(li[1]) + '</div>';
+        if (!line.trim()) return '<div class="cd-log-gap"></div>';
+        return '<div>' + inline(line) + '</div>';
+    }).join('');
+}
+async function showChangelog() {
+    try {
+        const md = await loadChangelog();
+        const head = '<div class="cd-log-head"><b>🎞 分镜对话 Cine Dialogue</b> v' + VERSION
+            + ' ｜ <a href="' + REPO + '/blob/main/extensions/cine-dialogue/CHANGELOG.md" target="_blank" rel="noopener">GitHub</a></div>';
+        const body = md ? mdToHtml(md)
+            : '<p>读不到 CHANGELOG.md（扩展目录里应当有一份，重新部署即可恢复）</p>';
+        const html = '<div class="cd-log-doc">' + head + body + '</div>';
+        /* ★ 用**全局** callGenericPopup —— 与 plot-pilot 一致；
+           不从 script.js import，避免万一它不是导出时整个模块链接失败（0.1.0 踩过的坑）。 */
+        if (typeof callGenericPopup === 'function' && typeof POPUP_TYPE !== 'undefined') {
+            await callGenericPopup(html, POPUP_TYPE.TEXT, '', { okButton: '关闭', wide: true, large: true, allowVerticalScrolling: true });
+            return;
+        }
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
+        else notify('打不开日志窗口（被浏览器拦了）', 'warning');
+    } catch (e) { notify('打开日志失败：' + String((e && e.message) || e), 'warning'); }
+}
+/** 扩展信息卡默认折叠，只留一行「ⓘ 扩展信息」（折叠状态记在 localStorage） */
+function applyInfoOpen() {
+    try {
+        const body = document.getElementById('cd-info-body');
+        const tg = document.getElementById('cd-info-toggle');
+        if (!body) return;
+        let open = false;
+        try { open = localStorage.getItem(CD_INFO_KEY) === '1'; } catch (_) { open = false; }
+        body.style.display = open ? '' : 'none';
+        if (tg) { tg.setAttribute('aria-expanded', open ? 'true' : 'false'); tg.textContent = (open ? '▾ ' : 'ⓘ ') + '扩展信息'; }
+    } catch (_) { /* 折叠失败不影响使用 */ }
+}
+function infoSecHTML() {
+    return [
+        '      <div id="cd-info" class="cd-info">',
+        '        <div id="cd-info-toggle" class="cd-info-toggle" role="button" tabindex="0">ⓘ 扩展信息</div>',
+        '        <div id="cd-info-body" class="cd-info-body" style="display:none">',
+        '          <div class="cd-info-name">🎞 <b>分镜对话</b> (Cine Dialogue) · Ver ' + esc(VERSION) + '</div>',
+        '          <div class="cd-info-actions"><button type="button" class="menu_button" id="cd-info-log">查看日志</button></div>',
+        '          <div class="cd-info-line">作者：小肥鱼（DeepSeek V4 Flash）· 染喵 ｜ 许可：AGPL-3.0 ｜ 项目主页：'
+        + '<a href="' + REPO + '" target="_blank" rel="noopener">' + REPO + '</a></div>',
+        '          <div class="cd-info-note">本扩展免费使用，禁止任何形式的商业用途。它只在<b>显示层</b>把「<code>名字·层 内容</code>」重排成分镜式对话（颜色 = 角色、样式 = 层），<b>不改聊天原文、不改 MVU 变量</b>；卡自己的前端块与状态栏不受影响。面板里的「安装专属正则」会往你的正则列表写 4 条（显示层专用，旁边有「移除专属正则」）。</div>',
+        '        </div>',
+        '      </div>',
+    ].join('');
+}
 function buildSettingsPanel() {
     if (document.getElementById('cd-panel')) return;                 // 幂等
     const host = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
@@ -1640,6 +1729,10 @@ function buildSettingsPanel() {
         '        <div class="cd-btn-row"><button type="button" class="menu_button" id="cd-errs">刷新错误列表</button></div>',
         '        <div id="cd-errlist" class="cd-errlist"></div>',
         '      </div>',
+
+        infoSecHTML(),
+
+        '      </div>',
         '    </div>',
         '  </div>',
         '</div>',
@@ -1647,6 +1740,7 @@ function buildSettingsPanel() {
 
     wirePanel();
     rebuildDynamic();
+    applyInfoOpen();
 
     /* 让面板里的原生控件跟着主题走（否则某些主题下 input 是白底 + 浅色文字 = 看不见） */
     const p = document.getElementById('cd-panel');
