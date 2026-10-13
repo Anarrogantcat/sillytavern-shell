@@ -15,14 +15,13 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.2.1';
+export const VERSION = '0.3.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
 export const LAYERS = ['台词', '动作', '感官', '心理', '旁白'];
 
-/** 层 → CSS 类（cd- 前缀，符合 AGENTS §0.3.2） */
-export const LAYER_CLS = {
+/** 层 → CSS 类（cd- 前缀，符合 AGENTS §0.3.2） */export const LAYER_CLS = {
     '台词': 'cd-L-speech',
     '动作': 'cd-L-act',
     '感官': 'cd-L-sense',
@@ -57,6 +56,24 @@ export const DEFAULT_CONFIG = {
     /** 层样式覆盖（留空 = 用 style.css 的默认） */
     layerStyles: {},
 };
+
+/**
+ * 设置面板的字段表（**纯数据**，由 index.js 拿去生成抽屉）
+ *
+ * 为什么要放在这里：面板 HTML 在 index.js（碰 DOM），但字段定义放纯函数层，
+ * 夹具就能断言「每个 key 都真的存在于 DEFAULT_CONFIG」—— 挡住拼错 key 这类静默失效。
+ */
+export const PANEL_FIELDS = [
+    { key: 'enabled', kind: 'bool', label: '启用分镜渲染', note: '关掉后一个字节都不改消息' },
+    { key: 'transformUserMessages', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
+    { key: 'indentOnlyWrapped', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },
+    { key: 'markErrors', kind: 'bool', label: '格式错的行标红', note: '关掉 = 不显示（不推荐，会静默吞掉格式错误）' },
+    { key: 'nameColMode', kind: 'select', label: '名字列宽', note: 'auto = 按整条消息最长名字',
+      options: [['auto', '自动（推荐）'], ['left', '自动（同左）'], ['fixed', '固定像素']] },
+    { key: 'nameColWidth', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
+    { key: 'rowGap', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
+    { key: 'leadIndent', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },
+];
 
 // ---------------------------------------------------------------- 基础
 

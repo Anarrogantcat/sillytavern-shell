@@ -28,6 +28,7 @@ import {
     EXT_ID,
     VERSION,
     DEFAULT_CONFIG,
+    PANEL_FIELDS,
     assignColors,
     esc,
     hasOurLines,
@@ -469,12 +470,121 @@ function exposeApi() {
 
 let runs = 0;
 
+// ---------------------------------------------------------------- 设置面板
+
+/* 为什么必须有这个抽屉：
+   ST 的「扩展程序」总览**不是**"已加载扩展清单" —— 它是各扩展**自己**往
+   #extensions_settings / #extensions_settings2 里 append 的 inline-drawer。
+   实测对照：card-compat（3 处）、plot-pilot（3 处）、hide（6 处）都有 append，
+   所以它们出现在总览里；本扩展 0.2.1 之前一处都没有 → 只在「管理扩展程序」
+   页可见、总览里看不到。没有抽屉 ≠ 没加载。
+
+   ★ 抽屉骨架用 ST 自带的 inline-drawer / menu_button 类（那是 ST 的样式），
+     我们**只给 #cd-panel 里的自有元素写样式** —— 不覆写 .inline-drawer，
+     否则会漏进别的扩展的设置面板（AGENTS §0.3.2）。 */
+
+function fieldHTML(f, c) {
+    const key = esc(f.key);
+    const lab = '<span class="cd-lab">' + esc(f.label) + '</span>';
+    const note = f.note ? '<span class="cd-note">' + esc(f.note) + '</span>' : '';
+
+    if (f.kind === 'bool') {
+        return '<label class="cd-line cd-line-bool">'
+            + '<input type="checkbox" data-cd-key="' + key + '"' + (c[f.key] ? ' checked' : '') + '>'
+            + lab + note + '</label>';
+    }
+    if (f.kind === 'select') {
+        const opts = (f.options || []).map(o =>
+            '<option value="' + esc(o[0]) + '"' + (String(c[f.key]) === String(o[0]) ? ' selected' : '') + '>'
+            + esc(o[1]) + '</option>').join('');
+        return '<div class="cd-line">' + lab + '<select data-cd-key="' + key + '">' + opts + '</select>' + note + '</div>';
+    }
+    const unit = f.unit ? ' ' + f.unit : '';
+    const when = f.when ? '（' + esc(f.when) + ' 时生效）' : '';
+    return '<div class="cd-line">' + lab
+        + '<input type="number" data-cd-key="' + key + '" value="' + esc(c[f.key]) + '"'
+        + ' min="' + esc(f.min) + '" max="' + esc(f.max) + '" step="' + esc(f.step) + '">'
+        + '<span class="cd-note">' + esc(unit) + esc(when) + '</span></div>';
+}
+
+function wirePanel() {
+    const panel = document.getElementById('cd-panel');
+    if (!panel) return;
+
+    panel.querySelectorAll('[data-cd-key]').forEach(el => {
+        el.addEventListener('change', () => {
+            const key = el.getAttribute('data-cd-key');
+            if (!key || !(key in DEFAULT_CONFIG)) return;
+            const type = el.getAttribute('type');
+            const v = (type === 'checkbox') ? el.checked
+                : (el.tagName === 'SELECT') ? el.value
+                    : Number(el.value);
+            cfg()[key] = v;
+            saveSettingsDebounced();
+            schedule(true);                       // 改完立即全量重渲染
+        });
+    });
+
+    const refresh = panel.querySelector('#cd-refresh-all');
+    if (refresh) refresh.addEventListener('click', () => schedule(true));
+
+    const diag = panel.querySelector('#cd-diag');
+    if (diag) {
+        diag.addEventListener('click', () => {
+            const pre = document.getElementById('cd-hb');
+            if (!pre) return;
+            try {
+                pre.textContent = JSON.stringify(window.CineDialogue ? window.CineDialogue.stats() : {}, null, 2);
+            } catch (e) {
+                pre.textContent = '诊断失败：' + (e && e.message ? e.message : String(e));
+            }
+        });
+    }
+}
+
+function buildSettingsPanel() {
+    if (document.getElementById('cd-panel')) return;                 // 幂等
+    const host = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
+    if (!host) {
+        console.warn('[' + EXT_ID + '] 找不到设置面板容器（#extensions_settings2 / #extensions_settings）→ 跳过抽屉');
+        return;
+    }
+
+    const c = cfg();
+    const rows = PANEL_FIELDS.map(f => fieldHTML(f, c)).join('');
+
+    host.insertAdjacentHTML('beforeend', [
+        '<div class="inline-drawer">',
+        '  <div class="inline-drawer-toggle inline-drawer-header">',
+        '    <b>🎞 分镜对话 Cine Dialogue v' + esc(VERSION) + '</b>',
+        '    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>',
+        '  </div>',
+        '  <div class="inline-drawer-content">',
+        '    <div id="cd-panel">',
+        '      <div class="cd-hint">把「<code>名字·层 内容</code>」渲染成分镜式对话：'
+        + '<b>颜色 = 角色</b>、<b>样式 = 层</b>、标签永不出现。</div>',
+        rows,
+        '      <div class="cd-btn-row">',
+        '        <button type="button" class="menu_button" id="cd-refresh-all">立即重渲染全部</button>',
+        '        <button type="button" class="menu_button" id="cd-diag">诊断信息</button>',
+        '      </div>',
+        '      <pre id="cd-hb" class="cd-heartbeat">点「诊断信息」看核内钩子接线状态 / 渲染计数</pre>',
+        '    </div>',
+        '  </div>',
+        '</div>',
+    ].join('\n'));
+
+    wirePanel();
+    console.log('[' + EXT_ID + '] 设置抽屉已挂到 #' + host.id);
+}
+
 // ---------------------------------------------------------------- 启动
 
 function start() {
     cfg();
     bind();
     exposeApi();
+    buildSettingsPanel();
     console.log('[' + EXT_ID + '] v' + VERSION + ' loaded'
         + '  TavernHelper=' + (TH() ? 'yes' : 'no')
         + '  Mvu=' + (MVU() ? 'yes' : 'no'));

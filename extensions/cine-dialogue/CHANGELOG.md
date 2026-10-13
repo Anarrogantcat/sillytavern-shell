@@ -1,5 +1,34 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.3.0 (2026-10-13) — 设置面板抽屉（顺带解开「总览里看不到」）
+
+### 新增：设置面板（计划的 L6）
+- **为什么必须有这个抽屉**：ST 的「扩展程序」总览**不是**「已加载扩展清单」，
+  而是各扩展**自己**往 `#extensions_settings` / `#extensions_settings2` append 的 `inline-drawer`。
+  **实测对照**：card-compat 3 处 append、plot-pilot 3 处、hide 6 处 → 它们出现在总览里；
+  本扩展 **0 处** → 只在「管理扩展程序」页可见、总览看不到。
+  ⇒ **没有抽屉 ≠ 没加载**（用户实测已确认：管理页里 `分镜对话 (Cine Dialogue) 0.2.1` 已勾选启用）
+- 抽屉内容：启用 / 也渲染用户消息 / 只给换行段落缩进 / 格式错行标红 /
+  名字列宽（自动·固定 + 像素）/ 行间距 / 首行缩进
+- 按钮：**「立即重渲染全部」**、**「诊断信息」**（输出 stats：核内钩子接线状态、渲染计数、TavernHelper/MVU/CardCompat/PlotPilot 探测结果）
+- 改动任一开关 → `saveSettingsDebounced()` + 立即全量重渲染
+
+### 设计
+- **字段定义放纯函数层**（`logic.js` 的 `PANEL_FIELDS`）：面板 HTML 在 `index.js`（碰 DOM，Node 里测不了），
+  但字段表可以夹具断言 —— 挡住「拼错 key → 改了没反应」这类静默失效
+- **CSS 只写 `#cd-panel` 里的自有元素**：抽屉骨架 `.inline-drawer` / `.menu_button` 是 **ST 自己的类**，
+  一律不覆写 —— 覆写会漏进别的扩展的设置面板（AGENTS §0.3.2）
+
+### 夹具
+- 76 → **83 条**：新增 7 条面板字段断言（key 必须真实存在于 `DEFAULT_CONFIG` / 不重复 / 类型合法 /
+  select 必须带 options / number 必须带 min·max·step / 默认值不得越界）
+- 全量：compat-logic **658/0** · plot-pilot **67/67** · cine-dialogue **83/83** · ext-manage **49/49**
+- **选择器白名单检查**：35 个选择器**全部**在 `#cd-panel` / `.cd-` 内 ✓
+
+### 说明
+- 只改扩展 + 夹具 → 不升套壳版本号、不打 tag、不发包（AGENTS §1.1）
+- 核内补丁 #001 未改动（仍已应用）
+
 ## v0.2.1 (2026-10-13) — 自检修出 3 个缺陷
 
 ### 修 ①（严重）：钩子路径会把**正文整段丢掉**

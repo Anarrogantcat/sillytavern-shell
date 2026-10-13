@@ -2,7 +2,7 @@
 // 用法：node scripts/cine-dialogue-test.mjs
 // 只测 logic.js（纯函数层）—— 不碰 DOM、不碰 ST、不联网
 import {
-    VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG,
+    VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML,
     hasOurLines, stats,
@@ -17,7 +17,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.2.1');
+eq('version 与 manifest 一致', VERSION, '0.3.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -162,6 +162,28 @@ const onlyFront = '<htmlcontent>\n林野·动作 这是前端里的示例文本\
 ok('回归·旧行为可复现：整条原文 hasOurLines 确实为真（说明这个坑真实存在）', hasOurLines(onlyFront) === true);
 eq('回归·新行为：标签只在外壳里 → 返回 null（绝不吃掉正文）', renderMessageHTML(onlyFront), null);
 eq('回归：正文里真的没有我们的行', hasOurLines(splitSections(onlyFront).body), false);
+
+/* ---------------------------- 设置面板字段表（0.3.0） ----------------------------
+   面板 HTML 在 index.js（碰 DOM，Node 里测不了），但**字段定义**在纯函数层，
+   所以能在这里挡住「拼错 key → 改了没反应」这类静默失效。 */
+ok('面板字段非空', PANEL_FIELDS.length > 0);
+ok('每个面板字段的 key 都真实存在于 DEFAULT_CONFIG（挡拼错 key）',
+    PANEL_FIELDS.every(f => Object.prototype.hasOwnProperty.call(DEFAULT_CONFIG, f.key)),
+    PANEL_FIELDS.filter(f => !Object.prototype.hasOwnProperty.call(DEFAULT_CONFIG, f.key)).map(f => f.key));
+eq('面板字段 key 不重复', new Set(PANEL_FIELDS.map(f => f.key)).size, PANEL_FIELDS.length);
+ok('每个字段都有标签 + 已知类型',
+    PANEL_FIELDS.every(f => !!f.label && ['bool', 'select', 'number'].indexOf(f.kind) >= 0),
+    PANEL_FIELDS.filter(f => !f.label || ['bool', 'select', 'number'].indexOf(f.kind) < 0).map(f => f.key));
+ok('select 字段都带非空 options',
+    PANEL_FIELDS.filter(f => f.kind === 'select').every(f => Array.isArray(f.options) && f.options.length > 0));
+ok('number 字段都带 min/max/step',
+    PANEL_FIELDS.filter(f => f.kind === 'number').every(f => Number.isFinite(f.min) && Number.isFinite(f.max) && Number.isFinite(f.step)));
+ok('默认值都在 number 字段的 min/max 范围内（挡越界默认值）',
+    PANEL_FIELDS.filter(f => f.kind === 'number').every(f => {
+        const v = Number(DEFAULT_CONFIG[f.key]);
+        return v >= f.min && v <= f.max;
+    }),
+    PANEL_FIELDS.filter(f => f.kind === 'number').map(f => [f.key, DEFAULT_CONFIG[f.key], f.min, f.max]));
 
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);

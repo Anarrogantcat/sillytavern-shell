@@ -1,5 +1,28 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.3.0：设置面板抽屉（解开「总览里看不到」）
+
+### 新增
+- **cine-dialogue 0.2.1 → 0.3.0**：设置面板抽屉（计划的 L6）
+- **根因（实测对照，非推测）**：ST 的「扩展程序」总览**不是**「已加载扩展清单」，而是各扩展**自己**往 `#extensions_settings` / `#extensions_settings2` append 的 `inline-drawer`
+  - card-compat **3 处** append、plot-pilot **3 处**、hide **6 处** → 出现在总览里
+  - cine-dialogue **0 处** → 只在「管理扩展程序」页可见、总览看不到 ⇒ **没有抽屉 ≠ 没加载**
+  - 用户实测已确认：管理页里 `分镜对话 (Cine Dialogue) 0.2.1` **已勾选启用**
+- 抽屉内容：启用 / 也渲染用户消息 / 只给换行段落缩进 / 格式错行标红 / 名字列宽（自动·固定+像素）/ 行间距 / 首行缩进
+- 按钮：「立即重渲染全部」「诊断信息」（输出核内钩子接线状态 + 渲染计数 + 四个适配探测结果）
+- **字段定义放纯函数层**（`PANEL_FIELDS`）：面板 HTML 碰 DOM 测不了，但字段表能夹具断言
+- **CSS 只写 `#cd-panel` 自有元素**，不覆写 ST 的 `.inline-drawer` / `.menu_button`（否则漏进别的扩展面板，AGENTS §0.3.2）
+
+### 夹具
+- cine-dialogue **76 → 83 条**（新增 7 条面板字段断言：key 必须存在于 `DEFAULT_CONFIG` / 不重复 / 类型合法 / select 有 options / number 有 min·max·step / 默认值不越界）
+- 全量：compat-logic **658/0** · plot-pilot **67/67** · cine-dialogue **83/83** · ext-manage **49/49**，`ext:test` **exit 0**
+- **选择器白名单检查**：35 个选择器**全部**在 `#cd-panel` / `.cd-` 内 ✓
+- `extensions/index.json` 重建（cine-dialogue **0.3.0**），`--check` **exit 0**
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）
+- 套壳维持 **2.3.1**（Release 已发布）；核内补丁 #001 未改动
+
 ## v2.3.1 (2026-10-13) — 2.3.0 发版失败后重发（CI 自愈路径把整次发版打掉了）
 
 > 套壳版本 2.3.0 → **2.3.1**。**代码无变化**，只修发版链路的失败原因并重打 tag（沿用本仓库惯例：`v2.2.21` 失败 → `v2.2.22` 重发，不重写已推的 tag）。

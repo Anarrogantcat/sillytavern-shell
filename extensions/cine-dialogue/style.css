@@ -158,3 +158,78 @@
     .cd-root { line-height: 1.8; }
     .cd-body { padding-left: .55em; }
 }
+
+/* ============================================================================
+   设置面板
+   ★ 只写 #cd-panel 里的自有元素。
+     抽屉骨架（.inline-drawer / .menu_button）是 **ST 自己的类**，一律不覆写 ——
+     覆写会漏进别的扩展的设置面板（AGENTS §0.3.2）。
+   ============================================================================ */
+
+#cd-panel {
+    display: flex;
+    flex-direction: column;
+    gap: .1em;
+}
+
+#cd-panel .cd-hint {
+    opacity: .78;
+    font-size: .9em;
+    margin: .2em 0 .5em;
+    line-height: 1.5;
+}
+
+#cd-panel .cd-hint code {
+    background: rgba(128, 140, 160, .18);
+    padding: 0 .25em;
+    border-radius: .2em;
+}
+
+#cd-panel .cd-line {
+    display: flex;
+    align-items: center;
+    gap: .5em;
+    margin: .28em 0;
+    font-size: .92em;
+}
+
+#cd-panel .cd-line-bool { cursor: pointer; }
+
+#cd-panel .cd-lab {
+    flex: 0 0 13em;
+    opacity: .9;
+}
+
+#cd-panel .cd-line-bool .cd-lab { flex: 0 0 auto; }
+
+#cd-panel .cd-note {
+    opacity: .55;
+    font-size: .88em;
+}
+
+#cd-panel input[type="number"] {
+    width: 5.5em;
+    flex: 0 0 auto;
+}
+
+#cd-panel .cd-btn-row {
+    display: flex;
+    gap: .5em;
+    margin-top: .7em;
+    flex-wrap: wrap;
+}
+
+#cd-panel .cd-heartbeat {
+    margin: .6em 0 0;
+    padding: .5em .6em;
+    max-height: 15em;
+    overflow: auto;
+    font-size: .8em;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: rgba(0, 0, 0, .22);
+    border-radius: .25em;
+    opacity: .88;
+}
+
