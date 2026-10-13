@@ -62,7 +62,7 @@ import {
     splitSections,
     validateLayerName,
     applyPresetRecipe,
-    PRESET_UPSTREAM,
+
     layerClass,
 } from './logic.js';
 
@@ -1667,8 +1667,10 @@ function legendHTML() {
 function presetSecHTML() {
     return [
         '      <div class="cd-sec"><div class="cd-sec-h">专属预设（在你本机生成 · 插件不分发预设内容）</div>',
-        '        <div class="cd-note">原预设作者 <b>' + esc(PRESET_UPSTREAM.author) + '</b>，许可「' + esc(PRESET_UPSTREAM.license) + '」',
-        '          —— 所以本插件只带配方。选你手上那份<b>原预设 JSON</b>，这里自动派生一份配套预设给你下载。</div>',
+        /* 为什么不在这里堆作者名与许可全文：那是**查阅型**信息，每次开面板都念一遍只会占空间。
+           署名该在的地方是**产物里**（derivedFrom + 停用的说明条目），这里只把用户指过去。 */
+        '        <div class="cd-note">只带<b>配方</b>、不含预设内容：选你手上那份<b>原预设 JSON</b>，本机派生一份给你下载。',
+        '          出处与许可会一并写进生成出来的预设里。</div>',
         '        <div class="cd-btn-row">',
         '          <button type="button" class="menu_button" id="cd-preset-pick">选择预设文件…</button>',
         '          <span class="cd-note" id="cd-preset-name">未选择</span>',

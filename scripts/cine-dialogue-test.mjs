@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.6');
+eq('version 与 manifest 一致', VERSION, '0.7.7');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -821,8 +821,27 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const panelBlock = idxSrc.slice(idxSrc.indexOf('const runPresetRecipe'), idxSrc.indexOf('const makeBtn'));
     ok('★★ 生成过程不发网络请求（不上传用户预设）',
         !/fetch\(/.test(panelBlock) && !/XMLHttpRequest/.test(panelBlock) && !/\.send\(/.test(panelBlock));
-    ok('★ 面板里写着原作者与许可（用户看得见）',
-        /PRESET_UPSTREAM\.author/.test(idxSrc) && /PRESET_UPSTREAM\.license/.test(idxSrc));
+    /* ★ 面板文案瘦身（0.7.7）：许可全文是**查阅型**信息，不该每次开面板都念一遍、占三行空间。
+       署名该在的地方是**产物里**（derivedFrom + 停用的说明条目），面板只把用户指过去。 */
+    ok('★ 面板**不**再堆作者名与许可全文（省面板空间）',
+        !/PRESET_UPSTREAM\.author/.test(idxSrc) && !/PRESET_UPSTREAM\.license/.test(idxSrc));
+    ok('★ 面板仍写清关键边界：只带配方、不含预设内容',
+        idxSrc.indexOf('不含预设内容') >= 0);
+    ok('★ 面板**指路**到产物里看出处与许可',
+        idxSrc.indexOf('出处与许可会一并写进生成出来的预设里') >= 0);
+    /* ★★ 但署名不许丢：产物里必须带作者与许可（这才是许可要求的落点） */
+    {
+        const r = applyPresetRecipe({ prompts: [], prompt_order: [{ character_id: 1, order: [] }], extensions: {} },
+            { srcName: 'x.json', srcHash: 'abc' });
+        const prov = r.preset.extensions.cine_dialogue;
+        eq('★★ 产物里带原作者（署名）', prov.upstream.author, '泉此方');
+        ok('★★ 产物里带许可全文', prov.upstream.license.indexOf('禁止二传') >= 0);
+        const note = r.preset.prompts.find(x => String(x.name).indexOf('分镜派生说明') >= 0);
+        ok('★★ 产物里的说明条目也写着署名与许可',
+            note && note.content.indexOf('泉此方') >= 0 && note.content.indexOf('禁止二传') >= 0);
+        ok('★★ 且该条目是**停用**的（只留痕，不进提示词）',
+            r.preset.prompt_order[0].order.find(o => String(o.identifier) === String(note.identifier)).enabled === false);
+    }
 }
 
 /* ============================================================================
