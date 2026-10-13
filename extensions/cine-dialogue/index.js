@@ -468,6 +468,17 @@ function exposeApi() {
             return parseBlocks(splitSections(text).body, allLayers(effectiveConfig()));
         },
 
+        /** 样式有没有生效 —— 一次性问清（不用开 DevTools 逐层看） */
+        diagnose: () => diagnose(),
+
+        /** 手动重注入样式（改了 style.css 之后不用刷页面） */
+        reloadStyles() {
+            const old = document.getElementById('cd-style');
+            if (old) old.remove();
+            cssState.injected = false;
+            return injectStyles();
+        },
+
         /** 注册一个自定义层（别的扩展也能调） */
         registerLayer(layer) {
             const v = validateLayerName(layer && (layer.name || layer), allLayers(cfg()));
@@ -920,6 +931,126 @@ function bindInteractions() {
     });
 }
 
+// ---------------------------------------------------------------- 样式注入（不依赖宿主加载）
+
+/* ★ 为什么自己注入 CSS：
+   ST 加载扩展是 `Promise.all([addExtensionScript, addExtensionStyle])` ——
+   脚本先跑完（我们的抽屉就是那时画出来的），**link 失败只会在之后 reject**，
+   于是表现成「扩展明明加载了，但一点样式都没有」。
+   真机踩过：`link` 没生效 → .cd-row{display:contents} 不成立 → 名字和正文挤成一行。
+
+   现在我们自己 fetch `./style.css` 并塞进 <style>；**fetch 失败还有内置兜底**，
+   任何情况下都不会「没有样式」。 */
+
+const FALLBACK_CSS = [
+    '.cd-root{--cd-sub:#9aa8bf;--cd-mark-w:3px;line-height:1.9;word-break:break-word}',
+    '.cd-grid{display:grid;grid-template-columns:max-content 1fr;row-gap:var(--cd-gap,.8em)}',
+    '.cd-row{display:contents;color:var(--c,inherit)}',
+    '.cd-who{font-weight:600;font-size:.95em;opacity:.85;text-align:right;padding-right:.6em;white-space:nowrap}',
+    '.cd-body{min-width:0;border-left:3px var(--cd-mark,solid) var(--cd-mark-color,transparent);',
+    'font-style:var(--cd-italic,normal);padding-left:.7em}',
+    '.cd-body.cd-wrap{text-indent:var(--cd-indent,2em)}',
+    '.cd-L-speech{--cd-mark:solid;--cd-mark-color:transparent;--cd-italic:normal}',
+    '.cd-L-act{--cd-mark:solid;--cd-mark-color:currentColor;--cd-italic:normal}',
+    '.cd-L-sense{--cd-mark:dotted;--cd-mark-color:currentColor;--cd-italic:normal;opacity:.94}',
+    '.cd-L-mind{--cd-mark:double;--cd-mark-color:currentColor;--cd-italic:italic}',
+    '.cd-L-narr{--cd-mark:solid;--cd-mark-color:transparent;--cd-italic:normal}',
+    '.cd-L-custom{--cd-mark:dashed;--cd-mark-color:currentColor;--cd-italic:normal}',
+    '.cd-L-narr .cd-body{color:var(--cd-sub);opacity:.92}',
+    '.cd-sep{grid-column:1/-1;height:0;border-top:1px solid var(--cd-sep,rgba(128,140,160,.28));margin:.45em 0}',
+    '.cd-line{grid-column:1/-1;min-width:0;color:var(--cd-sub);opacity:.88;white-space:pre-wrap;word-break:break-word}',
+    '.cd-row.cd-dim{opacity:.32}',
+    '.cd-hit{background:rgba(255,214,0,.30);border-radius:.15em}',
+    '.cd-options{display:flex;flex-direction:column;gap:.35em;margin-top:.9em}',
+    '.cd-opt{display:flex;align-items:baseline;gap:.7em;width:100%;text-align:left;cursor:pointer;',
+    'font:inherit;font-size:.9em;padding:.5em .8em;border-radius:.3em;',
+    'border:1px solid rgba(128,140,160,.32);background:rgba(255,255,255,.04);color:inherit}',
+].join('');
+
+const cssState = { injected: false, source: 'none', error: '', bytes: 0 };
+
+async function injectStyles() {
+    if (document.getElementById('cd-style')) {
+        cssState.injected = true;
+        return;
+    }
+    let text = '';
+    try {
+        const r = await fetch(new URL('./style.css', import.meta.url));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        text = await r.text();
+        cssState.source = 'file';
+    } catch (e) {
+        text = FALLBACK_CSS;
+        cssState.source = 'fallback';
+        cssState.error = String((e && e.message) ? e.message : e);
+        console.warn('[' + EXT_ID + '] style.css 取不到，改用内置兜底样式：', cssState.error);
+    }
+    const el = document.createElement('style');
+    el.id = 'cd-style';
+    el.textContent = text;
+    document.head.appendChild(el);
+    cssState.injected = true;
+    cssState.bytes = text.length;
+    console.log('[' + EXT_ID + '] 样式已注入（来源 ' + cssState.source + '，' + text.length + ' 字节）');
+}
+
+/** 一次性把「样式到底有没有生效」问清 —— 不用开 DevTools 逐层看 */
+function diagnose() {
+    const q = (s) => document.querySelector('#chat ' + s);
+    const grid = q('.cd-grid'), row = q('.cd-row'), body = q('.cd-body');
+    const link = document.querySelector('link[id*="cine-dialogue"], link[href*="cine-dialogue"]');
+    const g = grid ? getComputedStyle(grid) : null;
+    const r = row ? getComputedStyle(row) : null;
+    const b = body ? getComputedStyle(body) : null;
+    const who = q('.cd-who');
+    const w = who ? getComputedStyle(who) : null;
+    return {
+        version: VERSION,
+        css: {
+            injected: cssState.injected,
+            source: cssState.source,
+            bytes: cssState.bytes,
+            error: cssState.error,
+            hostLinkHref: link ? link.href : '(宿主没插 link)',
+            hostLinkLoaded: !!(link && link.sheet),
+        },
+        grid: g ? { display: g.display, columns: g.gridTemplateColumns } : '(没有 .cd-grid)',
+        row: r ? { display: r.display, color: r.color } : '(没有 .cd-row)',
+        body: b ? {
+            borderLeft: b.borderLeftWidth + ' ' + b.borderLeftStyle + ' ' + b.borderLeftColor,
+            fontStyle: b.fontStyle,
+        } : '(没有 .cd-body)',
+        who: w ? { textAlign: w.textAlign, paddingRight: w.paddingRight } : '(没有 .cd-who)',
+        counts: {
+            roots: document.querySelectorAll('#chat .cd-root').length,
+            rows: document.querySelectorAll('#chat .cd-row').length,
+        },
+        /* ★ DOM 实况：一次区分三种可能
+           ① 我们的类还在、inline style 计数为 0  → 宿主/别的插件剥了 style（DOMPurify）
+           ② 我们的类**不见了**                    → 有东西（预设正则 / 别的插件）改写了我们的 HTML
+           ③ 类还在、style 也在、但 computed 不对  → 我们的样式表没生效 */
+        domProbe: (function () {
+            const t = document.querySelector('#chat .mes_text');
+            if (!t) return '(没有 .mes_text)';
+            const cls = new Set();
+            t.querySelectorAll('*').forEach(el => {
+                String(el.className || '').split(/\s+/).forEach(c => { if (c) cls.add(c); });
+            });
+            return {
+                hasCdRoot: !!t.querySelector('.cd-root'),
+                hasCdGrid: !!t.querySelector('.cd-grid'),
+                hasCdRow: !!t.querySelector('.cd-row'),
+                hasCdWho: !!t.querySelector('.cd-who'),
+                hasCdBody: !!t.querySelector('.cd-body'),
+                inlineStyleAttrs: (t.innerHTML.match(/style="/g) || []).length,
+                classes: [...cls].slice(0, 40),
+            };
+        })(),
+        hook: hookActive(),
+    };
+}
+
 // ---------------------------------------------------------------- 设置面板
 
 /* 为什么必须有这个抽屉：
@@ -1080,7 +1211,7 @@ function wirePanel() {
             const pre = document.getElementById('cd-hb');
             if (!pre) return;
             try {
-                pre.textContent = JSON.stringify(window.CineDialogue ? window.CineDialogue.stats() : {}, null, 2);
+                pre.textContent = JSON.stringify(diagnose(), null, 2);
             } catch (e) {
                 pre.textContent = '诊断失败：' + (e && e.message ? e.message : String(e));
             }
@@ -1330,6 +1461,7 @@ function start() {
     bind();
     exposeApi();
     bindInteractions();
+    injectStyles();
     buildSettingsPanel();
     applyPromptInjection();
     registerSlashCommand();

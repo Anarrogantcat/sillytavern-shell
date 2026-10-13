@@ -1,5 +1,41 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.5.6 (2026-10-13) — 自己注入样式 + `diagnose()` 探针
+
+### 现象（真机截图）
+`染我并没有因为这第一次的贯穿而停止…` —— **名字和正文紧挨着、没有分栏**，而且 `染`（1 字）与 `沙良`（2 字）
+**左边缘对齐**。若网格生效，右对齐的名字列会把 `染` 往右缩一个字。
+⇒ **我们的样式表没有生效**（`.cd-row{display:contents}` 不成立 → `who`/`body` 退化成行内 span 挤在一行）。
+
+### 根因
+ST 加载扩展是 `Promise.all([addExtensionScript, addExtensionStyle])` ——
+**脚本先跑完**（抽屉就是那时画出来的），**`<link>` 失败只会在之后 reject**。
+于是表现成「扩展明明加载了，抽屉也出来了，但一点样式都没有」，而且**不报可见错误**。
+
+### 修法：不依赖宿主加载样式表
+- `injectStyles()`：自己 `fetch(new URL('./style.css', import.meta.url))` → 塞进 `<style id="cd-style">`
+- **fetch 失败还有内置兜底 CSS**（网格 / 行 / 层标记 / 变量 / 选项按钮，约 1KB）
+  → 任何情况下都不会「没有样式」
+- `CineDialogue.reloadStyles()`：改完 CSS 不用刷页面
+
+### 新增 `diagnose()` 探针（关键排障工具）
+一次问清「到底是哪一层出问题」，不用开 DevTools 逐层看：
+
+| diagnose() 里的迹象 | 结论 |
+|---|---|
+| `domProbe.hasCdGrid = false` | **有东西改写了我们的 HTML**（预设正则 / 别的插件 / 卡的正则） |
+| 类都在、`domProbe.inlineStyleAttrs = 0` | **inline `style` 被剥**（DOMPurify） |
+| 类都在、style 也在、但 `grid.display ≠ grid` | **我们的样式表没生效** |
+| `css.source = 'fallback'` | 宿主的 `style.css` 取不到，已用内置兜底 |
+
+另含：`.cd-grid` 的 `display`/`grid-template-columns`、`.cd-row` 的 `color`、
+`.cd-body` 的 `borderLeft`/`fontStyle`、`.cd-who` 的 `textAlign`、以及 `.cd-root`/`.cd-row` 计数。
+
+- 面板「诊断信息」按钮现在输出 `diagnose()`（原来只输出 `stats()`）
+
+### 说明
+- 只改扩展 → 不升套壳版本号、不打 tag、不发包（AGENTS §1.1）
+
 ## v0.5.5 (2026-10-13) — 设置页按钮被压成「一列一个字」
 
 ### 现象（真机截图）
