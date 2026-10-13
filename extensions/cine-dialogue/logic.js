@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.27';
+export const VERSION = '0.8.28';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -943,12 +943,15 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
        反例：标签只出现在 <htmlcontent> / [FRONTEND] 里时，对整条原文 hasOurLines 为真，
        但外壳被切走后正文没有我们的行 → renderMessage 返回 html:null
        → 若继续拼 `'' + 前端 + 选项`，就会返回一个非空字符串，**正文整段丢失**。 */
-    if (!hasOurLines(sections.body, allLayers(cfg))) return null;
+    /* ★★ 有选项块的楼**也要接手** —— 用户报「选择状态栏消失了」：
+       卡自己没有选择状态栏时，选项栏就是**我们提供的功能** ✓（原来这里只有"有我们的行才接手" ✗） */
+    const hasOpts = sections.options.length > 0;
+    if (!hasOurLines(sections.body, allLayers(cfg)) && !hasOpts) return null;
 
     /* ★★ 分段渲染：我们的行 → 网格；其它行 → **原样返回文本**（交给 showdown/ST 正常渲染）。
        取代了「占比 < 50% 就整条不碰」那条粗暴门槛 —— 真机上它把正文一起跳过了。 */
     const seg = renderSegments(sections.body, colorMap, cfg);
-    if (!seg.hasOurs) return null;
+    if (!seg.hasOurs && !hasOpts) return null;
 
     /* 选项按钮放进**最后一个** ours 段的 .cd-root 内部（否则拿不到主题变量 → 白底默认按钮） */
     const optHTML = sections.options.length ? renderOptions(sections.options, cfg) : '';
@@ -964,6 +967,9 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     });
 
     let html = parts.join('\n\n');
+    /* ★ 整楼没有我们的行、但有选项 ⇒ 选项单独放进一个 cd-root：
+       这样它能拿到 --cd-* 主题变量，**不会变成白底默认按钮** ✗（真机踩过） */
+    if (hasOpts && lastOurs < 0) html = (html ? html + '\n\n' : '') + renderGrid([], colorMap, cfg, optHTML);
     for (const f of sections.frontend) html += '\n' + f;          // 前端区：原样，一个字不动
 
     return { html, names: seg.names, errs: seg.errs, colors: seg.colors, sections, segments: seg.segments };

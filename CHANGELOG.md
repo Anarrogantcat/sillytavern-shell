@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 0.8.28：只有选项的楼不再跳过
+
+用户报「选择状态栏消失了」。根因：renderMessageHTML 在"没有我们的行"时直接 return null，
+把"只有 <options> + 散文"的楼整条跳过了。现改为有选项也接手，并把选项单独包进 cd-root。夹具 541/0。
 ## 未发版（2026-10-14）— cine-dialogue 0.8.27：修选项块吞内容
 
 模型用 A./B. 写选项时，<options> 块被整块移走而选项正则不认字母 ⇒ 内容彻底消失。

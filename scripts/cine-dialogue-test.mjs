@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.27');
+eq('version 与 manifest 一致', VERSION, '0.8.28');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1697,6 +1697,21 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const blk3 = ['<options>', '>选项一：老写法', '2. 数字写法', '</options>'].join(NL);
     const h3 = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk3, {}, DEFAULT_CONFIG).html);
     eq('★ 原有两种写法仍是 2 个按钮（不回归）', (h3.match(/class="cd-opt"/g) || []).length, 2);
+}
+
+/* ★★ 只有选项的楼也要接手（0.8.28：用户报「选择状态栏消失了」）
+   卡自己没有选择状态栏时，选项栏是我们提供的功能；原来"没有我们的行就 return null"把它挡掉了 ✗ */
+{
+    const N2 = String.fromCharCode(10);
+    const onlyOpts = ['染推开门，走廊很安静。', '<options>', '>选项一：甲', '>选项二：乙', '</options>'].join(N2);
+    const r = renderMessageHTML(onlyOpts, {}, DEFAULT_CONFIG);
+    ok('★★ 只有选项的楼会接手（不是 null）', !!r);
+    eq('★★ 选项正常变成 2 个按钮', ((String(r && r.html).match(/class=\"cd-opt\"/g)) || []).length, 2);
+    ok('★★ 选项被包进 cd-root（拿到主题变量，避免白底按钮）', String(r && r.html).indexOf('cd-root') >= 0);
+    ok('★ 正文一个字没丢', String(r && r.html).indexOf('走廊很安静') >= 0);
+    const r2 = renderMessageHTML('染·动作 我按住她的手腕。' + N2 + '<options>' + N2 + '>选项一：甲' + N2 + '</options>', {}, DEFAULT_CONFIG);
+    eq('★ 有行又有选项时不重复渲染（仍 1 个按钮）', ((String(r2.html).match(/class=\"cd-opt\"/g)) || []).length, 1);
+    ok('★ 纯散文（无选项）仍不接手（原行为不变）', renderMessageHTML('染推开门，走廊很安静。', {}, DEFAULT_CONFIG) === null);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
