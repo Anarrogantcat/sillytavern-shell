@@ -325,3 +325,14 @@
     white-space: pre-wrap;
     word-break: break-word;
 }
+/* 「未标注行」的空锚点：只用来定位，不产生任何盒子。
+   （这些行留在网格外面以保住 markdown，靠这个锚把它们的左内边距对齐到正文列） */
+.custom-cd-anchor {
+    display: none;
+}
+/* 插件补过的行：名字格下加一条虚线，hover 有说明。
+   原则是「必须可见」—— 让用户随时能分辨哪些是模型写的、哪些是插件补的。 */
+.custom-cd-fix .custom-cd-who {
+    border-bottom: 1px dotted currentColor;
+    cursor: help;
+}

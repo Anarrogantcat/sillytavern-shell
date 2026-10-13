@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.6.1';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -66,6 +66,9 @@ export const DEFAULT_CONFIG = {
     thinkingDepth: 20,
     /** 兜底包出来的 <details> 是否默认展开（默认折叠 = 隐藏） */
     thinkingOpen: false,
+    /* ---- 自动修复（模型输出漂移时的有依据补全；默认关）---- */
+    /** 'off' 不修 | 'safe' 只修「层名在名字缺」与纯引号行 | 'aggressive' 再把完全没标注的归为旁白 */
+    autoRepair: 'safe',
     /** 思考块的识别正则（捕获组 1 = 要展示的正文；留空 = 不做兜底） */
     thinkingPattern: '\\{思考内容\\}([\\s\\S]*?)<\\/konatan_planning~>',
     /** 自定义调色板（空 = 用 PALETTE） */
@@ -221,6 +224,9 @@ export const PANEL_FIELDS = [
     { key: 'thinkingDepth', kind: 'number', label: '预设已覆盖的深度', unit: '层', min: 0, max: 50, step: 1 },
     { key: 'thinkingOpen', kind: 'bool', label: '兜底的思考默认展开', note: '默认关 = 折叠隐藏' },
     { key: 'thinkingPattern', kind: 'text', label: '思考块识别正则', note: '捕获组 1 = 展示正文；留空 = 不做兜底' },
+    { key: 'autoRepair', kind: 'select', label: '自动修复模型漂移',
+      note: 'safe：只修「只写了层名」与纯引号行（有依据）；aggressive：再把完全没标注的归为旁白（不猜角色）',
+      options: [['off', '不修'], ['safe', 'safe（有依据才修）'], ['aggressive', 'aggressive（再归旁白）']] },
     { key: 'injectPrompt', kind: 'bool', label: '自动注入格式说明',
       note: '默认关：专属预设里已有同样说明，两边同时开会重复占提示词' },
     { key: 'promptDepth', kind: 'number', label: '注入深度', unit: '层', min: 0, max: 20, step: 1 },
@@ -473,6 +479,17 @@ export function assignColors(names, seed = {}, palette = PALETTE) {
 
 // ---------------------------------------------------------------- 渲染
 
+/**
+ * 未标注行（text 直通）用的**空锚点**。
+ *
+ * 为什么要锚点：这些行必须留在网格**外面**（进去就没 markdown 了），于是它们从 x=0 开始，
+ * 和正文列（网格第 2 列，带 3px 边框 + .7em 内边距）对不齐 —— 真机反馈：
+ * 「旁白没有和上面/后面的内容对齐」。
+ * 解法：在每段前面放一个空 span 当**锚**，渲染后由 decorate() 量出正文列的实际位置，
+ * 再把锚点之后、下一个锚点/网格之前的兄弟节点统一加左内边距。既不包内容（markdown 不受影响），
+ * 也不用猜哪些节点是"我们的"。
+ */
+export const PLAIN_ANCHOR = '<span class="cd-anchor" aria-hidden="true"></span>';
 /** 层 → CSS 类；自定义层回落到 cd-L-custom（样式靠行内变量） */
 export function layerClass(layer) {
     return LAYER_CLS[layer] || 'cd-L-custom';
@@ -501,12 +518,25 @@ export function stClassPrefix(html) {
     });
 }
 
+/** 修复痕迹的 hover 说明（**必须可见**：让用户随时能分辨哪些是模型写的、哪些是插件补的） */
+function fixTitle(repaired) {
+    switch (repaired) {
+        case 'name': return '这一行的「名字·」是模型漏写的，插件按同楼最近标注过的角色补上';
+        case 'quote': return '这一行没有层名，插件按引号判为「台词」，名字按同楼最近标注过的角色补上';
+        case 'layer-only': return '这一行只有层名、没有名字，插件按「旁白」处理（不猜角色）';
+        case 'bare': return '这一行完全没标注，插件按「不猜角色」的原则归为「旁白」';
+        default: return '';
+    }
+}
+
 function rowHTML(r, colorMap, config) {
     const dim = rowDimmed(r, config.onlyChar) ? ' cd-dim' : '';
+    const fix = r.repaired ? ' cd-fix' : '';
+    const fixTip = fixTitle(r.repaired);
 
     if (r.kind === 'narr') {
-        return '<div class="cd-row cd-L-narr' + dim + '" style="' + esc(layerVars('旁白', config)) + '">'
-            + '<span class="cd-who"></span>'
+        return '<div class="cd-row cd-L-narr' + dim + fix + '" style="' + esc(layerVars('旁白', config)) + '">'
+            + '<span class="cd-who"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '></span>'
             + '<span class="cd-body" title="双击复制这一行">' + esc(r.body) + '</span>'
             + '</div>';
     }
@@ -514,8 +544,8 @@ function rowHTML(r, colorMap, config) {
         const c = colorMap[r.name] || PALETTE[0];
         const lv = layerVars(r.layer, config);
         const css = '--c:' + esc(c) + (lv ? ';' + esc(lv) : '');
-        return '<div class="cd-row ' + layerClass(r.layer) + dim + '" style="' + css + '">'
-            + '<span class="cd-who">' + esc(r.name) + '</span>'
+        return '<div class="cd-row ' + layerClass(r.layer) + dim + fix + '" style="' + css + '">'
+            + '<span class="cd-who"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '>' + esc(r.name) + '</span>'
             + '<span class="cd-body" title="双击复制这一行">' + esc(r.text) + '</span>'
             + '</div>';
     }
@@ -652,11 +682,14 @@ export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
        分组会吃掉空行、把每行 trim 掉；而 text 段是「原样交给 showdown」的，
        必须**连空行与行首空格一起保留**（思考块 `{思考内容}…</konatan_planning~>` 就在 text 段里，
        预设那条思维链正则 `([\s\S]*)</konatan_planning~>` 靠它匹配）。 */
-    const entries = rawLines.map(raw => {
-        const t = raw.trim();
-        if (t === '') return { kind: 'blank', raw };
-        return { p: parseLine(t, layers), raw };
-    });
+    /* autoRepair != off 时，先走一遍「有依据的补全」（见 repairLines） */
+    const entries = (String(cfg.autoRepair || 'off') === 'off')
+        ? rawLines.map(raw => {
+            const t = raw.trim();
+            if (t === '') return { kind: 'blank', raw };
+            return { p: parseLine(t, layers), raw };
+        })
+        : repairLines(rawLines, cfg).map(x => x.p.kind === 'blank' ? { kind: 'blank', raw: x.line } : { p: x.p, raw: x.line, repaired: x.repaired });
 
     const names = [];
     const seen = new Set();
@@ -737,7 +770,8 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     const parts = seg.segments.map((s, i) => {
         if (s.kind === 'text') {
             const raw = s.lines.join('\n');                                  // 原样，一个字不改
-            return opts.wrapThinking ? wrapThinkingBlock(raw, cfg) : raw;    // ← 预设覆盖不到时由我们折叠
+            const body = opts.wrapThinking ? wrapThinkingBlock(raw, cfg) : raw;   // ← 预设覆盖不到时由我们折叠
+            return PLAIN_ANCHOR + '\n' + body;                               // 锚点：供 decorate() 对齐到正文列
         }
         return renderGrid(s.groups, seg.colors, cfg, i === lastOurs ? optHTML : '');
     });
@@ -976,6 +1010,75 @@ export function hasThinkingBlock(text, config = {}) {
     } catch (_) {
         return false;
     }
+}
+
+/**
+ * ★ 自动修复：模型输出漂移时的**有依据**补全。
+ *
+ * 真机见到的漂移（截图）：
+ *   ① 只写了层名、漏了「名字·」   → `心理 我真的……`
+ *   ② 整行完全没标签             → `沙良回到了自己的房间…` / `房间内的光线柔和而幽暗。`
+ * 这两类原来都掉进 `text` 直通 → 名字列/颜色/层样式全丢，层名还会当正文露出来。
+ *
+ * 修复原则（对齐 AGENTS §0.3.3 的补偿写入六条）：
+ *   · **有依据才修**：①的依据是「层名是模型自己写对的」；②的依据是「引号=说话」
+ *   · **不猜方向**：完全没标注时**只归为旁白**（灰色、不占名字列），**绝不猜是哪个角色**
+ *   · **必须可见**：修过的行带 `repaired` 标记，渲染时留记号 + hover 说明
+ *   · **可关**：`autoRepair: 'off' | 'safe' | 'aggressive'`
+ *
+ * @returns {Array<{line:string, p:object, repaired:(string|null)}>}
+ */
+export function repairLines(lines, cfg = {}) {
+    const c = { ...DEFAULT_CONFIG, ...cfg };
+    const mode = String(c.autoRepair || 'off');
+    const layers = allLayers(c);
+
+    const parsed = (lines || []).map(l => {
+        const t = String(l == null ? '' : l).trim();
+        return { line: String(l == null ? '' : l), p: (t === '') ? { kind: 'blank', raw: '' } : parseLine(t, layers) };
+    });
+    if (mode === 'off') return parsed.map(x => ({ line: x.line, p: x.p, repaired: null }));
+
+    const aggressive = (mode === 'aggressive');
+    const reLayerOnly = new RegExp('^(' + layerAlternation(layers) + ')\\s+(.+)$');
+    const reQuote = /^[「“"『]/;
+
+    /* 找「同一楼里最近一个被正确标注过的角色」——先往前找，找不到再往后找。
+       为什么两个方向都找：截图里那段 `心理 …` 前面全是未标注行，
+       但**后面**紧跟着 `沙良·动作 …`，往后找才拿得到 沙良。 */
+    const before = []; let last = '';
+    for (let i = 0; i < parsed.length; i++) { before[i] = last; if (parsed[i].p.kind === 'row') last = parsed[i].p.name; }
+    const after = []; let next = '';
+    for (let i = parsed.length - 1; i >= 0; i--) { after[i] = next; if (parsed[i].p.kind === 'row') next = parsed[i].p.name; }
+
+    return parsed.map((x, i) => {
+        const p = x.p;
+        if (p.kind !== 'text') return { line: x.line, p, repaired: null };
+        const t = String(x.line).trim();
+
+        // ① 只写了层名 → 补最近的角色（层名本身是模型写对的，属于有依据）
+        const m = t.match(reLayerOnly);
+        if (m) {
+            const layer = m[1];
+            const body = m[2].trim();
+            if (layer === '旁白') return { line: x.line, p: { kind: 'narr', body, repaired: 'layer-only' }, repaired: 'layer-only' };
+            const who = before[i] || after[i];
+            if (who) return { line: x.line, p: { kind: 'row', name: who, layer, text: body, repaired: 'name' }, repaired: 'name' };
+        }
+
+        // ② 纯引号开头 → 台词（引号=说话，硬依据）
+        if (reQuote.test(t)) {
+            const who = before[i] || after[i];
+            if (who) return { line: x.line, p: { kind: 'row', name: who, layer: '台词', text: t, repaired: 'quote' }, repaired: 'quote' };
+        }
+
+        // ③ 完全没标注 → **只归为旁白**（不猜角色）；只有 aggressive 才做
+        if (aggressive) {
+            return { line: x.line, p: { kind: 'narr', body: t, repaired: 'bare' }, repaired: 'bare' };
+        }
+
+        return { line: x.line, p, repaired: null };
+    });
 }
 
 /** 统计（面板/排障用） */

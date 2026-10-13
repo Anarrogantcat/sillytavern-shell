@@ -405,9 +405,57 @@ function schedule(scope) {
  *  ★ 这两件**两条路径下都要跑** —— 自检发现：钩子路径曾因 run() 一退到底而整片丢失。 */
 function decorate(mesEl) {
     try { unifyNameColumn(mesEl); } catch (_) { /* 装饰失败不影响渲染 */ }
+    try { alignPlains(mesEl); } catch (_) { /* 对齐失败不影响渲染 */ }
     try { applyIndent(mesEl); } catch (_) { /* 同上 */ }
 }
 
+/**
+ * 把「未标注行」对齐到正文列。
+ *
+ * 这些行必须留在网格**外面**（进网格就没有 markdown 了），于是它们从 x=0 开始，
+ * 和正文列（第 2 格，带 3px 边框 + .7em 内边距）对不齐 —— 真机反馈「旁白没和内容对齐」。
+ * 做法：靠我们自己埋的**空锚点**定位，只给「锚点之后、下一个锚点/网格之前」的兄弟节点加左内边距。
+ * 不去猜哪些节点是"我们的"，也不会碰到卡自己的前端块（那些不在锚点区间里）。
+ */
+function alignPlains(mesEl) {
+    const textEl = mesEl.querySelector('.mes_text');
+    if (!textEl) return;
+    const anchors = textEl.querySelectorAll('.custom-cd-anchor, .cd-anchor');
+    if (!anchors.length) return;
+
+    const root = textEl.querySelector('.custom-cd-root, .cd-root');
+    let nameW = 0;
+    if (root) {
+        root.querySelectorAll('.custom-cd-who, .cd-who').forEach(w => {
+            if ((w.textContent || '').trim()) nameW = Math.max(nameW, w.getBoundingClientRect().width);
+        });
+    }
+    let off = 0;
+    const body = root ? root.querySelector('.custom-cd-body, .cd-body') : null;
+    if (body) {
+        const cs = getComputedStyle(body);
+        off = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+    }
+    const pad = Math.max(0, Math.round(nameW + off));
+
+    anchors.forEach(a => {
+        for (let n = a.nextSibling; n; n = n.nextSibling) {
+            if (n.nodeType === 1) {
+                const cls = n.classList;
+                if (cls.contains('cd-anchor') || cls.contains('custom-cd-anchor')) break;
+                if (cls.contains('cd-root') || cls.contains('custom-cd-root')) break;
+                n.style.paddingLeft = pad + 'px';
+            } else if (n.nodeType === 3 && String(n.textContent || '').trim()) {
+                const span = document.createElement('span');
+                span.style.display = 'block';
+                span.style.paddingLeft = pad + 'px';
+                n.parentNode.insertBefore(span, n);
+                span.appendChild(n);
+                n = span;
+            }
+        }
+    });
+}
 function run(all) {
     let list = Array.from(document.querySelectorAll('#chat .mes'));
 

@@ -10,7 +10,7 @@ import {
     MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
     allLayers, layerVars, resolveColors, validateLayerName, rowDimmed,
     highlightPlan, sceneTitle, messageTitle, rowRegexFor,
-    serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock,
+    serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock, PLAIN_ANCHOR, repairLines,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats,
@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.6.0');
+eq('version 与 manifest 一致', VERSION, '0.6.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -582,6 +582,78 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         cssText.indexOf('.custom-cd-think-sum') >= 0 && cssText.indexOf('.custom-cd-think-body') >= 0);
 }
 
+/* ============================================================================
+   未标注行的对齐（真机反馈：「旁白没有和上面/后面的内容对齐」）
+   这些行留在网格外面（保住 markdown），所以靠**空锚点**定位后由 decorate() 补左内边距。
+   ============================================================================ */
+{
+    const mixed = '她感觉自己的脚趾因为紧张而微微蜷缩。\n染·动作 我合上手中的书。\n沙良·台词 「那个……」';
+    const r = renderMessageHTML(mixed, {}, DEFAULT_CONFIG);
+    ok('★ 未标注行前面埋了空锚点', r.html.indexOf('class="cd-anchor"') >= 0, r.html.slice(0, 160));
+    ok('★ 锚点在网格之前（未标注行原本在前）', r.html.indexOf('cd-anchor') < r.html.indexOf('cd-root'));
+    ok('★ 锚点常量与渲染输出一致', r.html.indexOf(PLAIN_ANCHOR) >= 0);
+    ok('★ 未标注行的原文没被包进任何东西（markdown 不受影响）',
+        r.html.indexOf('她感觉自己的脚趾') > r.html.indexOf('cd-anchor')
+        && r.html.indexOf('她感觉自己的脚趾') < r.html.indexOf('cd-root'));
+
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    ok('★ CSS 有 .custom-cd-anchor（否则空锚点会占位）', cssText.indexOf('.custom-cd-anchor') >= 0);
+    const idxSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★ decorate 里真的调了 alignPlains', /function decorate[\s\S]{0,400}alignPlains\(mesEl\)/.test(idxSrc));
+    ok('★ alignPlains 按锚点区间加内边距（不猜节点归属）', /alignPlains[\s\S]{0,1200}custom-cd-anchor/.test(idxSrc));
+}
+
+/* ============================================================================
+   自动修复模型漂移（autoRepair）—— 默认 off，不改变行为
+   ============================================================================ */
+{
+    eq('默认 autoRepair = safe（只做有依据的修复）', DEFAULT_CONFIG.autoRepair, 'safe');
+
+    const drift = [
+        '沙良回到了自己的房间，门刚刚合上，她就有些狼狈地靠在了门板上。',
+        '心理 我真的……要是他听到了的话怎么办？',
+        '她低头看了看自己那对丰满得有些沉甸甸的巨乳。',
+        '沙良·动作 我有些犹豫地站在门口，手指紧紧绞着衣角。',
+        '「那个……染先生，其实……」',
+    ].join('\n');
+
+    const off = repairLines(drift.split('\n'), { ...DEFAULT_CONFIG, autoRepair: 'off' });
+    eq('off：一行都不动（全是原样解析）', off.filter(x => x.repaired).length, 0);
+
+    const safe = repairLines(drift.split('\n'), { ...DEFAULT_CONFIG, autoRepair: 'safe' });
+    const l2 = safe[1];
+    eq('safe：只写了层名的那行被补成 row', l2.p.kind, 'row');
+    eq('safe：补的名字取「同楼最近标注过的角色」（往后找）', l2.p.name, '沙良');
+    eq('safe：层名沿用模型自己写的', l2.p.layer, '心理');
+    eq('safe：标记为 repaired', l2.repaired, 'name');
+    ok('safe：正文正文没被改写', l2.p.text.indexOf('我真的') === 0);
+    eq('safe：纯引号行补成台词', safe[4].p.layer, '台词');
+    eq('safe：完全没标注的行**不动**（不猜）', safe[2].p.kind, 'text');
+    eq('safe：没标注行也没被标 repaired', safe[2].repaired, null);
+
+    const agg = repairLines(drift.split('\n'), { ...DEFAULT_CONFIG, autoRepair: 'aggressive' });
+    eq('aggressive：完全没标注的行归为旁白', agg[2].p.kind, 'narr');
+    eq('aggressive：旁白**不占名字列**（不猜角色）', agg[2].p.name, undefined);
+    eq('aggressive：标记为 bare', agg[2].repaired, 'bare');
+    ok('aggressive：原文一字不改', agg[2].p.body.indexOf('她低头看了看') === 0);
+
+    const onlyLayer = repairLines(['心理 我在想什么。'], { ...DEFAULT_CONFIG, autoRepair: 'safe' });
+    eq('safe：没有可参照的角色时**不修**（不猜）', onlyLayer[0].p.kind, 'text');
+    eq('safe：也不标记', onlyLayer[0].repaired, null);
+}
+
+/* ★ 修复必须**可见**（AGENTS §0.3.3）：补过的行要有记号 + hover 说明 */
+{
+    const safe = repairLines(['沙良·动作 我站着。', '心理 我在想什么。'], { ...DEFAULT_CONFIG, autoRepair: 'safe' });
+    const map = { '沙良': '#00F5EF' };
+    const html = renderGrid([[safe[1].p]], map, DEFAULT_CONFIG);
+    ok('★ 补过的行带 cd-fix 记号', html.indexOf('cd-fix') >= 0, html.slice(0, 200));
+    ok('★ 补过的行 hover 有说明（写了是插件补的）', html.indexOf('title=') >= 0 && html.indexOf('插件') >= 0);
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    ok('★ CSS 有 .custom-cd-fix 规则（记号看得见）', cssText.indexOf('.custom-cd-fix') >= 0);
+}
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);
 if (failures.length) {
