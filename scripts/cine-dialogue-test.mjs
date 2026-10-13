@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.14');
+eq('version 与 manifest 一致', VERSION, '0.8.16');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1605,24 +1605,22 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
 }
 
 /* ============================================================================
-   ★★ 颜色必须与「出现顺序 / 渲染了哪些楼」完全无关（0.8.14，真机回归的守卫）
-   真机：0.8.12 剔掉一批假"元数据行"后，出现顺序变了 ⇒ 沙良/染/久美**全部洗牌** ✗✗
-   用户报「颜色不对」。这条夹具就是防止那种事再发生。
+   ★★ 颜色稳定性（0.8.16 定稿判据）
+   意图不变（颜色要稳定），但机制换对了：0.8.14 用名字哈希求稳定是错的
+   （那只是把颜色换成另一套，不是用户那套）。现在：首见顺序分配（主角=第 1 色青）
+   + 立刻钉进 charColors。
    ============================================================================ */
 {
-    const a = resolveColors(['沙良', '染', '久美'], {}, {});
-    const b = resolveColors(['久美', '沙良', '染'], {}, {});
-    eq('★★ 打乱顺序后颜色不变（沙良）', a['沙良'], b['沙良']);
-    eq('★★ 打乱顺序后颜色不变（染）', a['染'], b['染']);
-    eq('★★ 打乱顺序后颜色不变（久美）', a['久美'], b['久美']);
-    const c = resolveColors(['染'], {}, {});
-    eq('★★ 只出现一个角色时，它的颜色与同批出现时一致', c['染'], a['染']);
-    const d = resolveColors(['染'], {}, { 别人: '#123456' });
-    eq('★★ 别的角色存在时也不影响', d['染'], a['染']);
+    const a = resolveColors(['汐音', '染', '沙良'], {}, {});
+    eq('★★ 第一个出现的角色拿调色板第 1 色（主角=青）', a['汐音'], PALETTE[0]);
+    eq('★ 第二个拿第 2 色', a['染'], PALETTE[1]);
+    eq('★★ 同楼三个角色互不相同', new Set(Object.values(a)).size, 3);
+    const b = resolveColors(['久美', '汐音', '染', '沙良'], {}, a);
+    eq('★★ 下一楼老角色颜色不变（汐音）', b['汐音'], a['汐音']);
+    eq('★★ 下一楼老角色颜色不变（染）', b['染'], a['染']);
+    eq('★★ 下一楼老角色颜色不变（沙良）', b['沙良'], a['沙良']);
     const e = resolveColors(['染'], { charColors: { 染: '#ABCDEF' } }, {});
     eq('★ 用户在面板点名的颜色优先', e['染'], '#ABCDEF');
-    eq('★ 确定性（同输入同输出）',
-        JSON.stringify(resolveColors(['甲', '乙'], {}, {})), JSON.stringify(resolveColors(['甲', '乙'], {}, {})));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

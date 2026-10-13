@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.14';
+export const VERSION = '0.8.16';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1009,22 +1009,22 @@ export function resolveColors(names, config = {}, seed = {}) {
         if (fixed[n]) map[n] = fixed[n];
     }
 
-    // 2) 没点名的**按名字确定性推导**（★ 0.8.14 整改）。
-    //    ★★ 为什么不能再用"出现顺序"（真机回归，用户报「颜色不对」）：
-    //    顺序分配 ⇒ **哪些楼被渲染、行怎么解析，都会改掉顺序** ⇒ 0.8.12 剔掉一批假"元数据行"后，
-    //    沙良 / 染 / 久美 的颜色**全部洗牌**（0.8.11→0.8.12：沙良 #D982EF→#00F5EF …）✗✗
-    //    ⇒ 与规格「颜色 = 角色」矛盾 ✓
-    //    现在改成**名字哈希**：同一个名字永远同一个下标，与顺序、与渲染了哪些楼**完全无关** ✓
-    //    以后不论怎么改解析都不会再变色 ✓（代价：同楼偶尔撞色，用户可在面板点名指定 ✓）
-    const slotOf = (nm) => {
-        let h = 0;
-        const t = String(nm == null ? '' : nm);
-        for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
-        return h % palette.length;
-    };
+    // 2) 没点名的按**顺序**拿「还没被占用」的调色板颜色 —— 这是用户熟悉的那套 ✓
+    //    ★ 顺序从哪来：seed 里带着 settings.charColors（已钉死的 ✓）
+    //      ⇒ "第一个**新见到的**角色"拿第一个未用色 ⇒ 主角/最早出场者 = 第 1 色（青）✓
+    //      然后 pinColors 立刻钉进 charColors ⇒ **以后永远不变** ✓✓
+    //    （0.8.14 用"名字哈希"是错的 ✗：那只是把颜色换成另一套，不是恢复用户那套 ✗）
+    const used = new Set(Object.keys(map).map((k) => map[k]));
+    let k = 0;
     for (const n of names) {
         if (map[n]) continue;
-        map[n] = palette[slotOf(n)];
+        while (k < palette.length && used.has(palette[k])) k++;
+        const color = k < palette.length
+            ? palette[k]
+            : 'hsl(' + ((k * 137.508) % 360).toFixed(0) + ', 78%, 66%)';
+        map[n] = color;
+        used.add(color);
+        k++;
     }
     return map;
 }

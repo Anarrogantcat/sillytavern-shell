@@ -233,7 +233,7 @@ function formatHook(mes, ctx) {
         const wrapThinking = (mode === 'always')
             || (mode === 'auto' && (d === undefined || d > (Number(c.thinkingDepth) || 0)));
 
-        const res = renderMessageHTML(mes, colorMap[mid] || {}, c, { wrapThinking });
+        const res = renderMessageHTML(mes, { ...(c.charColors || {}), ...(colorMap[mid] || {}) }, c, { wrapThinking });
         if (!res || !res.html) return mes;
 
         if (mid >= 0) colorMap[mid] = res.colors;                 // 本楼缓存
@@ -318,7 +318,7 @@ function transformMessage(mesEl, mesId) {
     if (!hasOurLines(raw)) return { ok: false, reason: 'no-our-lines' };
 
     const sections = splitSections(raw);
-    const res = renderMessage(sections.body, colorMap[mesId] = (colorMap[mesId] || {}), c);
+    const res = renderMessage(sections.body, colorMap[mesId] = { ...(effectiveConfig().charColors || {}), ...(colorMap[mesId] || {}) }, c);
     if (!res.html) return { ok: false, reason: 'empty' };
 
     // 颜色表回写（同角色同色，跨消息保持）
