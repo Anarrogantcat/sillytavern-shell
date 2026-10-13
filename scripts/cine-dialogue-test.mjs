@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.51');
+eq('version 与 manifest 一致', VERSION, '0.8.52');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1978,6 +1978,13 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
     eq('★★ 打开着的「第三人称」被关掉', (r.preset.prompt_order[0].order.find((x) => x.identifier === 'p1') || {}).enabled, false);
     ok('★ 格式说明仍然规定旁白为第三人称（换个地方管）', FORMAT_SPEC.indexOf('第三人称的外部描写') >= 0);
+}
+
+/* ★★ 回合是硬结构：五行固定 + 不许连续两个动作行（真机 23 动作行 ⇒ 结构散 ✗） */
+{
+    ok('★★ 写明五行一组、顺序固定', LENGTH_SPEC.indexOf('五行一组，顺序固定') >= 0);
+    ok('★★ 写明不许连续两个动作行', LENGTH_SPEC.indexOf('绝对不要连续写两个「动作」行') >= 0);
+    ok('★ 引用真机数据作为反例', LENGTH_SPEC.indexOf('23 个动作行') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
