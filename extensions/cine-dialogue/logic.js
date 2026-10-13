@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.40';
+export const VERSION = '0.8.41';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1448,7 +1448,14 @@ export const PRESET_RECIPE = {
     orderAt: -1,
     thinkingDepth: 20,
     thinkingRe: /思维链/,
-    toggles: [['👤人称-第三人称', true], ['👤人称-User第一人称', false], ['🚢文风-顺眼舒服', false]],
+    toggles: [
+        ['👤人称-第三人称', true], ['👤人称-User第一人称', false], ['🚢文风-顺眼舒服', false],
+        /* ★ 对白量：只留「一半（50%）」开着（用户 2026-10-14 定的）。
+           为什么必须写进来：生成器以**原版预设**为底重建 ⇒ 不纳入这里的开关会被还原成原版状态 ✗
+           （实测踩到：切好的 50% 被一次生成器运行还原成「中」✗） */
+        ['👤对白量：少', false], ['👤对白量：中', false], ['👤对白量：多', false],
+        ['👤对白量：100%', false], ['👤对白量：一半（50%）', true],
+    ],
 };
 
 /** 派生说明的正文（人可读；做成**停用**条目，只留痕不进提示词） */

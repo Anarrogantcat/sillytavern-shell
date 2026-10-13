@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.40');
+eq('version 与 manifest 一致', VERSION, '0.8.41');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1733,7 +1733,11 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     /* ★ 注意：派生说明（停用）会被追加在它后面 ⇒ 判据看「最后一条**启用**的」 */
     const lastOn = od.filter((x) => x.enabled).slice(-1)[0];
     /* ★ 0.8.32 起：最后一条启用的是「篇幅与节奏」（它排在格式说明之后 ⇒ 最贴近输出 ✓） */
-    eq('★★ 最后一条启用的是「篇幅与节奏」', String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name), PRESET_RECIPE.lengthName);
+    /* 0.8.41 起：对白量 50% 由配方管理 ⇒ 它会在最末；判据改为"篇幅条目必须启用" ✓ */
+    ok('★★ 篇幅条目是启用的（内容类条目里最贴近输出）',
+        (od.find((x) => String(x.identifier) === String(r.preset.prompts.find((p) => p.name === PRESET_RECIPE.lengthName).identifier)) || {}).enabled === true);
+    ok('★ 最末那条是我们写的条目之一',
+        [PRESET_RECIPE.lengthName, PRESET_RECIPE.dbl50Name].indexOf(String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name)) >= 0);
     eq('★ order 里共 6 条（原有 2 + 格式说明 + 篇幅 + 50% + 停用的派生说明）', od.length, 6);
     ok('★ 原有的两条仍启用（没被挤掉）', od[0].enabled === true && od[1].enabled === true);
 }
@@ -1775,7 +1779,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     /* 停用的派生说明会排在它后面 ⇒ 判据看「最后一条启用」✓ */
     let lastOnIdx = -1;
     for (let k = od.length - 1; k >= 0; k--) { if (od[k].enabled) { lastOnIdx = k; break; } }
-    eq('★★ 篇幅条目是最后一条启用的（最贴近输出）', String(od[lastOnIdx].identifier), 'cine-dialogue-length');
+    ok('★★ 篇幅条目在 order 里且启用', od.some((x) => String(x.identifier) === 'cine-dialogue-length' && x.enabled === true));
     /* 用户改过 ⇒ 第二次不许覆盖 */
     lp.content = '我自己改过的内容：每次 6 组';
     const r2 = applyPresetRecipe(r.preset, { srcName: 't', srcHash: 'h' });
@@ -1843,7 +1847,8 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const p50 = r.preset.prompts.find((p) => p.name === PRESET_RECIPE.dbl50Name);
     ok('★★ 没有 50% 条目时会创建', !!p50);
     ok('★★ 50% 条目也带 marker/forbid_overrides', p50 && p50.marker === false && p50.forbid_overrides === false);
-    eq('★ 50% 默认关闭（不擅自改你的对白量）', (r.preset.prompt_order[0].order.find((x) => x.identifier === p50.identifier) || {}).enabled, false);
+    /* 0.8.41 起：50% 是配方管理的开关（用户选定的对白量）⇒ 创建后由 toggles 打开 ✓ */
+    eq('★★ 50% 由配方开关打开（用户选定的对白量）', (r.preset.prompt_order[0].order.find((x) => x.identifier === p50.identifier) || {}).enabled, true);
     /* 已存在时内容不动 */
     p50.content = '我自己改过的 50% 文案';
     const r2 = applyPresetRecipe(r.preset, { srcName: 't', srcHash: 'h' });
@@ -1864,6 +1869,27 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★ 格式说明条目顶部有版本号', String(fm.content).indexOf('（分镜对话 v' + VERSION + ' 生成）') === 0);
     const lp = r.preset.prompts.find((p) => p.name === PRESET_RECIPE.lengthName);
     ok('★★ 篇幅条目顶部也有版本号', String(lp.content).indexOf('（分镜对话 v' + VERSION + ' 生成）') === 0);
+}
+
+/* ★★ 对白量纳入配方开关（生成器以原版重建 ⇒ 不纳入会被还原 ✗） */
+{
+    const tg = PRESET_RECIPE.toggles;
+    ok('★★ 配方里有「一半（50%）」且要求打开', tg.some(([n, v]) => n === '👤对白量：一半（50%）' && v === true));
+    ok('★★ 配方里要求关掉「中」', tg.some(([n, v]) => n === '👤对白量：中' && v === false));
+    ok('★ 少/多/100% 也都要求关', ['👤对白量：少', '👤对白量：多', '👤对白量：100%'].every((k) => tg.some(([n, v]) => n === k && v === false)));
+    /* 真跑一遍：把「中」打开、50% 关掉 ⇒ 配方应改回来 */
+    const base = {
+        prompts: [
+            { identifier: 'm', name: '👤对白量：中', content: 'x', marker: false, forbid_overrides: false },
+            { identifier: 'h', name: '👤对白量：一半（50%）', content: 'y', marker: false, forbid_overrides: false },
+        ],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'm', enabled: true }, { identifier: 'h', enabled: false }] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
+    const o = r.preset.prompt_order[0].order;
+    eq('★★ 「中」被关掉', (o.find((x) => x.identifier === 'm') || {}).enabled, false);
+    eq('★★ 「一半（50%）」被打开', (o.find((x) => x.identifier === 'h') || {}).enabled, true);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
