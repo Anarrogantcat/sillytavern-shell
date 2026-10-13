@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.3');
+eq('version 与 manifest 一致', VERSION, '0.8.4');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1270,6 +1270,51 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const again = applyPresetRecipe(mine.preset, { srcName: 'x', srcHash: 'y' });
     ok('★ 同步是幂等的（已是新文本 → 报「已是最新」）',
         again.changes.some(c => c.indexOf('已是最新') >= 0));
+}
+
+/* ============================================================================
+   ★ FORMAT_SPEC 合并版（0.8.4）
+   预设里那份**不是"新版说明的旧副本"**，而是一份内容不同、几处更好的文本：
+   有具体例子、「旁白里不许出现「我」」、「不要写颜色/星号/加粗/markdown」、人称细则。
+   ⇒ 合并成一份，谁都不丢。
+   ============================================================================ */
+{
+    ok('★ 保留旧版的具体例子',
+        FORMAT_SPEC.indexOf('林婉婷·台词 「不脱。」') >= 0 && FORMAT_SPEC.indexOf('林野·动作 我把') >= 0);
+    ok('★ 保留旧版的「旁白里不许出现「我」」', FORMAT_SPEC.indexOf('旁白里不许出现「我」') >= 0);
+    ok('★ 保留旧版的「不要写颜色、星号、加粗、markdown」',
+        FORMAT_SPEC.indexOf('不要写颜色、星号、加粗') >= 0);
+    ok('★ 保留旧版的人称细则（两个以上「别人」要写真名）', FORMAT_SPEC.indexOf('全部写真实姓名') >= 0);
+    ok('★ 仍有新版的三分法旁白判据',
+        FORMAT_SPEC.indexOf('第三人称的外部描写') >= 0 && FORMAT_SPEC.indexOf('不得写成旁白') >= 0);
+    ok('★ 说明自己不用星号（否则与「不要写星号」自相矛盾）', FORMAT_SPEC.indexOf('**') < 0);
+}
+
+/* ============================================================================
+   ★★ 识别放宽（0.8.3 实测踩到的 bug）
+   早期会话里创建的条目用的是随机 UUID、首行是【分镜行格式 · 必须严格遵守】，
+   只认 identifier === 'cine-dialogue-format' 会认不出它 ⇒ 新规则永远进不去。
+   ============================================================================ */
+{
+    const legacyId = '3093940f-3bac-4fce-8edb-6c66121a223a';
+    const legacy = applyPresetRecipe({
+        prompts: [{ identifier: legacyId, name: PRESET_RECIPE.promptName, content: '【分镜行格式 · 必须严格遵守】\n正文…（旧版）' }],
+        prompt_order: [{ character_id: 1, order: [] }], extensions: {},
+    }, { srcName: 'x', srcHash: 'y' });
+    eq('★★ 旧版条目（UUID + 【分镜行格式…】）会被识别并同步到最新说明',
+        legacy.preset.prompts.find(x => x.identifier === legacyId).content, FORMAT_SPEC);
+    ok('★ 报告写明「按内容特征识别为旧版」（透明，不偷偷改）',
+        legacy.changes.some(c => c.indexOf('按内容特征识别为旧版') >= 0));
+    ok('★ 不动它的 identifier（避免与 prompt_order 失联）',
+        legacy.preset.prompts.some(x => x.identifier === legacyId));
+
+    /* 别人写的同名条目、但没我们的标志串 → 仍一个字不动 */
+    const other = applyPresetRecipe({
+        prompts: [{ identifier: 'someone', name: PRESET_RECIPE.promptName, content: '别人自己写的同名条目' }],
+        prompt_order: [{ character_id: 1, order: [] }], extensions: {},
+    }, { srcName: 'x', srcHash: 'y' });
+    eq('★★ 同名但没有我们的标志串 → 仍一个字不动',
+        other.preset.prompts[0].content, '别人自己写的同名条目');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
