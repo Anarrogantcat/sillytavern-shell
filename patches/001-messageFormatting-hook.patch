@@ -1,0 +1,34 @@
+diff --git a/public/script.js b/public/script.js
+index 68a546111..3398db258 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -1755,6 +1755,29 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
+         return '';
+     }
+ 
++    /* === BEGIN sillytavern-shell patch #001 : cine-dialogue format hook ===
++       给扩展一个「在 markdown / showdown / DOMPurify 之前」的文本转换点。
++       这里是 ST 唯一的渲染漏斗 —— 新消息(addOneMessage)、流式(StreamingProcessor)、
++       编辑、swipe、重渲染(updateMessageBlock) 全部经过本函数，所以一个钩子即可全覆盖。
++
++       装 cine-dialogue 时：它把「名字·层 内容」渲染成分镜 HTML，标签**永不进入 DOM**（流式期间也不裸奔）。
++       没装时：这是一次 undefined 检查，零开销。
++
++       ⚠️ ST 更新会冲掉本段 —— 用仓库里的
++          patches/001-messageFormatting-hook.patch 重新应用（见 patches/README.md）。
++       锚点（重新应用时按此定位）：messageFormatting 函数开头的 `if (!mes) { return ''; }` 之后。
++       === END sillytavern-shell patch #001 === */
++    if (!isReasoning && typeof window.CineDialogueFormat === 'function') {
++        try {
++            const __cdOut = window.CineDialogueFormat(mes, { messageId, ch_name, isSystem, isUser, isReasoning });
++            if (typeof __cdOut === 'string') {
++                mes = __cdOut;
++            }
++        } catch (e) {
++            console.error('[cine-dialogue] format hook failed', e);
++        }
++    }
++
+     if (Number(messageId) === 0 && !isSystem && !isUser && !isReasoning) {
+         const mesBeforeReplace = mes;
+         const chatMessage = chat[messageId];

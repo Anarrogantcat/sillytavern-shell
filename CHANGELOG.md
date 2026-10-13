@@ -1,5 +1,26 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— 首次动用 §0.5 豁免：ST 本体补丁集 + 渲染漏斗钩子（patch #001）
+
+### 核内改动（**本插件专属豁免，见 AGENTS §0.5**）
+- **新增 `patches/` 补丁集 + `scripts/st-patch.mjs`**（查看 / 应用 / 回滚）
+  - 起因：ST 本体是 git 仓库，**更新会 `git pull` 整体刷新** → 手改必然被冲掉 → 「改本体」必须配可重放路径
+  - 「毁了重新适配」= 一条命令 `node scripts/st-patch.mjs --apply`
+  - 判定靠插入段的唯一标记 `BEGIN sillytavern-shell patch #NNN`（不依赖 git 状态，重复跑安全）
+  - 已实测：**apply → check → revert → check → apply → check 全链路 exit 0**
+- **patch #001：`messageFormatting` 渲染漏斗钩子**（目标 `public/script.js`）
+  - 实测依据：`messageFormatting()` 是 ST **唯一渲染漏斗** —— 新消息 `addOneMessage`(2469)、流式 `StreamingProcessor`(3656)、编辑(8162/8260/8351)、重渲染 `updateMessageBlock`(1978) **全部经过它**
+  - 插入 `window.CineDialogueFormat` 受保护钩子（`typeof === 'function'` 守卫 + try/catch，**没装扩展时零开销**）
+  - **为什么必须动本体**：扩展层做不到 —— ① `messageFormatting` 是 ES module export，外部不能重新赋值；② 事后改 DOM 拿不到「markdown/showdown/DOMPurify 之前」的时机，**流式期间 `名字·层 ` 标签会裸奔可见**（一次 6000t 生成要几分钟）
+  - **合法性证据**：预设那批正则本来就在 `messageFormatting` 内部注入 `<style>`+`<div>` HTML，在真实 ST 里渲染正常 → 这条路走得通
+  - 补丁只 diff `public/script.js`（本体里用户原有的 `default/config.yaml` / `public/index.html` 改动**未被卷进补丁**）
+  - `node --check`（按 ESM 解析）**exit 0**
+
+### 说明
+- 只改扩展 + 脚本 + 文档 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）
+- **核内改动已配可重放补丁**，符合 §0.5 第 2 条「不许只存在于 ST 本体里」
+- ST 本体改动**仅 1 个文件 1 处插入**（`public/script.js`），`--revert` 可完全复原
+
 ## 未发版（2026-10-13）— 新扩展 cine-dialogue 0.1.0：分镜对话（核心渲染 L1）
 
 ### 新增
