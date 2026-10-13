@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.34');
+eq('version 与 manifest 一致', VERSION, '0.8.35');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1769,7 +1769,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
     const lp = r.preset.prompts.find((p) => String(p.name || '') === PRESET_RECIPE.lengthName);
     ok('★★ 预设里新增了「篇幅与节奏」条目', !!lp);
-    ok('★★ 内容是 LENGTH_SPEC（含 10 组 / 每行 300 字）', String(lp.content).indexOf('一次生成 10 组') >= 0 && String(lp.content).indexOf('~300 字') >= 0);
+    ok('★★ 内容是 LENGTH_SPEC（含 10 组 / 每行 ~300 字）', String(lp.content).indexOf('10 组') >= 0 && String(lp.content).indexOf('~300 字') >= 0);
     ok('★ 条目不用星号（免得模型抄进正文）', String(lp.content).indexOf('*') < 0);
     const od = r.preset.prompt_order[0].order;
     /* 停用的派生说明会排在它后面 ⇒ 判据看「最后一条启用」✓ */
@@ -1803,6 +1803,21 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★ 我们写的 v2 也会被更新（v2 也认）', String(rv2.preset.prompts[0].content).indexOf('按需要来回波动') >= 0);
     const r2 = applyPresetRecipe(mk('我自己改的：每次 6 组，台词随意'), { srcName: 't', srcHash: 'h' });
     eq('★★ 你改过的内容一个字不动', r2.preset.prompts[0].content, '我自己改的：每次 6 组，台词随意');
+}
+
+/* ★★ 多人场景：台词行数随在场人数变（用户 2026-10-14：「遇到多人怎么办呢？」） */
+{
+    ok('★★ LENGTH_SPEC 写了台词行数随在场人数变', LENGTH_SPEC.indexOf('台词行数随') >= 0);
+    ok('★★ 三人及以上：每个开口的人至少一句', LENGTH_SPEC.indexOf('每个开口的人至少一句') >= 0);
+    ok('★ 没开口的人不给台词行', LENGTH_SPEC.indexOf('没开口的人不要给台词行') >= 0);
+    ok('★ 多人场景组数相应减少（总量不变）', LENGTH_SPEC.indexOf('组数相应减少') >= 0);
+    const mk3 = (content) => ({
+        prompts: [{ identifier: 'cine-dialogue-length', name: PRESET_RECIPE.lengthName, content }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-length', enabled: true }] }],
+        extensions: {},
+    });
+    const rv3 = applyPresetRecipe(mk3('旧 v3：按需要来回波动'), { srcName: 't', srcHash: 'h' });
+    ok('★★ v3 也认（会被更新成含多人规则的新版）', String(rv3.preset.prompts[0].content).indexOf('每个开口的人至少一句') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
