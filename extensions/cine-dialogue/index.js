@@ -1028,24 +1028,48 @@ function diagnose() {
             rows: document.querySelectorAll('#chat .custom-cd-row').length,
         },
         /* ★ DOM 实况：一次区分三种可能
-           ① 我们的类还在、inline style 计数为 0  → 宿主/别的插件剥了 style（DOMPurify）
-           ② 我们的类**不见了**                    → 有东西（预设正则 / 别的插件）改写了我们的 HTML
-           ③ 类还在、style 也在、但 computed 不对  → 我们的样式表没生效 */
+           ① 我们的类还在（custom-cd-*）→ HTML 到达了 DOM，看样式为何没匹配
+           ② 我们的类**不见了**          → 有东西改写了我们的 HTML
+           ③ style 计数为 0             → inline style 被剥
+
+           ⚠️ 必须挑「**真的有我们输出**的那一楼」—— 之前只看第一条 .mes_text，
+              那条恰好没有我们的内容，于是 classes 是空的、把判断带偏了（我的错）。 */
         domProbe: (function () {
-            const t = document.querySelector('#chat .mes_text');
-            if (!t) return '(没有 .mes_text)';
+            const all = Array.from(document.querySelectorAll('#chat .mes_text'));
+            const target = all.find(t => t.querySelector('.custom-cd-root') || t.querySelector('.cd-root'))
+                || all[all.length - 1];
+            if (!target) return '(没有 .mes_text)';
             const cls = new Set();
-            t.querySelectorAll('*').forEach(el => {
+            target.querySelectorAll('*').forEach(el => {
                 String(el.className || '').split(/\s+/).forEach(c => { if (c) cls.add(c); });
             });
             return {
-                hasCdRoot: !!t.querySelector('.custom-cd-root'),
-                hasCdGrid: !!t.querySelector('.custom-cd-grid'),
-                hasCdRow: !!t.querySelector('.custom-cd-row'),
-                hasCdWho: !!t.querySelector('.custom-cd-who'),
-                hasCdBody: !!t.querySelector('.custom-cd-body'),
-                inlineStyleAttrs: (t.innerHTML.match(/style="/g) || []).length,
+                probedWhich: (all.indexOf(target) + 1) + '/' + all.length + ' 条消息',
+                hasCdRoot: !!target.querySelector('.custom-cd-root, .cd-root'),
+                hasCdGrid: !!target.querySelector('.custom-cd-grid, .cd-grid'),
+                hasCdRow: !!target.querySelector('.custom-cd-row, .cd-row'),
+                hasCdWho: !!target.querySelector('.custom-cd-who, .cd-who'),
+                hasCdBody: !!target.querySelector('.custom-cd-body, .cd-body'),
+                hasCdOptions: !!target.querySelector('.custom-cd-options, .cd-options'),
+                hasCdOpt: !!target.querySelector('.custom-cd-opt, .cd-opt'),
+                inlineStyleAttrs: (target.innerHTML.match(/style="/g) || []).length,
                 classes: [...cls].slice(0, 40),
+            };
+        })(),
+
+        /* 选项按钮实况 —— 白盒子的最后一道判断 */
+        optProbe: (function () {
+            const b = document.querySelector('#chat .custom-cd-opt, #chat .cd-opt, #chat .mes_text button');
+            if (!b) return '(聊天里没有 button)';
+            const cs = getComputedStyle(b);
+            return {
+                className: b.className,
+                hasInlineStyle: !!b.getAttribute('style'),
+                background: cs.backgroundColor,
+                color: cs.color,
+                border: cs.borderTopWidth + ' ' + cs.borderTopStyle,
+                padding: cs.padding,
+                text: String(b.textContent || '').slice(0, 24),
             };
         })(),
         hook: hookActive(),

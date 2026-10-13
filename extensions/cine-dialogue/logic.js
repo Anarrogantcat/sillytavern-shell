@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.7';
+export const VERSION = '0.5.8';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -535,11 +535,26 @@ export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG, extra
 export function renderOptions(options, config = DEFAULT_CONFIG) {
     if (!options || !options.length) return '';
     const cfg = { ...DEFAULT_CONFIG, ...config };
+
+    /* ★ 选项按钮带**行内 style**。
+       为什么：消息消毒器只拦截 class（改成 custom- 前缀），**不碰 style**，而行内样式优先级最高。
+       这样无论 class 怎么被改、宿主样式怎么覆盖，按钮都不会退化成浏览器默认的**白底**按钮。
+       （真机踩过：一排白盒子 —— 用户关掉本插件白盒子就消失，证明就是我们画的按钮没拿到样式。）
+
+       也不要写 `background: rgba(255,255,255,.04)` 那种"几乎透明"的值 ——
+       一旦没生效根本看不出来。这里用**半透明灰**：暗色页上是淡暗块，亮色页上是淡灰块。 */
+    const BTN_CSS = [
+        'display:flex', 'align-items:baseline', 'gap:.7em', 'width:100%',
+        'text-align:left', 'cursor:pointer', 'font:inherit', 'font-size:.9em',
+        'padding:.5em .8em', 'border-radius:.3em', 'color:inherit',
+        'border:1px solid rgba(128,140,160,.38)', 'background:rgba(128,140,160,.16)',
+    ].join(';');
+
     const btns = options.map(o =>
-        '<button type="button" class="cd-opt" data-cd-text="' + esc(o.text) + '">'
-        + '<span class="cd-opt-i">' + esc(o.index) + '.</span>'
-        + '<span class="cd-opt-t">' + esc(o.text) + '</span>'
-        + (o.note ? '<span class="cd-opt-n">' + esc(o.note) + '</span>' : '')
+        '<button type="button" class="cd-opt" data-cd-text="' + esc(o.text) + '" style="' + BTN_CSS + '">'
+        + '<span class="cd-opt-i" style="opacity:.6;font-size:.85em;min-width:1.4em">' + esc(o.index) + '.</span>'
+        + '<span class="cd-opt-t" style="flex:1 1 auto">' + esc(o.text) + '</span>'
+        + (o.note ? '<span class="cd-opt-n" style="opacity:.55;font-size:.8em">' + esc(o.note) + '</span>' : '')
         + '</button>'
     ).join('');
     return '<div class="cd-options">' + btns + '</div>';

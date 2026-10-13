@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.7');
+eq('version 与 manifest 一致', VERSION, '0.5.8');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -503,6 +503,15 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★★ 渲染器发出的每个 class，CSS 里都有 .custom- 规则（挡住「HTML 在、样式没」）',
         missingCss.length === 0, { emitted: [...emitted], missingCss });
     ok('★★★ 样本确实取到了 class（不是空跑）', emitted.size >= 6, { size: emitted.size });
+}
+
+/* ★ 选项按钮必须带**行内 style** —— 消毒器只拦 class，行内样式优先级最高，
+   这样无论 class 怎么被改都不会退化成浏览器默认的白底按钮（真机踩过：一排白盒子）。 */
+{
+    const o = renderOptions([{ index: '1', text: '吻她', note: '温柔' }]);
+    ok('★ 选项按钮带行内 style', /<button[^>]*style="[^"]*background/.test(o), o.slice(0, 160));
+    ok('★ 行内 style 里同时有 background 与 color', /background:/.test(o) && /color:inherit/.test(o));
+    ok('★ 不用"几乎全透明"的白（255,255,255 低透明看不出效果）', !/rgba\(255,\s*255,\s*255/.test(o), o.slice(0, 160));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
