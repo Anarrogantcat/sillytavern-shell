@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.22';
+export const VERSION = '0.8.23';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -681,7 +681,7 @@ function rowHTML(r, colorMap, config) {
 
     if (r.kind === 'narr') {
         return '<div class="cd-row cd-L-narr' + dim + fix + '" style="' + esc(layerVars('旁白', config)) + '">'
-            + '<span class="cd-who cd-noname"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '></span>'
+            + '<span class="cd-who"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '></span>'
             + '<span class="cd-body" title="双击复制这一行">' + esc(r.body) + '</span>'
             + '</div>';
     }

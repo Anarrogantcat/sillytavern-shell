@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.22');
+eq('version 与 manifest 一致', VERSION, '0.8.23');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -119,7 +119,7 @@ ok('名字在 cd-who 里', r.html.includes('<span class="cd-who">林野</span>')
        （0.8.14 起颜色按名字哈希，不再按下标取色 ⇒ 不能再钉死 PALETTE[0]） */
     const cLin = resolveColors(['林野'], DEFAULT_CONFIG, {})['林野'];
     ok('颜色写进 --c 变量（与 resolveColors 一致）', r.html.includes('--c:' + cLin));
-ok('旁白不显示名字（名字列收起 ⇒ 正文从最左开始）', /cd-L-narr[^>]*><span class="cd-who cd-noname"/.test(r.html));
+ok('★ 旁白保留名字格 ⇒ 正文与各行对齐', /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(r.html));
 ok('标签不出现在输出里', !r.html.includes('·动作') && !r.html.includes('旁白·'));
 ok('渲染结果里没有 .mes_text 选择器', !r.html.includes('.mes_text'));
 
@@ -213,7 +213,7 @@ ok('选项在 .cd-root 内部（否则拿不到主题变量）',
     hRes.html.indexOf('cd-options') < hRes.html.lastIndexOf('</div>')
     && /class="cd-root[^"]*"[\s\S]*cd-options[\s\S]*<\/div>\s*$/.test(hRes.html.replace(/<htmlcontent>[\s\S]*$/, '')));
 ok('钩子产出：标签不出现', !hRes.html.includes('·动作'));
-ok('钩子产出：旁白不显示名字（名字列收起）', /cd-L-narr[^>]*><span class="cd-who cd-noname"/.test(renderMessageHTML('旁白·灯灭了。\n林野·动作 我按住她。').html));
+ok('钩子产出：旁白保留名字格（与各行对齐）', /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(renderMessageHTML('旁白·灯灭了。\n林野·动作 我按住她。').html));
 
 /* ---------------------------- 回归对照（自检发现的坑，§1.4.6 留对照夹具） ----------------------------
    坑：renderMessageHTML 原来用「整条原文」做 hasOurLines 判据。
@@ -1499,11 +1499,14 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         '汐音·台词 「好……好难熬啊。」',
     ].join(NL), { 汐音: '#8ab4f8' }, DEFAULT_CONFIG).html);
 
-    eq('★★ 旁白 + layer-only 两行都带 cd-noname（名字列收起、正文横跨两列）',
-        html.split('cd-who cd-noname').length - 1, 2);
-    eq('★ 有名字的行不带（名字列照常占位）', html.split('<span class="cd-who">').length - 1, 1);
-    ok('★★ 不存在「空的 who 却没带 cd-noname」的行（这就是白白空出一段的根因）',
-        !/class="cd-who"[^>]*>\s*<\/span>/.test(html));
+    /* ★★ 用户 2026-10-14 纠正：**旁白要和各行的正文对齐** ⇒ 旁白保留空名字格；
+       只有「只写层名 / 未知层兜底」那类（模型写错格式）才收起名字列，避免白空一段 */
+    eq('★★ 只有 layer-only 那行带 cd-noname（旁白不带）',
+        html.split('cd-who cd-noname').length - 1, 1);
+    eq('★ 旁白与有名字的行都保留名字格（正文同列对齐）',
+        html.split('<span class="cd-who">').length - 1, 2);
+    ok('★★ 旁白行的名字格是空的但**保留**（⇒ 与上面各行的正文对齐）',
+        /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(html));
 
     const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8');
     ok('★★ style.css 有两条规则（收起 + 正文横跨两列）',
