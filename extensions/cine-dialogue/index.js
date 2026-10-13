@@ -968,7 +968,13 @@ function effectiveConfig() {
     const base = cfg();
     const key = cardKey();
     if (!key || !base.perCard || !base.perCard[key]) return base;
-    return { ...base, ...base.perCard[key] };
+    const merged = { ...base, ...base.perCard[key] };
+    /* ★★ 逐卡「本卡不生效」（面板里那个按钮）：在这里把它翻成 enabled:false。
+       为什么只在这一个点做：**所有**已有的 enabled 检查点（渲染钩子 / run / 提示词注入 /
+       Alt+↑↓ / 宽表格处理 / 交互绑定 / 恢复原文）都会自动跟着失效，不必逐处再加判断 ✓
+       —— 卡自带美化的时候，你按一下这个按钮，插件对**这张卡**就完全不动作了。 */
+    if (merged.off) return { ...merged, enabled: false, off: true };
+    return merged;
 }
 
 /* 已见过的角色名（颜色管理用）：来自颜色表 + 各楼正文 */
@@ -1305,6 +1311,8 @@ function diagnose() {
             };
         })(),
         hook: hookActive(),
+        /* 逐卡「不生效」—— 报出来，免得你以为插件坏了 */
+        cardOff: { off: !!effectiveConfig().off, card: cardKey() || '(无)' },
         /* 宽表格处理情况 —— 让用户看得到「它动了什么」，不是黑箱 */
         tables: { wrapped: wrappedTables, candidates: tableCandidates, on: !!effectiveConfig().wrapWideTables },
         failedSteps: failedSteps.slice(),
@@ -1418,8 +1426,11 @@ function rebuildDynamic() {
     if (stEl) {
         const k = cardKey();
         const has = !!(k && c.perCard && c.perCard[k]);
+        const isOff = !!(k && c.perCard && c.perCard[k] && c.perCard[k].off);
         stEl.textContent = k
-            ? ('当前卡：' + k + (has ? ' —— 已有专属配置（覆盖全局）' : ' —— 没有专属配置，用全局设置'))
+            ? (isOff
+                ? ('⛔ 当前卡：' + k + ' —— 已设为「不生效」，插件对这张卡完全不动作（再按一次按钮可恢复）')
+                : ('当前卡：' + k + (has ? ' —— 已有专属配置（覆盖全局）' : ' —— 没有专属配置，用全局设置')))
             : '没有加载角色卡 → 逐卡配置不可用';
     }
 }
@@ -1689,6 +1700,29 @@ function wirePanel() {
                 c.perCard = { ...(c.perCard || {}), [k]: pick };
                 saveSettingsDebounced(); rebuildDynamic();
                 notify('已存为这张卡的专属配置（覆盖全局）', 'success');
+                return;
+            }
+            /* ★ 逐卡「本卡不生效」：切换 off。
+               只动 off 这一个键 —— 这张卡其它的专属配置（颜色/层样式…）原样保留 ✓ */
+            case 'cd-card-off': {
+                const kOff = cardKey();
+                if (!kOff) { notify('没有加载角色卡 → 逐卡设置不可用', 'error'); return; }
+                const cOff = cfg();
+                const pcOff = { ...(cOff.perCard || {}) };
+                const cur = { ...(pcOff[kOff] || {}) };
+                if (cur.off) {
+                    delete cur.off;
+                    if (Object.keys(cur).length) pcOff[kOff] = cur; else delete pcOff[kOff];
+                    notify('已恢复：这张卡重新生效', 'success');
+                } else {
+                    cur.off = true;
+                    pcOff[kOff] = cur;
+                    notify('已设为「这张卡不生效」：插件对这张卡完全不动作（其它卡不受影响）', 'success');
+                }
+                cOff.perCard = pcOff;
+                saveSettingsDebounced();
+                rebuildDynamic();
+                restoreAllMessages();
                 return;
             }
             case 'cd-card-clear': {
@@ -2106,6 +2140,7 @@ function buildSettingsPanel() {
         '        <div class="cd-btn-row">',
         '          <button type="button" class="menu_button" id="cd-card-save">存为这张卡的专属配置</button>',
         '          <button type="button" class="menu_button" id="cd-card-clear">清除这张卡的配置</button>',
+          '<button type="button" class="menu_button" id="cd-card-off">这张卡不生效（自带美化的卡用它）</button>',
         '          <button type="button" class="menu_button" id="cd-export">导出配置</button>',
         '          <button type="button" class="menu_button" id="cd-import">导入配置</button>',
         '          <button type="button" class="menu_button" id="cd-story">导出全部分镜 (Markdown)</button>',

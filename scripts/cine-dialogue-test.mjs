@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.8');
+eq('version 与 manifest 一致', VERSION, '0.8.9');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1455,6 +1455,25 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         { '染': '#00F5EF' }, DEFAULT_CONFIG);
     ok('★★ 渲染出的**可见文字**里没有「旁的叙述」',
         String(r.html).replace(/<[^>]*>/g, '').indexOf('旁的叙述') < 0);
+}
+
+/* ============================================================================
+   ★★ 逐卡「本卡不生效」（0.8.9）—— 给自带美化的卡用
+   设计要点：**只在一个点上**把 off 翻成 enabled:false ⇒ 所有已有的 enabled 检查点
+   （渲染钩子 / run / 提示词注入 / Alt+↑↓ / 宽表格处理 / 交互绑定 / 恢复原文）自动跟着失效。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ off 只在 effectiveConfig 一个点上翻成 enabled:false（不逐处加判断）',
+        /if \(merged\.off\) return \{ \.\.\.merged, enabled: false, off: true \};/.test(src));
+    ok('★ 面板有按钮（给自带美化的卡用）', src.indexOf('id="cd-card-off"') >= 0);
+    ok('★ 有对应动作处理', /case 'cd-card-off': \{/.test(src));
+    ok('★ 切换只动 off 这一个键（这张卡的颜色/层样式等专属配置保留）',
+        /delete cur\.off;/.test(src) && /cur\.off = true;/.test(src));
+    ok('★ 切换后立刻重渲染（不生效=恢复原文；恢复=重新渲染）', /restoreAllMessages\(\);/.test(src));
+    ok('★ 不生效时面板显示警告（否则会以为插件坏了）', src.indexOf(String.fromCharCode(0x26D4) + ' 当前卡：') >= 0);
+    ok('★ diagnose 报 cardOff（可诊断，不做黑箱）', /cardOff: \{ off: !!effectiveConfig\(\)\.off/.test(src));
+    ok('★ 没有角色卡时提示不可用（不会静默失败）', src.indexOf('没有加载角色卡 → 逐卡设置不可用') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
