@@ -1315,6 +1315,11 @@ function buildSettingsPanel() {
 
     wirePanel();
     rebuildDynamic();
+
+    /* 让面板里的原生控件跟着主题走（否则某些主题下 input 是白底 + 浅色文字 = 看不见） */
+    const p = document.getElementById('cd-panel');
+    if (p && isLightTheme()) p.classList.add('cd-light');
+
     console.log('[' + EXT_ID + '] 设置抽屉已挂到 #' + host.id);
 }
 

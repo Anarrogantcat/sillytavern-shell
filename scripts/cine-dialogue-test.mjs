@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.2');
+eq('version 与 manifest 一致', VERSION, '0.5.3');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -434,6 +434,20 @@ if (!fs.existsSync(ST_PUBLIC)) {
     ok('★ 模块链接自检：index.js 里每个 import 名字都真实存在于目标模块的导出',
         missing.length === 0, missing);
     ok('★ 模块链接自检：确实检查到了 import（不是空跑）', checked >= 8, { checked });
+}
+
+/* ★ 回归：面板里的输入框必须**显式**定背景与文字色
+   （不接管会吃 ST 默认 input 样式 —— 某些主题下是白底，而文字继承暗色主题的浅色
+     → 白底浅字 = 看不见。真机踩过：设置页一排白块。） */
+{
+    const css = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    const at = css.indexOf('#cd-panel input[type="number"],');
+    ok('★ 面板输入框有合并样式块（input/select 一起管）', at >= 0);
+    const seg = at >= 0 ? css.slice(at, at + 800) : '';
+    ok('★ 面板输入框显式设了 background（否则吃 ST 默认白底 → 白块）', /background\s*:/.test(seg), seg.slice(0, 120));
+    ok('★ 面板输入框显式设了 color', /color\s*:/.test(seg), seg.slice(0, 120));
+    ok('★ color-scheme 跟着主题走（原生控件与光标颜色）', /color-scheme\s*:\s*dark/.test(css) && /color-scheme\s*:\s*light/.test(css));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

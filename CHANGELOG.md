@@ -1,5 +1,27 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.5.3：设置页输入框白块
+
+### 问题
+`#cd-panel` 的 `input` / `select` **没有显式背景色** → 吃 ST 默认 input 样式（某些主题下**白底**），
+文字却继承暗色主题的**浅色** → **白底浅字 = 看不见**，设置页出现一排「白块」（真机截图）
+
+### 修法
+- 显式 `background: rgba(128,140,160,.16)` + `color: inherit` + `border` + `:focus` 态
+- `color-scheme: dark` / `.cd-light { color-scheme: light }` → 原生控件与光标配色跟主题走
+- `buildSettingsPanel()` 按当前主题给 `#cd-panel` 补 `cd-light`
+
+### ★ 同类问题第二次（第一次是选项按钮白底）
+教训：**自建可交互控件必须显式接管 `background` 与 `color`**，不能依赖宿主主题默认值。
+
+### 夹具：**164 → 168 条**
+- 新增 4 条：输入框必须有合并样式块 / 显式 `background` / 显式 `color` / `color-scheme` 双主题
+- CSS 白名单：**53 个选择器全部**在 `#cd-panel` / `.cd-` 内 ✓
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **168/168** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
+
 ## 未发版（2026-10-13）— cine-dialogue 0.5.2：真机实测后修 3 个缺陷
 
 > 0.5.1 修好模块链接后**第一次真机跑起来**，一跑就暴露三处。

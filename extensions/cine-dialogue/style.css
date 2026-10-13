@@ -242,6 +242,33 @@
     flex: 0 0 auto;
 }
 
+/* ★ 输入框 / 下拉必须**显式**定背景色与文字色。
+   不接管的话会吃 ST 的默认 input 样式（某些主题下是**白底**），
+   而文字继承暗色主题的浅色 → 白底浅字 = 看不见（真机踩过：设置页一排白块）。 */
+#cd-panel input[type="number"],
+#cd-panel input[type="text"],
+#cd-panel select {
+    background: rgba(128, 140, 160, .16);
+    color: inherit;
+    border: 1px solid var(--cd-btn-line);
+    border-radius: .2em;
+    padding: .12em .4em;
+    font: inherit;
+    font-size: .95em;
+    min-height: 1.6em;
+}
+
+#cd-panel input[type="number"]:focus,
+#cd-panel input[type="text"]:focus,
+#cd-panel select:focus {
+    border-color: var(--cd-sub);
+    outline: none;
+}
+
+/* 让原生控件（数字箭头 / 下拉箭头 / 光标）跟着主题走 */
+#cd-panel { color-scheme: dark; }
+#cd-panel.cd-light { color-scheme: light; }
+
 #cd-panel .cd-btn-row {
     display: flex;
     gap: .5em;
