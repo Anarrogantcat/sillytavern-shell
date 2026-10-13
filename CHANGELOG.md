@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 0.8.25：自动判定性别绑色
+
+用户提示人格/卡描述里就写着性别 ⇒ 新增 guessGenderFromText()，
+从卡的 description/personality/first_mes + character_book + 人格表里自动判定男/女/扶她，
+自动归蓝/紫；面板手填的名单优先。夹具 527/0。
 ## 未发版（2026-10-14）— cine-dialogue 0.8.24：角色按类型绑色
 
 用户要求：用户角色绑色、男性=蓝、女性/扶她=紫。

@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-} from '../extensions/cine-dialogue/logic.js';
+guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.24');
+eq('version 与 manifest 一致', VERSION, '0.8.25');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1660,6 +1660,17 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 名单外的角色仍按调色板拿色（不被绑死）',
         r['路人甲'] !== cfg.roleBlueColor && r['路人甲'] !== cfg.rolePurpleColor);
     eq('★ 名单解析：逗号/顿号/空格都拆得开', parseNameList('甲,乙、丙 丁').join('|'), '甲|乙|丙|丁');
+}
+
+/* ★★ 从描述里自动判定性别（用户提示：人格描述里就写着「染是一名男性」） */
+{
+    eq('★★ 「染是一名男性」→ male', guessGenderFromText('染', '染是一名男性。黑短碎发，琥珀瞳。'), 'male');
+    eq('★★ 「沙良是一名女性」→ female', guessGenderFromText('沙良', '沙良是一名女性，人妻。'), 'female');
+    eq('★ 「沈鹿笙是扶她」→ futa', guessGenderFromText('沈鹿笙', '沈鹿笙是扶她，同时具有两边特征。'), 'futa');
+    eq('★ 名字附近没有性别词 → 判不出', guessGenderFromText('路人甲', '路人甲只是经过而已。'), '');
+    eq('★ 空输入不炸', guessGenderFromText('', ''), '');
+    ok('★ 窗口只看名字附近（远处的性别词不算）',
+        guessGenderFromText('甲', '乙是男性。' + 'x'.repeat(200) + '甲出现了。') === '');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

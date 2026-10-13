@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.24';
+export const VERSION = '0.8.25';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1016,6 +1016,27 @@ export function layerVars(layer, config = {}) {
 /**
  * 颜色解析：**用户点名的颜色优先**，其余按出现顺序分配（纯函数）
  */
+/**
+ * 从文本里猜某人的性别类别（纯函数，可夹具）。
+ * 用户提示：人格描述里就写着「染是一名男性」✓ 卡描述/世界书里也有这类信息 ✓
+ * 判据：在**名字附近**的窗口里找关键词 ⇒ 返回 male / female / futa / 空串（判不出）
+ * ★ 只用于**自动给颜色**；用户在面板填的名单**优先** ✓
+ */
+export function guessGenderFromText(name, text) {
+    const n = String(name == null ? '' : name).trim();
+    const s = String(text == null ? '' : text);
+    if (!n || !s) return '';
+    let i = s.indexOf(n);
+    while (i >= 0) {
+        const win = s.slice(Math.max(0, i - 24), i + n.length + 72);
+        if (/扶她|雙性|双性|阴阳同体|雌雄同体|futa/i.test(win)) return 'futa';
+        if (/男性|男的|男子|少年|雄性|公的/.test(win)) return 'male';
+        if (/女性|女的|女子|少女|雌性|母的|人妻|姑娘|女友|女儿|姐姐|阿姨|妈妈|师姐|师妹/.test(win)) return 'female';
+        i = s.indexOf(n, i + 1);
+    }
+    return '';
+}
+
 /** 把「甲,乙、丙 丁」这种名单拆成数组（逗号 / 顿号 / 空格 / 分号都认） */
 export function parseNameList(text) {
     return String(text == null ? '' : text).split(/[,，、;；\s]+/).map((x) => x.trim()).filter(Boolean);
