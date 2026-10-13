@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.2');
+eq('version 与 manifest 一致', VERSION, '0.7.3');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -917,6 +917,27 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         && src.indexOf('DEFAULT_LAYER_STYLES[L]') >= 0 && src.indexOf('记号说明') >= 0);
     ok('★ CSS 有 .cd-howto 与 .cd-howto-body 规则',
         cssText.indexOf('#cd-panel .cd-howto') >= 0 && cssText.indexOf('#cd-panel .cd-howto-body') >= 0);
+}
+
+/* ============================================================================
+   ★「怎么选文件」——不能用裸的原生 file 控件
+   暗色主题下原生 file 控件几乎看不见，用户根本不知道要点哪（真机反馈）。
+   改成「隐藏 input + 真按钮触发」，与「导入配置」同一套做法。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★ 有显式的「选择预设文件…」按钮',
+        /id="cd-preset-pick"/.test(src) && src.indexOf('选择预设文件') >= 0);
+    ok('★ 原生 file 控件已隐藏（否则暗色主题下看不见）',
+        /id="cd-preset-file"[^>]*class="cd-hidden"/.test(src));
+    ok('★ 按钮 → 触发隐藏的 input',
+        /presetPick\.addEventListener\('click', \(\) => presetFile\.click\(\)\)/.test(src));
+    ok('★ 选完显示已选文件名', /id="cd-preset-name"/.test(src) && /presetName\.textContent = f \? f\.name/.test(src));
+    ok('★ 选完**自动预演**一次（让用户马上看到确实读到了）',
+        /presetFile\.addEventListener\('change'[\s\S]{0,500}runPresetRecipe\(false\)/.test(src));
+    ok('★ 与「导入配置」同一套做法（cd-hidden + 按钮触发）',
+        /id="cd-file"[^>]*class="cd-hidden"/.test(src) && /f\.click\(\)/.test(src));
+    ok('★ 占位文案引导先点按钮', src.indexOf('先点上面的「选择预设文件…」') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

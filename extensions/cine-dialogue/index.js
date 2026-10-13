@@ -1382,6 +1382,19 @@ function wirePanel() {
             notify('生成失败：' + msg, 'error');
         }
     };
+    /* ★ 选文件：按钮 → 隐藏的 input；选完立刻显示文件名并**自动预演一次**，
+       让用户马上看到「确实读到了、确实算出了要改什么」。 */
+    const presetPick = panel.querySelector('#cd-preset-pick');
+    const presetName = panel.querySelector('#cd-preset-name');
+    if (presetPick && presetFile) presetPick.addEventListener('click', () => presetFile.click());
+    if (presetFile) {
+        presetFile.addEventListener('change', () => {
+            const f = presetFile.files && presetFile.files[0];
+            if (presetName) presetName.textContent = f ? f.name : '未选择';
+            if (f) runPresetRecipe(false);      // 自动预演：只报会改什么，不下载
+        });
+    }
+
     const makeBtn = panel.querySelector('#cd-preset-make');
     if (makeBtn) makeBtn.addEventListener('click', () => runPresetRecipe(true));
     const dryBtn = panel.querySelector('#cd-preset-dry');
@@ -1650,12 +1663,18 @@ function presetSecHTML() {
         '      <div class="cd-sec"><div class="cd-sec-h">专属预设（在你本机生成 · 插件不分发预设内容）</div>',
         '        <div class="cd-note">原预设作者 <b>' + esc(PRESET_UPSTREAM.author) + '</b>，许可「' + esc(PRESET_UPSTREAM.license) + '」',
         '          —— 所以本插件只带配方。选你手上那份<b>原预设 JSON</b>，这里自动派生一份配套预设给你下载。</div>',
-        '        <div class="cd-line"><input type="file" id="cd-preset-file" accept=".json,application/json"></div>',
+        '        <div class="cd-btn-row">',
+        '          <button type="button" class="menu_button" id="cd-preset-pick">选择预设文件…</button>',
+        '          <span class="cd-note" id="cd-preset-name">未选择</span>',
+        '        </div>',
+        /* ★ 隐藏原生输入框、用真按钮触发 —— 暗色主题下原生 file 控件几乎看不见，
+           用户根本不知道要点哪（真机反馈：「怎么选文件」）。与「导入配置」同一套做法。 */
+        '        <input type="file" id="cd-preset-file" accept=".json,application/json" class="cd-hidden">',
         '        <div class="cd-btn-row">',
         '          <button type="button" class="menu_button" id="cd-preset-dry">只看会改什么</button>',
         '          <button type="button" class="menu_button" id="cd-preset-make">生成专属预设</button>',
         '        </div>',
-        '        <pre id="cd-preset-out" class="cd-heartbeat">（还没选文件）</pre>',
+        '        <pre id="cd-preset-out" class="cd-heartbeat">（还没选文件 —— 先点上面的「选择预设文件…」）</pre>',
         '      </div>',
     ].join('');
 }
