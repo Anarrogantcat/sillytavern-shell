@@ -14,7 +14,7 @@ import {
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats,
-    applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText,
+    applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
 } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.7');
+eq('version 与 manifest 一致', VERSION, '0.8.8');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1420,6 +1420,41 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const lg = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
     ok('★ 死代码 RE_ROW 已删（0.6.2 加别名后它就不再代表解析器行为）',
         !/export const RE_ROW/.test(lg));
+}
+
+/* ============================================================================
+   ★★ 层名写在「·」**前面**、而且 `·` 后没有空格（真机：「旁的叙述·染开始加速…」）
+   模型把「旁白」和「叙述」揉成「旁的叙述」，还把它放到了 · 的前面 ⇒
+   原来整行掉进 text 直通 ⇒ **标签露在界面上** ✗
+   ============================================================================ */
+{
+    const L = allLayers(DEFAULT_CONFIG);
+
+    const a = parseLine('旁的叙述·染开始加速前后冲送。他的腰肢随着那股爆发力规律地点跳动。', L, false);
+    eq('★★ 「旁的叙述·…」→ 归为旁白（标签不再外露）', a.kind, 'narr');
+    ok('★ 正文完整保留', a.body.indexOf('染开始加速') === 0);
+    eq('★ 别名表里有「旁的叙述」', canonLayer('旁的叙述'), '旁白');
+    eq('★ 「旁白叙述」也认', canonLayer('旁白叙述'), '旁白');
+
+    const b = parseLine('动作·我抬手按住她的手腕，力道不轻不重。', L, false);
+    eq('★ 其它层名在前 → row（没有名字）', b.kind, 'row');
+    eq('★ 层正确', b.layer, '动作');
+    eq('★ 名字为空（这类行本来就没有名字）', b.name, '');
+    eq('★ 标记 layer-only（hover 会说明是插件补的）', b.repaired, 'layer-only');
+
+    /* ★ 顺序：这条规则必须在 rowRegexFor **之前**、RE_NARR **之后**，不能抢掉正常的行 */
+    const c = parseLine('染·动作 我按住她的手腕，把她整个人按在门板上。', L, false);
+    eq('★★ 正常的「名字·层 内容」不受影响（顺序正确）', c.kind + '/' + c.name + '/' + c.layer, 'row/染/动作');
+
+    /* ★ 守卫：外文名里的间隔号 + 短正文，不能被误判 */
+    eq('★ 外文名（正文太短）仍是 text', parseLine('阿尔托莉雅·潘德拉贡 说道', L, false).kind, 'text');
+
+    /* ★★ 可见文字里不得出现那个标签 */
+    const r = renderMessageHTML(
+        '旁的叙述·染开始加速前后冲送。他的腰肢随着那股爆发力规律地点跳动。\n染·动作 我按住她的手腕，把她按在门板上。',
+        { '染': '#00F5EF' }, DEFAULT_CONFIG);
+    ok('★★ 渲染出的**可见文字**里没有「旁的叙述」',
+        String(r.html).replace(/<[^>]*>/g, '').indexOf('旁的叙述') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

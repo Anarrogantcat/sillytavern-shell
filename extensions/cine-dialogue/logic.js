@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.7';
+export const VERSION = '0.8.8';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -44,7 +44,7 @@ export const LAYER_ALIAS = {
     '台词': ['台词', '对白', '说话', 'speech', 'speeches', 'dialogue', 'dialog', 'say', 'says', 'talk', 'line', 'lines', 'voice', 'quote'],
     '感官': ['感官', '感受', '感觉', 'sense', 'senses', 'sensory', 'feeling', 'feel', 'body', 'touch'],
     '心理': ['心理', '内心', '想法', '心声', 'mind', 'thought', 'thoughts', 'inner', 'monologue', 'mono', 'psych', 'psyche'],
-    '旁白': ['旁白', '叙述', '旁述', 'narration', 'narrator', 'narrative', 'narr', 'scene', 'desc', 'description', 'aside'],
+    '旁白': ['旁白', '叙述', '旁述', '旁的叙述', '旁白叙述', 'narration', 'narrator', 'narrative', 'narr', 'scene', 'desc', 'description', 'aside'],
 };
 
 const _aliasMap = (() => {
@@ -462,6 +462,24 @@ export const RE_OPTIONS_TAG_BLOCK = /<options>([\s\S]*?)<\/options>/gi;
 export function parseLine(line, layers = LAYERS, lenient = false) {
     const n = line.match(RE_NARR);
     if (n) return { kind: 'narr', body: n[1].trim() };
+
+    /* ★★ 模型有时把**层名写在 · 前面**、而且 `·` 后面**没有空格**（层名和正文黏在一起）：
+          `旁的叙述·染开始加速前后冲送。他的腰肢…`
+       这种行原来会掉进 text 直通 ⇒ **整行标签露在界面上** ✗（真机截图）。
+       判据（两条都要满足，与下面的守卫式兜底同源）：
+         · `·` 前面那个词能归一到**已知层名**（含别名，如「旁的叙述」→ 旁白）
+         · `·` 后面**至少 12 个字符** —— 挡住「外文名里的间隔号」这类误判
+       ⇒ 当「该层名 + 没有名字」处理：旁白走 narr（本来就没有名字格 ✓），其余层走 row（名字为空）。
+       ★ 顺序很关键：必须在 RE_NARR 之后、rowRegexFor 之前 —— 否则会抢掉正常的 `名字·层 内容`。 */
+    const layerFirst = line.match(/^([^·・:：\n]{2,8})\s*[·・:：]\s*([\s\S]{12,})$/);
+    if (layerFirst) {
+        const canonFirst = canonLayer(layerFirst[1]);
+        if (canonFirst) {
+            const body = layerFirst[2].trim();
+            if (canonFirst === '旁白') return { kind: 'narr', body };
+            return { kind: 'row', name: '', layer: canonFirst, text: body, repaired: 'layer-only', rawLayer: layerFirst[1] };
+        }
+    }
 
     const r = line.match(rowRegexFor(layers, lenient));
     if (r) {
