@@ -233,9 +233,14 @@
     align-items: center;
 }/* ★ 按钮不能被压成「一列一个字」。
    flex 项的 min-content 宽度对中文来说只有**一个汉字宽**，
-   不锁 nowrap 的话 4 个按钮会全挤在同一行、每个只剩一个字宽 → 竖排（真机截图）。
-   flex: 0 0 auto 禁掉收缩与拉伸，配合容器的 flex-wrap 自然换行。 */
-#cd-panel .cd-btn-row .menu_button{
+   不锁 nowrap 的话按钮会被压到每个只剩一个字宽 → 竖排（真机截图）。
+   flex: 0 0 auto 禁掉收缩与拉伸，配合容器的 flex-wrap 自然换行。
+
+   ★★ 作用域必须覆盖**面板里所有按钮**，不能只限 .cd-btn-row ——
+     踩过两次：0.5.5 修的是 .cd-btn-row 里的按钮；
+     0.7.4 的「查看日志」在 .cd-info-actions 里、不在那个作用域内 → 又被压成一列一个字。 */
+#cd-panel .menu_button,
+#cd-panel .cd-btn-row .menu_button {
     flex: 0 0 auto;
     white-space: nowrap;
 }/* 窄面板下让「标签 + 控件」也能换行，而不是被压扁 */

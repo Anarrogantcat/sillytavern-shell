@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.5');
+eq('version 与 manifest 一致', VERSION, '0.7.6');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -466,12 +466,25 @@ if (!fs.existsSync(ST_PUBLIC)) {
     ok('★ color-scheme 跟着主题走（原生控件与光标颜色）', /color-scheme\s*:\s*dark/.test(css) && /color-scheme\s*:\s*light/.test(css));
 
     /* ★ 回归：按钮不能被压成「一列一个字」
-       （flex 项的 min-content 对中文只有一个汉字宽 → 不锁 nowrap 就会竖排，真机截图） */
-    const btnAt = css.indexOf('#cd-panel .cd-btn-row .menu_button');
+       （flex 项的 min-content 对中文只有一个汉字宽 → 不锁 nowrap 就会竖排，真机截图）
+       ★★ 作用域必须覆盖**面板里所有按钮**，不能只限 .cd-btn-row ——
+         0.5.5 只修了 .cd-btn-row；0.7.4 的「查看日志」在 .cd-info-actions 里 → 又被压成一列一个字。 */
+    const btnAt = css.indexOf('#cd-panel .menu_button');
     ok('★ 按钮有专门的 nowrap 规则', btnAt >= 0);
-    const btnSeg = btnAt >= 0 ? css.slice(btnAt, btnAt + 300) : '';
+    const btnSeg = btnAt >= 0 ? css.slice(btnAt, btnAt + 400) : '';
     ok('★ 按钮锁了 white-space: nowrap', /white-space\s*:\s*nowrap/.test(btnSeg), btnSeg.slice(0, 100));
     ok('★ 按钮禁了收缩（flex: 0 0 auto）', /flex\s*:\s*0\s+0\s+auto/.test(btnSeg), btnSeg.slice(0, 100));
+    ok('★★ 作用域是面板里**所有**按钮（不只是 .cd-btn-row）—— 否则「查看日志」这类又会被压竖',
+        /#cd-panel\s+\.menu_button\s*,/.test(css));
+
+    /* 面板里不在 .cd-btn-row 内的按钮（查看日志 / 错误列表跳转）也必须被覆盖 */
+    {
+        const idxSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+        ok('★ 「查看日志」在 .cd-info-actions 里（不在 .cd-btn-row）——正是被漏掉的那个',
+            /class="cd-info-actions"><button[^>]*id="cd-info-log"/.test(idxSrc));
+        ok('★ 错误列表的跳转按钮也在自己的容器里（同样靠上面的规则兜住）',
+            /class="cd-errrow"><button/.test(idxSrc));
+    }
 }
 
 /* ★★ 复刻 ST 消息消毒器的 class 前缀规则（public/scripts/chats.js:1922-1933）
