@@ -1,5 +1,34 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.5.1：修模块链接失败（0.1.0 起一行代码都没跑过）
+
+### 根因
+- **`extension_settings` 不是 `script.js` 的导出**，它由 `scripts/extensions.js` 导出
+- 我们写成 `import { …, extension_settings } from '../../../../script.js'`
+- **ES module 只要有一个导出名不存在 → 整个模块链接失败 → 一行都不执行**
+- **表现极具迷惑性**：扩展在「管理扩展程序」里显示 **已启用**（那是 manifest 层面），
+  但抽屉 / 渲染 / 设置**全都没有** —— 这正是用户反复报的「总览里看不到」「刷新了没反应」
+- **对照**：所有能正常工作的扩展（card-compat / plot-pilot / hide / LittleWhiteBox /
+  st-immersive-sound / st-persona-weaver）**全部**从 `'../../../extensions.js'` 拿它。**只有我们写错**
+
+### 修法
+- `extension_settings` 改到 `from '../../../extensions.js'`，并在代码里留下注释解释原因
+
+### ★ 新增守卫夹具（cine-dialogue 夹具 150 → **152 条**）
+- **「模块链接自检」**：解析 `index.js` 的每条 import，逐个名字核对 ST 本体的**真实导出集合**
+  （支持 `export const/function/class` 与**跨多行**的 `export { … }` 块）；**名字不存在就红**
+- 本机找不到 ST 本体时**自动跳过**（不假红）；另有「确实检查到了 import」防止守卫变空转
+- 首跑即**抓到 `extension_settings` 缺失**，修完转绿
+
+### 我的定位失误（记下来）
+- 只用「和 card-compat / plot-pilot 对比」验了**路径层级**，**没核对导出名**
+- 又拿「文件在正确目录 + manifest 合法 + 无 BOM」判成「交付没问题」
+- ⇒ **「文件放对了」≠「代码跑起来了」**；能静态验的必须静态验
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
+- 核内补丁 #001 未改动
+
 ## 未发版（2026-10-13）— cine-dialogue 0.5.0：L2/L5/L6/L7/L8 补完（八层齐）
 
 ### 新增（cine-dialogue 0.4.0 → **0.5.0**）

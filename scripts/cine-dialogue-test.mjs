@@ -1,6 +1,9 @@
 // scripts/cine-dialogue-test.mjs — 分镜对话 Cine Dialogue 夹具测试
 // 用法：node scripts/cine-dialogue-test.mjs
 // 只测 logic.js（纯函数层）—— 不碰 DOM、不碰 ST、不联网
+// 例外：末尾有一条「模块链接自检」，只在**本机找得到 ST 本体**时真查（找不到就跳过，不会假红）
+import fs from 'node:fs';
+import path from 'node:path';
 import {
     VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS,
     FORMAT_SPEC, REGEX_DEFS, SLASH_COMMAND,
@@ -22,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.0');
+eq('version 与 manifest 一致', VERSION, '0.5.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -324,6 +327,69 @@ ok('每个 DEFAULT_CONFIG 键要么有面板字段、要么登记为代码管理
     Object.keys(DEFAULT_CONFIG).filter(k => !PANEL_FIELDS.some(f => f.key === k) && CODE_MANAGED.indexOf(k) < 0));
 ok('configKeys 白名单覆盖全部 DEFAULT_CONFIG 键',
     Object.keys(DEFAULT_CONFIG).every(k => configKeys().indexOf(k) >= 0));
+
+/* ---------------------------- ★ 模块链接自检（全套里最重要的一条） ----------------------------
+   ES module 只要 import 了一个目标模块**不存在**的导出名 → 整个模块**链接失败 → 一行都不执行**。
+   表现极具迷惑性：扩展在「管理扩展程序」里显示**已启用**，但抽屉 / 渲染 / 设置**全都没有**，
+   除了 console 一条 module error 之外没有任何提示。
+
+   这个 bug 真实发生过（0.1.0–0.5.0 全部中招）：`extension_settings` 从 `script.js` 拿，
+   而它其实由 `extensions.js` 导出 —— 所有能正常工作的扩展（card-compat / plot-pilot / hide …）
+   都从 `extensions.js` 拿，只有我们写错了。
+
+   本机找得到 ST 本体就真查；找不到就跳过（不让夹具在别的机器上假红）。 */
+const ST_PUBLIC = 'D:/AI/SillyTavern/SillyTavern/public';
+const SRC_OF = {
+    '../../../../script.js': 'script.js',
+    '../../../extensions.js': 'scripts/extensions.js',
+};
+
+function exportedNames(file) {
+    const s = fs.readFileSync(file, 'utf8');
+    const names = new Set();
+    for (const m of s.matchAll(/^export\s+(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+        names.add(m[1]);
+    }
+    for (const m of s.matchAll(/^export\s*\{([\s\S]*?)\}/gm)) {
+        for (const part of m[1].split(',')) {
+            const t = part.trim();
+            if (!t) continue;
+            const as = t.split(/\s+as\s+/);
+            names.add((as[1] || as[0]).trim());
+        }
+    }
+    return names;
+}
+
+if (!fs.existsSync(ST_PUBLIC)) {
+    console.log('（跳过模块链接自检：本机找不到 ST 本体 ' + ST_PUBLIC + '）');
+} else {
+    const selfSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const missing = [];
+    let checked = 0;
+    for (const m of selfSrc.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*'([^']+)'/g)) {
+        if (m[2].indexOf('./') === 0) continue;          // 自家模块（./logic.js），不用查 ST
+        const rel = SRC_OF[m[2]];
+        if (!rel) { missing.push('未登记的 import 路径：' + m[2]); continue; }
+        const target = path.join(ST_PUBLIC, rel.split('/').join(path.sep));
+        if (!fs.existsSync(target)) { missing.push('目标文件不存在：' + rel); continue; }
+        const have = exportedNames(target);
+        for (const part of m[1].split(',')) {
+            const t = part.trim();
+            if (!t) continue;
+            const bits = t.split(/\s+as\s+/);
+            const want = bits[0].trim();
+            const alias = bits[1] ? bits[1].trim() : null;
+            checked++;
+            if (!have.has(want) && !(alias && have.has(alias))) {
+                missing.push(want + '  ∉  ' + rel);
+            }
+        }
+    }
+    ok('★ 模块链接自检：index.js 里每个 import 名字都真实存在于目标模块的导出',
+        missing.length === 0, missing);
+    ok('★ 模块链接自检：确实检查到了 import（不是空跑）', checked >= 8, { checked });
+}
 
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);

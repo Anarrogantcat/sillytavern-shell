@@ -18,14 +18,17 @@
 import {
     eventSource,
     event_types,
-    extension_settings,
     saveSettingsDebounced,
     setExtensionPrompt,
     extension_prompt_types,
     extension_prompt_roles,
 } from '../../../../script.js';
 
-import { getContext } from '../../../extensions.js';
+/* ★ extension_settings 必须从 extensions.js 拿 —— 它不是 script.js 的导出。
+   踩过的坑（0.1.0–0.5.0，真凶）：写成从 script.js import 时，ES module **链接失败**，
+   整个模块一行都不执行 → 表现是「管理扩展程序里显示已启用，但抽屉/渲染/设置全都没有」，
+   而且 console 之外没有任何提示。所有能正常工作的扩展都从这里拿（card-compat / plot-pilot / hide …）。 */
+import { getContext, extension_settings } from '../../../extensions.js';
 
 import {
     EXT_ID,

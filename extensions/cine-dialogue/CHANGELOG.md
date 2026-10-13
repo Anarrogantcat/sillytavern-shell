@@ -1,5 +1,36 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.5.1 (2026-10-13) — 真凶：模块链接失败（0.1.0 起一行代码都没执行过）
+
+### 根因（这才是「总览里看不到 / 刷新了没反应」的真原因）
+- **`extension_settings` 不是 `script.js` 的导出** —— 它由 `scripts/extensions.js` 导出
+- 我们写成了 `import { …, extension_settings } from '../../../../script.js'`
+- ES module 只要有一个导出名不存在 → **整个模块链接失败 → 一行都不执行**
+- 表现极具迷惑性：扩展在「管理扩展程序」里显示**已启用**（那是 **manifest** 层面，不代表代码跑过），
+  但抽屉 / 渲染 / 设置**全都没有**，且除了 console 一条 module error 之外**没有任何提示**
+- **对照**：所有能正常工作的扩展 —— card-compat / plot-pilot / hide / LittleWhiteBox /
+  st-immersive-sound / st-persona-weaver —— **全部**从 `'../../../extensions.js'` 拿 `extension_settings`。
+  **只有我们写错了**
+
+### 修法
+- `extension_settings` 改到 `from '../../../extensions.js'`（和 `getContext` 一起），并在代码里写了注释说明为什么
+
+### ★ 新增守卫夹具（全套里最重要的一条）
+- **「模块链接自检」**：解析 `index.js` 的每一条 import，逐个名字去 ST 本体的真实导出集合里核对
+  （`public/script.js` / `public/scripts/extensions.js`，支持 `export const/function/class` 与**跨多行**的 `export { … }` 块）
+- **名字不存在就红**
+- 本机找不到 ST 本体时**自动跳过**（不在别的机器上假红）
+- 另加一条「确实检查到了 import（不是空跑）」—— 防止哪天正则失效、守卫变成永远绿的摆设
+
+### 为什么早先没发现（我的定位失误，记下来）
+- 我用「和 card-compat / plot-pilot 对比」验证过 —— 但**只对了路径层级，没核对导出名**
+- 又因为「文件在正确目录 + manifest 合法 + 无 BOM + import 路径层级对」就判了「交付没问题」
+- ⇒ 教训：**「文件放对了」≠「代码跑起来了」**。能静态验的东西（导出名是否存在）必须静态验
+
+### 说明
+- 只改扩展 + 夹具 → 不升套壳版本号、不打 tag、不发包（AGENTS §1.1）
+- 核内补丁 #001 未改动（仍已应用）
+
 ## v0.5.0 (2026-10-13) — L2 交互 + L5 数据 + L6 面板 + L7 导出 + L8 生态（补完）
 
 ### L5 数据层
