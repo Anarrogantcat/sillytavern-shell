@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.2';
+export const VERSION = '0.8.3';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -149,7 +149,12 @@ export const FORMAT_SPEC = [
     '  名字·动作 我做的具体动作     ← 200–400 字，写细节、写过程',
     '  名字·感官 我身体的感受       ← 200–400 字，写触感/温度/气味/声音',
     '  名字·心理 我心里的想法       ← 200–400 字，写犹豫/欲望/算计',
-    '旁白单独一行：旁白·内容（没有名字字段，用来说明画面/时间/环境）。',
+    '旁白单独一行：旁白·内容（没有名字字段）。用于以下三类：',
+    '  · 画面 / 时间 / 地点 / 环境 / 光线 / 气味（如「殿内素白一片，空气里有极淡的焦香」）',
+    '  · **第三人称的外部描写**（如「她乌黑的长发垂到腰际」「那件素袍看不出材质」）——',
+    '    镜头在看，不是她本人在说「我」，所以归旁白。',
+    '  ★ 但凡是**某个角色的具体行为 / 内心 / 说话**，就必须写 名字·动作 / 名字·心理 / 名字·台词（第一人称「我」），',
+    '    **不得写成旁白**（「女娲坐在矮几前捻起石子」要写「女娲·动作 我坐在矮几前…」，不能写「旁白·女娲坐在…」）。',
     '',
     '硬规则：',
     '1. 层名后**必须有一个空格**，写漏了会被判为格式错误并标红。',
@@ -1257,7 +1262,20 @@ export function applyPresetRecipe(srcObj, opts = {}) {
         prompts.push(p);
         changes.push('新增提示条目「' + R.promptName + '」');
     } else {
-        changes.push('提示条目「' + R.promptName + '」已存在（内容保持不动）');
+        /* ★ 只同步**我们自己创建的那一条**（identifier === 'cine-dialogue-format'）。
+           别的条目、以及用户自建的条目，一律一个字不动。
+           为什么要同步：说明文本会随版本演进（0.8.3 就补了「第三人称外部描写归旁白」），
+           若永远「保持不动」，老预设就永远拿不到新规则。 */
+        const mine = String(p.identifier || '') === 'cine-dialogue-format';
+        const want = opts.formatSpec || FORMAT_SPEC;
+        if (mine && String(p.content || '') !== want) {
+            p.content = want;
+            changes.push('更新提示条目「' + R.promptName + '」（说明文本有更新）');
+        } else if (mine) {
+            changes.push('提示条目「' + R.promptName + '」已是最新');
+        } else {
+            changes.push('提示条目「' + R.promptName + '」已存在（**不是本插件创建的** → 内容一个字不动）');
+        }
     }
     let entry = order.find(o => String(o.identifier) === String(p.identifier));
     if (!entry) {

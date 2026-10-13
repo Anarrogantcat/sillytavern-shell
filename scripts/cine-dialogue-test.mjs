@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.2');
+eq('version 与 manifest 一致', VERSION, '0.8.3');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1229,6 +1229,47 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ cd-hint 的样式仍被复用（没白留一条死 CSS）',
         fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
             .indexOf('#cd-panel .cd-hint') >= 0);
+}
+
+/* ============================================================================
+   ★ FORMAT_SPEC：旁白归属规则（0.8.3）
+   用户问「这种带场景描述的属不属于旁白」→ 判据必须写进说明，模型才有依据。
+   ============================================================================ */
+{
+    ok('★ 说明写明「第三人称的外部描写」归旁白',
+        FORMAT_SPEC.indexOf('第三人称的外部描写') >= 0 && FORMAT_SPEC.indexOf('镜头在看') >= 0);
+    ok('★ 说明写明「角色行为不得写成旁白」并给了例子',
+        FORMAT_SPEC.indexOf('不得写成旁白') >= 0 && FORMAT_SPEC.indexOf('女娲坐在矮几前捻起石子') >= 0);
+    ok('★ 说明列了三类旁白内容（画面/环境 + 外部描写 + 反例）',
+        FORMAT_SPEC.indexOf('画面 / 时间 / 地点') >= 0 && FORMAT_SPEC.indexOf('气味') >= 0);
+    ok('★ 仍保留「没有名字字段」这一关键特征', FORMAT_SPEC.indexOf('没有名字字段') >= 0);
+}
+
+/* ============================================================================
+   ★ 配方同步：只同步**我们自己创建的那条**，别人的一个字不动
+   ============================================================================ */
+{
+    /* 别人创建的（identifier 不同）→ 内容必须原封不动 */
+    const other = applyPresetRecipe({
+        prompts: [{ identifier: 'someone-else', name: PRESET_RECIPE.promptName, content: '别人的内容' }],
+        prompt_order: [{ character_id: 1, order: [] }], extensions: {},
+    }, { srcName: 'x', srcHash: 'y' });
+    eq('★★ 别人创建的条目：内容一个字不动',
+        other.preset.prompts.find(p => p.identifier === 'someone-else').content, '别人的内容');
+    ok('★ 且报告里说清「不是本插件创建的」',
+        other.changes.some(c => c.indexOf('不是本插件创建的') >= 0));
+
+    /* 我们自己创建的 → 说明文本更新时要同步 */
+    const mine = applyPresetRecipe({
+        prompts: [{ identifier: 'cine-dialogue-format', name: PRESET_RECIPE.promptName, content: '旧文本' }],
+        prompt_order: [{ character_id: 1, order: [] }], extensions: {},
+    }, { srcName: 'x', srcHash: 'y' });
+    eq('★★ 我们自己那条：说明文本有更新时同步到最新',
+        mine.preset.prompts.find(p => p.identifier === 'cine-dialogue-format').content, FORMAT_SPEC);
+
+    const again = applyPresetRecipe(mine.preset, { srcName: 'x', srcHash: 'y' });
+    ok('★ 同步是幂等的（已是新文本 → 报「已是最新」）',
+        again.changes.some(c => c.indexOf('已是最新') >= 0));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
