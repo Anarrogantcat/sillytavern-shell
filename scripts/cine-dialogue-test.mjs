@@ -13,7 +13,7 @@ import {
     serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock, PLAIN_ANCHOR, repairLines, layerClass,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
-    hasOurLines, stats, renderInlineImages, tightenBlanks,
+    hasOurLines, stats, renderInlineImages,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
 } from '../extensions/cine-dialogue/logic.js';
 
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.17');
+eq('version 与 manifest 一致', VERSION, '0.8.18');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1621,21 +1621,6 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★★ 下一楼老角色颜色不变（沙良）', b['沙良'], a['沙良']);
     const e = resolveColors(['染'], { charColors: { 染: '#ABCDEF' } }, {});
     eq('★ 用户在面板点名的颜色优先', e['染'], '#ABCDEF');
-}
-
-/* ★★ 收紧段间距（0.8.17，用户报「间距有点大」且「以前是没问题的」）
-   ST 消息区是 pre-wrap ⇒ 空行真的变成一整行空白；0.8.12 后一批行变成普通段落 ⇒ 空隙变大。 */
-{
-    const NL = String.fromCharCode(10);
-    eq('★★ 连续空行折叠成一个换行', tightenBlanks('甲' + NL + NL + NL + '乙'), '甲' + NL + '乙');
-    eq('★ 单个换行不动', tightenBlanks('甲' + NL + '乙'), '甲' + NL + '乙');
-    eq('★★ 段落仍各自成行（不会被合并）', tightenBlanks('甲' + NL + NL + '乙').split(NL).length, 2);
-    ok('★ 默认开启', DEFAULT_CONFIG.tightParagraphs === true);
-    eq('★ 面板字段归「排版」组', PANEL_FIELDS.find((f) => f.key === 'tightParagraphs').group, '排版');
-    const msg = '甲' + NL + NL + '乙' + NL + '林野·动作 我按住她的手腕。';
-    const off = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, tightParagraphs: false }).html).replace(/<[^>]*>/g, '');
-    const on = String(renderMessageHTML(msg, {}, DEFAULT_CONFIG).html).replace(/<[^>]*>/g, '');
-    ok('★★ 关掉开关时保留原来的空行（可回退）', off.indexOf('甲' + NL + NL + '乙') >= 0 && on.indexOf('甲' + NL + NL + '乙') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
