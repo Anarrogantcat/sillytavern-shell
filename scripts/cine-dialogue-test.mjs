@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.6.2');
+eq('version 与 manifest 一致', VERSION, '0.6.3');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -693,6 +693,38 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         visible.indexOf('action') < 0 && visible.indexOf('speech') < 0, visible.slice(0, 120));
     ok('★ 名字列还在', html.indexOf('染') >= 0 && html.indexOf('沙良') >= 0);
     ok('★ 三行都进了网格（不是裸文本）', (html.match(/cd-row/g) || []).length >= 3);
+}
+
+/* ============================================================================
+   ★ 版权合规
+   原预设自带说明写明：作者 泉此方；「可以二改，**禁止二传**，拿功能要先问我，署名」。
+   ⇒ ① 仓库里**不得**出现原预设或派生预设的任何副本（禁止二传）
+      ② 生成器里必须写着作者与许可（署名不许悄悄消失）
+   ============================================================================ */
+{
+    const root = new URL('../', import.meta.url);
+    const hits = [];
+    const walk = (dir, depth) => {
+        if (depth > 4) return;
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            if (e.name === '.git' || e.name === 'node_modules' || e.name === 'vendor') continue;
+            const p = new URL(e.name + (e.isDirectory() ? '/' : ''), dir);
+            if (e.isDirectory()) { walk(p, depth + 1); continue; }
+            if (/tailfree/i.test(e.name) || /分镜\.json$/i.test(e.name) || /^Izumi.*\.json$/i.test(e.name)) hits.push(e.name);
+        }
+    };
+    walk(root, 0);
+    ok('★ 仓库里没有原预设/派生预设的副本（原许可禁止二传）', hits.length === 0, hits);
+
+    const gen = fs.readFileSync(new URL('../scripts/cine-preset.mjs', import.meta.url), 'utf8');
+    ok('★ 生成器里写着原作者（署名）', gen.indexOf('泉此方') >= 0);
+    ok('★ 生成器里写着原许可全文', gen.indexOf('禁止二传') >= 0 && gen.indexOf('可以二改') >= 0);
+    ok('★ 生成器把出处/许可写进预设（derivedFrom + upstream）',
+        /derivedFrom/.test(gen) && /upstream/.test(gen) && /sha256/.test(gen));
+    ok('★ 生成器里的说明条目是**停用**的（只留痕，不进提示词）',
+        /enabled: false/.test(gen) && /勿启用/.test(gen));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
