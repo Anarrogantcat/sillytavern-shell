@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.29';
+export const VERSION = '0.8.30';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -83,6 +83,13 @@ export const DEFAULT_CONFIG = {
      * 名单里没提到的角色，仍按"首次出场顺序"从调色板拿色 ✓
      * 名字用逗号 / 顿号 / 空格分隔都认 ✓
      */
+    /**
+     * ★ 未标注的**第三人称**段落 ⇒ 当旁白渲染（用户 2026-10-14「旁白问题」）。
+     * 判据**保守**：不含「我/咱/俺」的散文段落才算旁白 ✓
+     * —— 带「我」的句子**不猜**（那是第一人称，模型该写成 `名字·层`）✗
+     * 旁白本来就**没有「我」**（这是我们 FORMAT_SPEC 里写死的定义 ✓），所以这条判据是安全的 ✓
+     */
+    narrateUnlabeled: true,
     roleBlueNames: '',
     rolePurpleNames: '',
     roleBlueColor: '#3B82F6',
@@ -298,6 +305,8 @@ export const PANEL_FIELDS = [
        并把**已经渲染过的楼层恢复成 ST 原生渲染**。 */
     { key: 'enabled', group: null, kind: 'bool', label: '总开关（整个插件）',
       note: '关掉后完全停用：不渲染 / 不注入提示词 / 不介入思考块 / 不接管双击与跳场景；已渲染的楼层会恢复原样' },
+    { key: 'narrateUnlabeled', group: '基本', kind: 'bool', label: '未标注的第三人称段落当旁白',
+      note: '模型漏写「旁白·」时兜底；带「我」的句子不动（不猜）' },
     { key: 'roleBlueNames', group: '基本', kind: 'text', label: '蓝名单（用户/男性角色）',
       note: '逗号分隔；你的用户角色会自动算在内。例：染, 老王' },
     { key: 'rolePurpleNames', group: '基本', kind: 'text', label: '紫名单（女性/扶她角色）',
@@ -951,6 +960,11 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
 
     /* ★★ 分段渲染：我们的行 → 网格；其它行 → **原样返回文本**（交给 showdown/ST 正常渲染）。
        取代了「占比 < 50% 就整条不碰」那条粗暴门槛 —— 真机上它把正文一起跳过了。 */
+    /* ★ 未标注的第三人称段落 ⇒ 先改写成 `旁白·…`，再进正常渲染（对齐 / 样式都跟着走） */
+    if (cfg.narrateUnlabeled) {
+        const narr = narratePlain(sections.body, allLayers(cfg));
+        if (narr !== sections.body) { sections.body = narr; }
+    }
     const seg = renderSegments(sections.body, colorMap, cfg);
     if (!seg.hasOurs && !hasOpts) return null;
 
@@ -977,6 +991,28 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
 }
 
 /** 一条消息里有没有「我们的行」（用来决定碰不碰它） */
+/**
+ * 把「未标注的第三人称段落」改写成 `旁白·内容`（用户要求）。
+ * 保守判据 —— 任一条不满足就**原样返回**（不猜 ✗）：
+ *   · 已是我们格式的行（`名字·层 内容` / `旁白·…`）⇒ 不动
+ *   · 含「我 / 咱 / 俺 / 我们」⇒ 第一人称 ⇒ 不动（那该由模型写成 `名字·层`）
+ *   · 含 `< > | · * # [ ]`（结构块 / markdown / 表格 / 间隔号）⇒ 不动
+ *   · 以引号 / 括号 / 列表符号开头 ⇒ 不动（可能是对白或列表）
+ *   · 去空白后不足 8 字 ⇒ 不动
+ */
+export function narratePlain(body, layers = LAYERS) {
+    return String(body == null ? '' : body).split('\n').map((line) => {
+        const t = line.trim();
+        if (!t) return line;
+        if (isOurLine(t, layers)) return line;
+        if (/[我咱俺]/.test(t)) return line;
+        if (/[<>|·*#\[\]{}]/.test(t)) return line;
+        if (/^[「」『』“”"'（）()【】\-—>•\d]/.test(t)) return line;
+        if (t.length < 8) return line;
+        return '旁白·' + t;
+    }).join('\n');
+}
+
 export function hasOurLines(body, layers = LAYERS) {
     for (const line of String(body == null ? '' : body).split('\n')) {
         const t = line.trim();

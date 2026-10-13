@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
+narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.29');
+eq('version 与 manifest 一致', VERSION, '0.8.30');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -160,7 +160,9 @@ ok('门槛统计：占比确实不到 50%', rThinking.ratio < 0.5, rThinking);
 /* ★★ 钩子路径改用**分段渲染** —— 不再整条跳过：
    我们的行 → 网格；其它行 → **原样文本**（思考块照常显示，一个字不改）。
    这是「没有美化」的真因修复：思考块与正文同处一个 mes 时，旧门槛把正文一起跳过了。 */
-const rSeg = renderMessageHTML(thinkingLike, {}, DEFAULT_CONFIG);
+/* ★ 这两块测的是「未标注行**原样交给 ST**」的通道（markdown / 思考块 ✓），
+   不是旁白规则 ⇒ 显式关掉 narrateUnlabeled（旁白规则由下面专门那一块覆盖 ✓） */
+const rSeg = renderMessageHTML(thinkingLike, {}, { ...DEFAULT_CONFIG, narrateUnlabeled: false });
 ok('分段渲染：不再整条跳过（返回非 null）', rSeg !== null);
 ok('分段渲染：有 ours 段', !!rSeg && rSeg.segments.some(s => s.kind === 'ours'));
 ok('分段渲染：有 text 段（思考块原样通过）', !!rSeg && rSeg.segments.some(s => s.kind === 'text'));
@@ -612,7 +614,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
    ============================================================================ */
 {
     const mixed = '她感觉自己的脚趾因为紧张而微微蜷缩。\n染·动作 我合上手中的书。\n沙良·台词 「那个……」';
-    const r = renderMessageHTML(mixed, {}, DEFAULT_CONFIG);
+    const r = renderMessageHTML(mixed, {}, { ...DEFAULT_CONFIG, narrateUnlabeled: false });   /* 本块测原样通道 ✓ */
     ok('★ 未标注行前面埋了空锚点', r.html.indexOf('class="cd-anchor"') >= 0, r.html.slice(0, 160));
     ok('★ 锚点在网格之前（未标注行原本在前）', r.html.indexOf('cd-anchor') < r.html.indexOf('cd-root'));
     ok('★ 锚点常量与渲染输出一致', r.html.indexOf(PLAIN_ANCHOR) >= 0);
@@ -1733,6 +1735,27 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★★ 我们是最后一条**启用**的（最贴近输出）', String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name), PRESET_RECIPE.promptName);
     eq('★ order 里共 4 条（原有 2 + 格式说明 + 停用的派生说明）', od.length, 4);
     ok('★ 原有的两条仍启用（没被挤掉）', od[0].enabled === true && od[1].enabled === true);
+}
+
+/* ★★ 未标注的第三人称段落 ⇒ 当旁白（用户「旁白问题」）；带「我」的不猜 */
+{
+    const N3 = String.fromCharCode(10);
+    const L2 = allLayers(DEFAULT_CONFIG);
+    const p = (x) => narratePlain(x, L2);
+    eq('★★ 第三人称段落 ⇒ 加「旁白·」', p('门锁发出轻微的转动声。'), '旁白·门锁发出轻微的转动声。');
+    eq('★★ 带「我」的句子 ⇒ 不动（不猜）', p('我隔着房门感觉到了气息。'), '我隔着房门感觉到了气息。');
+    eq('★ 已经是旁白行 ⇒ 不动', p('旁白·门锁响了一声。'), '旁白·门锁响了一声。');
+    eq('★ 已经是分镜行 ⇒ 不动', p('久美·动作 我推开门。'), '久美·动作 我推开门。');
+    eq('★ 结构块 / markdown ⇒ 不动', p('<div class="x">内容</div>'), '<div class="x">内容</div>');
+    eq('★ 表格式行（含 |）⇒ 不动', p('| 甲 | 乙 | 内容 |'), '| 甲 | 乙 | 内容 |');
+    eq('★ 引号开头的对白 ⇒ 不动', p('「你回来了。」她说。'), '「你回来了。」她说。');
+    eq('★ 太短 ⇒ 不动', p('门响了。'), '门响了。');
+    ok('★ 开关默认开', DEFAULT_CONFIG.narrateUnlabeled === true);
+    /* 整楼：第三人称段落要变成 cd-L-narr 行 */
+    const html = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, DEFAULT_CONFIG).html);
+    ok('★★ 整楼渲染：那段被当成旁白行（cd-L-narr）', html.indexOf('cd-L-narr') >= 0);
+    const html0 = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, { ...DEFAULT_CONFIG, narrateUnlabeled: false }).html);
+    ok('★ 关掉开关就不当旁白（原行为）', html0.indexOf('cd-L-narr') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
