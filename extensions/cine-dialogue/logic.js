@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.6.3';
+export const VERSION = '0.7.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1141,6 +1141,180 @@ export function repairLines(lines, cfg = {}) {
 
         return { line: x.line, p, repaired: null };
     });
+}
+
+// ---------------------------------------------------------------- 专属预设配方（CLI 与面板共用**同一份**实现）
+
+/**
+ * 原预设的作者与许可 —— **逐字照抄**自原预设自带的说明条目，不改写、不简化。
+ *
+ * 许可原文：「可以二改，禁止二传，拿功能要先问我，署名」
+ * ⇒ 因此本项目**只分发"配方"（这段代码），不分发预设本体**；
+ *   派生出的预设必须在使用者自己的机器上、由他自己那份原预设生成。
+ */
+export const PRESET_UPSTREAM = {
+    author: '泉此方',
+    license: '可以二改，禁止二传，拿功能要先问我，署名',
+    source: 'Lucky Channel https://discord.gg/xXNWRDhZKP（仅在类脑社区与 Lucky Channel 免费发布）',
+};
+
+/** 配方参数（差分清单就写在这里，改配方只改这一处） */
+export const PRESET_RECIPE = {
+    promptName: '【分镜】正文行格式',
+    noteName: '📋分镜派生说明（勿启用）',
+    orderAt: 143,
+    thinkingDepth: 20,
+    thinkingRe: /思维链/,
+    toggles: [['👤人称-第三人称', true], ['👤人称-User第一人称', false], ['🚢文风-顺眼舒服', false]],
+};
+
+/** 派生说明的正文（人可读；做成**停用**条目，只留痕不进提示词） */
+export function presetNoteText(opts = {}) {
+    const R = PRESET_RECIPE;
+    return [
+        '{{//',
+        '【分镜派生说明】这份预设是从原版派生出来的**本地副本**，不是原作者的发布版。',
+        '',
+        '原预设作者：' + PRESET_UPSTREAM.author,
+        '原预设许可：' + PRESET_UPSTREAM.license,
+        '原预设来源：' + PRESET_UPSTREAM.source,
+        '派生自：' + (opts.srcName || '(未记录)') + (opts.srcHash ? '（sha256 ' + String(opts.srcHash).slice(0, 16) + '…）' : ''),
+        '',
+        '派生改动（由「分镜对话」扩展 / scripts/cine-preset.mjs 生成，可重放）：',
+        '  1. 新增提示条目「' + R.promptName + '」并启用（教模型按 \`名字·层 内容\` 写）',
+        '  2. ' + R.toggles.map(t => t[0] + ' ' + (t[1] ? '开' : '关')).join(' / '),
+        '  3. 思维链美化正则的最大深度 → ' + R.thinkingDepth + '（原预设为 2，往上翻的楼思考会裸露）',
+        '',
+        '⚠️ 本条目**保持停用**，只是留个说明，不要启用。',
+        '⚠️ 原预设禁止二传 —— **这个派生文件不要分发给任何人**。',
+        '}}',
+    ].join('\n');
+}
+
+/**
+ * 把配方套用到一份原预设对象上。
+ *
+ * ★ 纯函数：**绝不修改传入的对象**（内部深拷贝），CLI 与浏览器面板都调它。
+ * ★ 幂等：重复套用只会报告「已是」，不会叠加条目。
+ *
+ * @param {object} srcObj 原预设（JSON.parse 后的对象）
+ * @param {{srcName?:string, srcHash?:string, formatSpec?:string}} [opts]
+ * @returns {{ok:boolean, preset:object, changes:string[], stats:object}}
+ */
+export function applyPresetRecipe(srcObj, opts = {}) {
+    const R = PRESET_RECIPE;
+    if (!srcObj || typeof srcObj !== 'object') return { ok: false, preset: null, changes: ['传入的不是一个预设对象'], stats: {} };
+
+    const out = JSON.parse(JSON.stringify(srcObj));   // ← 纯函数保证
+    const changes = [];
+
+    const prompts = out.prompts = Array.isArray(out.prompts) ? out.prompts : [];
+    if (!Array.isArray(out.prompt_order) || !out.prompt_order.length) out.prompt_order = [{ character_id: 100000, order: [] }];
+    const order = out.prompt_order[0].order = Array.isArray(out.prompt_order[0].order) ? out.prompt_order[0].order : [];
+    const stats = {
+        promptsFrom: Array.isArray(srcObj.prompts) ? srcObj.prompts.length : 0,
+        orderFrom: (((srcObj.prompt_order || [])[0] || {}).order || []).length,
+    };
+
+    // ① 格式说明条目
+    let p = prompts.find(x => String(x.name || '') === R.promptName);
+    if (!p) {
+        p = {
+            identifier: 'cine-dialogue-format',
+            name: R.promptName,
+            system_prompt: true,
+            role: 'system',
+            content: opts.formatSpec || FORMAT_SPEC,
+            injection_position: 0,
+            injection_depth: 4,
+        };
+        prompts.push(p);
+        changes.push('新增提示条目「' + R.promptName + '」');
+    } else {
+        changes.push('提示条目「' + R.promptName + '」已存在（内容保持不动）');
+    }
+    let entry = order.find(o => String(o.identifier) === String(p.identifier));
+    if (!entry) {
+        entry = { identifier: p.identifier, enabled: true };
+        order.splice(Math.min(R.orderAt, order.length), 0, entry);
+        changes.push('插进 prompt_order[' + Math.min(R.orderAt, order.length) + '] 并启用');
+    } else if (entry.enabled !== true) {
+        entry.enabled = true;
+        changes.push('prompt_order 里改为启用');
+    } else {
+        changes.push('prompt_order 已启用');
+    }
+
+    // ②③ 两处开关
+    for (const [name, want] of R.toggles) {
+        const pr = prompts.find(x => String(x.name || '') === name);
+        if (!pr) { changes.push('⚠ 找不到条目「' + name + '」→ 跳过'); continue; }
+        const e = order.find(o => String(o.identifier) === String(pr.identifier));
+        if (!e) { changes.push('⚠ 「' + name + '」不在 prompt_order 里 → 跳过'); continue; }
+        if (e.enabled !== want) { changes.push('「' + name + '」 ' + e.enabled + ' → ' + want); e.enabled = want; }
+        else changes.push('「' + name + '」 已是 ' + want);
+    }
+
+    // ④ 思维链正则的深度（只动**开着的**那条）
+    const scripts = ((out.extensions || {}).regex_scripts) || [];
+    let touched = 0;
+    for (const sc of scripts) {
+        const nm = String(sc.scriptName || '');
+        if (!R.thinkingRe.test(nm)) continue;
+        if (sc.disabled) { changes.push('思维链正则「' + nm + '」是关的 → 跳过'); continue; }
+        if (sc.maxDepth !== R.thinkingDepth) {
+            changes.push('思维链正则「' + nm + '」 maxDepth ' + sc.maxDepth + ' → ' + R.thinkingDepth);
+            sc.maxDepth = R.thinkingDepth;
+            touched++;
+        } else {
+            changes.push('思维链正则「' + nm + '」 maxDepth 已是 ' + R.thinkingDepth);
+        }
+    }
+    if (!touched && !changes.some(c => c.indexOf('maxDepth') >= 0)) changes.push('⚠ 没找到开启中的思维链正则（结构可能变了）');
+
+    // ⑤ 出处 + 许可（署名）
+    out.extensions = out.extensions || {};
+    out.extensions.cine_dialogue = {
+        kind: 'derived-preset',
+        derivedFrom: { file: opts.srcName || '', sha256: opts.srcHash || '' },
+        upstream: { author: PRESET_UPSTREAM.author, license: PRESET_UPSTREAM.license, source: PRESET_UPSTREAM.source },
+        generator: 'cine-dialogue（扩展面板 / scripts/cine-preset.mjs，同一份配方）',
+        note: '本地派生副本：原预设许可为「' + PRESET_UPSTREAM.license + '」，**本文件不得二传/分发**。',
+        changes: [
+            '新增提示条目「' + R.promptName + '」并启用',
+            R.toggles.map(t => t[0] + (t[1] ? ' 开' : ' 关')).join(' / '),
+            '思维链美化正则 maxDepth → ' + R.thinkingDepth,
+        ],
+    };
+    changes.push('写入出处与许可（作者：' + PRESET_UPSTREAM.author + '）');
+
+    // 说明条目（停用，只留痕）
+    const noteText = presetNoteText({ srcName: opts.srcName, srcHash: opts.srcHash });
+    let note = prompts.find(x => String(x.name || '') === R.noteName);
+    if (!note) {
+        note = { identifier: 'cine-dialogue-provenance', name: R.noteName, system_prompt: false, role: 'system', content: noteText };
+        prompts.push(note);
+        changes.push('新增（停用的）「' + R.noteName + '」条目');
+    } else {
+        note.content = noteText;
+        changes.push('更新「' + R.noteName + '」条目');
+    }
+    let ne = order.find(o => String(o.identifier) === String(note.identifier));
+    if (!ne) {
+        ne = { identifier: note.identifier, enabled: false };
+        order.push(ne);
+        changes.push('说明条目挂进 prompt_order（**停用**）');
+    } else if (ne.enabled !== false) {
+        ne.enabled = false;
+        changes.push('说明条目改为停用（只留痕，不进提示词）');
+    } else {
+        changes.push('说明条目已是停用状态');
+    }
+
+    stats.promptsTo = prompts.length;
+    stats.orderTo = order.length;
+    stats.enabledTo = order.filter(o => o.enabled).length;
+    return { ok: true, preset: out, changes, stats };
 }
 
 /** 统计（面板/排障用） */

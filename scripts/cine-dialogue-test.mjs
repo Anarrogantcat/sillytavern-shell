@@ -14,6 +14,7 @@ import {
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats,
+    applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText,
 } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
@@ -25,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.6.3');
+eq('version 与 manifest 一致', VERSION, '0.7.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -721,10 +722,94 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const gen = fs.readFileSync(new URL('../scripts/cine-preset.mjs', import.meta.url), 'utf8');
     ok('★ 生成器里写着原作者（署名）', gen.indexOf('泉此方') >= 0);
     ok('★ 生成器里写着原许可全文', gen.indexOf('禁止二传') >= 0 && gen.indexOf('可以二改') >= 0);
-    ok('★ 生成器把出处/许可写进预设（derivedFrom + upstream）',
-        /derivedFrom/.test(gen) && /upstream/.test(gen) && /sha256/.test(gen));
-    ok('★ 生成器里的说明条目是**停用**的（只留痕，不进提示词）',
-        /enabled: false/.test(gen) && /勿启用/.test(gen));
+    /* 注意：配方本体在扩展的 logic.js 里（面板与 CLI 共用），CLI 只做读写文件。
+       所以这两条要查 logic.js —— 查错地方就会被这条守卫抓住（这一版就抓到了）。 */
+    const recipe = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+    ok('★ 配方把出处/许可写进预设（derivedFrom + upstream + sha256）',
+        /derivedFrom/.test(recipe) && /upstream/.test(recipe) && /sha256/.test(recipe));
+    ok('★ 说明条目是**停用**的（只留痕，不进提示词）',
+        /enabled: false/.test(recipe) && /勿启用/.test(recipe));
+}
+
+/* ============================================================================
+   ★ 专属预设配方（applyPresetRecipe）
+   扩展面板的「生成专属预设」按钮与 scripts/cine-preset.mjs 调**同一份**实现。
+   原预设许可「可以二改，禁止二传」⇒ 只分发配方、不分发预设本体。
+   ============================================================================ */
+{
+    const src = {
+        prompts: [
+            { identifier: 'a', name: '📋说明（点小铅笔看）', content: '作者信息' },
+            { identifier: 'b', name: '👤人称-第三人称' },
+            { identifier: 'c', name: '👤人称-User第一人称' },
+            { identifier: 'd', name: '🚢文风-顺眼舒服' },
+        ],
+        prompt_order: [{ character_id: 100000, order: [
+            { identifier: 'b', enabled: false }, { identifier: 'c', enabled: true }, { identifier: 'd', enabled: true },
+        ] }],
+        extensions: { regex_scripts: [
+            { scriptName: '1美化最近二层思维链(流式夜间)-修复换行', maxDepth: 2, disabled: false },
+            { scriptName: '1美化最近2层思维链（非流）', maxDepth: 2, disabled: true },
+        ] },
+    };
+    const before = JSON.stringify(src);
+    const r = applyPresetRecipe(src, { srcName: 'Izumi 0828.tailfree.json', srcHash: 'f09c53a95b8ebf47deadbeef' });
+
+    ok('★ 配方成功', r.ok === true);
+    ok('★★ 纯函数：**不改传入的对象**', JSON.stringify(src) === before);
+    ok('★ 新增并启用格式说明条目',
+        r.preset.prompts.some(x => x.name === PRESET_RECIPE.promptName)
+        && r.preset.prompt_order[0].order.some(o => o.identifier === 'cine-dialogue-format' && o.enabled === true));
+    eq('★ 人称-第三人称 开', r.preset.prompt_order[0].order.find(o => o.identifier === 'b').enabled, true);
+    eq('★ 人称-User第一人称 关', r.preset.prompt_order[0].order.find(o => o.identifier === 'c').enabled, false);
+    eq('★ 文风-顺眼舒服 关', r.preset.prompt_order[0].order.find(o => o.identifier === 'd').enabled, false);
+    eq('★ 思维链深度 2 → 20', r.preset.extensions.regex_scripts[0].maxDepth, 20);
+    eq('★ **关着的那条不动**（保持 2）', r.preset.extensions.regex_scripts[1].maxDepth, 2);
+
+    const prov = r.preset.extensions.cine_dialogue;
+    eq('★ 署名：原作者', prov.upstream.author, '泉此方');
+    ok('★ 署名：许可全文', prov.upstream.license.indexOf('禁止二传') >= 0);
+    eq('★ 记录派生来源哈希', prov.derivedFrom.sha256, 'f09c53a95b8ebf47deadbeef');
+
+    const note = r.preset.prompts.find(x => x.name === PRESET_RECIPE.noteName);
+    ok('★ 有派生说明条目', !!note);
+    ok('★ 说明条目正文含署名与作品来源', note.content.indexOf('泉此方') >= 0 && note.content.indexOf('禁止二传') >= 0);
+    eq('★★ 说明条目**停用**（只留痕，不进提示词）',
+        r.preset.prompt_order[0].order.find(o => String(o.identifier) === String(note.identifier)).enabled, false);
+
+    const again = applyPresetRecipe(r.preset, { srcName: 'x', srcHash: 'y' });
+    eq('★★ 幂等：条目数不叠加', again.preset.prompts.length, r.preset.prompts.length);
+    eq('★★ 幂等：顺序表不叠加', again.preset.prompt_order[0].order.length, r.preset.prompt_order[0].order.length);
+    ok('★ 幂等：第二次报告「已是」', again.changes.some(c => c.indexOf('已是') >= 0));
+
+    ok('★ 传入非对象 → ok:false（不抛异常）', applyPresetRecipe(null).ok === false);
+    let threw = false;
+    try { applyPresetRecipe({}); } catch (_) { threw = true; }
+    ok('★ 传入空对象也不抛异常（结构变了要能容错）', !threw);
+
+    eq('★ PRESET_UPSTREAM 许可逐字照抄', PRESET_UPSTREAM.license, '可以二改，禁止二传，拿功能要先问我，署名');
+    ok('★ 派生说明正文里带署名', presetNoteText({ srcName: 'a.json' }).indexOf('泉此方') >= 0);
+}
+
+/* ★ 源码级守卫：面板与 CLI **必须** 共用同一份配方（防止两处配方漂移） */
+{
+    const idxSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cliSrc = fs.readFileSync(new URL('../scripts/cine-preset.mjs', import.meta.url), 'utf8');
+
+    ok('★ 面板导入了 applyPresetRecipe', /applyPresetRecipe/.test(idxSrc));
+    ok('★ CLI **也**导入同一份 applyPresetRecipe（不是自己重写一遍）',
+        /import\s*\{[^}]*applyPresetRecipe[^}]*\}\s*from\s*'\.\.\/extensions\/cine-dialogue\/logic\.js'/.test(cliSrc));
+    ok('★ CLI 里没有重复的配方实现（不该出现 maxDepth 赋值）', !/maxDepth\s*=\s*\d/.test(cliSrc));
+    ok('★ 面板有文件选择框与两个按钮',
+        /id="cd-preset-file"/.test(idxSrc) && /id="cd-preset-make"/.test(idxSrc) && /id="cd-preset-dry"/.test(idxSrc));
+    ok('★ 面板把生成结果**下载**给用户（Blob + a.download）',
+        /new Blob\(/.test(idxSrc) && /a\.download = outName/.test(idxSrc));
+    /* ★ 合规：生成过程**全在本地**，不上传任何东西 */
+    const panelBlock = idxSrc.slice(idxSrc.indexOf('const runPresetRecipe'), idxSrc.indexOf('const makeBtn'));
+    ok('★★ 生成过程不发网络请求（不上传用户预设）',
+        !/fetch\(/.test(panelBlock) && !/XMLHttpRequest/.test(panelBlock) && !/\.send\(/.test(panelBlock));
+    ok('★ 面板里写着原作者与许可（用户看得见）',
+        /PRESET_UPSTREAM\.author/.test(idxSrc) && /PRESET_UPSTREAM\.license/.test(idxSrc));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

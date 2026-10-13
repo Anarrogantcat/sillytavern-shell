@@ -61,6 +61,8 @@ import {
     stClassPrefix,
     splitSections,
     validateLayerName,
+    applyPresetRecipe,
+    PRESET_UPSTREAM,
 } from './logic.js';
 
 // ---------------------------------------------------------------- 配置
@@ -1331,6 +1333,60 @@ function wirePanel() {
     const regRm = panel.querySelector('#cd-regex-remove');
     if (regRm) regRm.addEventListener('click', () => removeRegexes());
 
+    /* ★ 专属预设生成：全部在浏览器里完成，不上传、不外发 */
+    const presetFile = panel.querySelector('#cd-preset-file');
+    const presetOut = panel.querySelector('#cd-preset-out');
+    const readPresetFile = () => new Promise((res, rej) => {
+        const f = presetFile && presetFile.files && presetFile.files[0];
+        if (!f) { rej(new Error('先在上面选一个预设 JSON 文件')); return; }
+        const fr = new FileReader();
+        fr.onload = () => res({ name: f.name, text: String(fr.result || '') });
+        fr.onerror = () => rej(new Error('读取文件失败'));
+        fr.readAsText(f, 'utf-8');
+    });
+    const sha256OfText = async (text) => {
+        try {
+            const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+            return Array.from(new Uint8Array(d)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (_) { return ''; }   // 拿不到哈希不影响生成，只是少了「从哪一版派生」的记录
+    };
+    const runPresetRecipe = async (download) => {
+        try {
+            if (presetOut) presetOut.textContent = '处理中…';
+            const { name, text } = await readPresetFile();
+            let obj;
+            try { obj = JSON.parse(text); } catch (e) { throw new Error('这个文件不是合法 JSON'); }
+            const hash = await sha256OfText(text);
+            const r = applyPresetRecipe(obj, { srcName: name, srcHash: hash });
+            if (!r.ok) throw new Error(r.changes.join('；'));
+            if (presetOut) {
+                presetOut.textContent = r.changes.map(c => '· ' + c).join('\n')
+                    + '\n\n提示词 ' + r.stats.promptsFrom + ' → ' + r.stats.promptsTo
+                    + ' · 顺序 ' + r.stats.orderFrom + ' → ' + r.stats.orderTo
+                    + '（其中启用 ' + r.stats.enabledTo + ' 条）';
+            }
+            if (!download) { notify('已算出会改什么（没有写文件）', 'info'); return; }
+            const outName = name.replace(/\.json$/i, '') + ' + 分镜.json';
+            const blob = new Blob([JSON.stringify(r.preset, null, 4)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = outName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            notify('已生成「' + outName + '」—— 到 ST 的预设面板导入它', 'success');
+        } catch (e) {
+            const msg = (e && e.message) ? e.message : String(e);
+            if (presetOut) presetOut.textContent = '✗ ' + msg;
+            notify('生成失败：' + msg, 'error');
+        }
+    };
+    const makeBtn = panel.querySelector('#cd-preset-make');
+    if (makeBtn) makeBtn.addEventListener('click', () => runPresetRecipe(true));
+    const dryBtn = panel.querySelector('#cd-preset-dry');
+    if (dryBtn) dryBtn.addEventListener('click', () => runPresetRecipe(false));
+
     const diag = panel.querySelector('#cd-diag');
     if (diag) {
         diag.addEventListener('click', () => {
@@ -1490,6 +1546,23 @@ function wirePanel() {
     }
 }
 
+/* ★ 专属预设（在用户本机生成）
+   为什么不在插件里附带预设：原预设许可写着「可以二改，**禁止二传**」。
+   所以插件只带**配方**（applyPresetRecipe），预设本体由用户自己那份原预设现场派生。 */
+function presetSecHTML() {
+    return [
+        '      <div class="cd-sec"><div class="cd-sec-h">专属预设（在你本机生成 · 插件不分发预设内容）</div>',
+        '        <div class="cd-note">原预设作者 <b>' + esc(PRESET_UPSTREAM.author) + '</b>，许可「' + esc(PRESET_UPSTREAM.license) + '」',
+        '          —— 所以本插件只带配方。选你手上那份<b>原预设 JSON</b>，这里自动派生一份配套预设给你下载。</div>',
+        '        <div class="cd-line"><input type="file" id="cd-preset-file" accept=".json,application/json"></div>',
+        '        <div class="cd-btn-row">',
+        '          <button type="button" class="menu_button" id="cd-preset-dry">只看会改什么</button>',
+        '          <button type="button" class="menu_button" id="cd-preset-make">生成专属预设</button>',
+        '        </div>',
+        '        <pre id="cd-preset-out" class="cd-heartbeat">（还没选文件）</pre>',
+        '      </div>',
+    ].join('');
+}
 function buildSettingsPanel() {
     if (document.getElementById('cd-panel')) return;                 // 幂等
     const host = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
@@ -1559,6 +1632,8 @@ function buildSettingsPanel() {
         '        <input type="file" id="cd-file" accept=".json,application/json" class="cd-hidden">',
         '        <div id="cd-cardstate" class="cd-note"></div>',
         '      </div>',
+
+        presetSecHTML(),
 
         /* ---- 格式错误面板（L6）---- */
         '      <div class="cd-sec"><div class="cd-sec-h">格式错误（模型写漏了「层名后的空格」之类）</div>',
