@@ -13,7 +13,7 @@ import {
     serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock, PLAIN_ANCHOR, repairLines, layerClass,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
-    hasOurLines, stats,
+    hasOurLines, stats, renderInlineImages,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
 } from '../extensions/cine-dialogue/logic.js';
 
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.10');
+eq('version 与 manifest 一致', VERSION, '0.8.11');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1504,6 +1504,38 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const cssNoComment = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
     ok('★ 选择器仍是自有前缀（没有真的写 .mes_text 规则）',
         !/\.mes_text\s*[^{]*\{/.test(cssNoComment) && !/\.mes\s*[^{]*\{/.test(cssNoComment));
+}
+
+/* ============================================================================
+   ★★ markdown 图片 → 真 <img>（0.8.11）
+   真机实测：我们交给 ST 的是**整块 HTML** ⇒ showdown 不再解析块内 markdown
+   ⇒ 原样的 ![pic435](https://…) 会以**字面文字**露出来（独立一行、夹在句子里都中招）。
+   ============================================================================ */
+{
+    ok('★★ 独立一行的 markdown 图片 → <img>',
+        /<img/.test(renderInlineImages('![p](https://a/b.png)')));
+    ok('★★ 夹在句子里也换（前后文字保留）', (() => {
+        const s = renderInlineImages('看见 ![p](https://a/b.png) 贴在门上。');
+        return s.indexOf('看见 ') === 0 && s.indexOf('<img') > 0 && s.indexOf('贴在门上。') > 0;
+    })());
+    ok('★ data:image 也认',
+        renderInlineImages('![x](data:image/png;base64,iVBORw0KGgo=)').indexOf('<img') >= 0);
+    ok('★★ javascript: / ftp: 一律不转换（安全）',
+        renderInlineImages('![x](javascript:alert(1))').indexOf('<img') < 0
+        && renderInlineImages('![x](ftp://a/b.png)').indexOf('<img') < 0);
+    ok('★ 普通文字一个字不动', renderInlineImages('普通文字，没有图片') === '普通文字，没有图片');
+
+    const im = String(renderMessageHTML(
+        '白霜予·动作 我拧开水龙头洗手。' + String.fromCharCode(10)
+        + '![pic435](https://i.ibb.co/x.png)' + String.fromCharCode(10)
+        + '白霜予·台词 「回来了！」',
+        { '白霜予': '#8ab4f8' }, DEFAULT_CONFIG).html);
+    ok('★★ 分镜楼里的图片不再露成字面文字',
+        /<img class="cd-img"/.test(im) && !/!\[[^\]]*\]\(/.test(im));
+
+    const cssImg = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8');
+    ok('★ CSS 用自有前缀 .custom-cd-img 且限宽',
+        cssImg.indexOf('.custom-cd-img') >= 0 && cssImg.indexOf('max-width: 100%') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

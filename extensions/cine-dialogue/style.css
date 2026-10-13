@@ -484,3 +484,21 @@
 .custom-cd-who.custom-cd-noname + .custom-cd-body {
     grid-column: 1 / -1;
 }
+
+/* ---------------------------------------------------------------- markdown 图片
+   我们输出整块 HTML ⇒ showdown 不再解析块内 markdown ⇒ 图片由我们自己换成 <img>。
+   ★ 选择器仍是自有前缀（.custom-cd-img）✓（AGENTS §0.3.2） */
+.custom-cd-img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
+    margin: .35em 0;
+}
+
+/* 夹在句子里的图片不换行 */
+.custom-cd-body .custom-cd-img {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0 .2em;
+}

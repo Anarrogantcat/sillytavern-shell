@@ -1,5 +1,23 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 0.8.11：markdown 图片 → 真 `<img>`
+
+### 实测（先取证再动手）
+拿用户给的真实消息（归期迟迟v2 第 2 楼）跑我们的渲染器：
+- 整楼**没有分镜行** ⇒ 我们**完全不接手**（`renderMessageHTML` 返回空）⇒ 图片由 ST 正常渲染 ✓
+- **分镜楼里**的 markdown 图片 ✗ —— 我们输出整块 HTML ⇒ showdown 不解析块内 markdown ⇒ 露成字面文字 ✗
+
+### 修法
+新增 `renderInlineImages()`：`![alt](url)` → `<img class="cd-img" …>`；只认 http(s)/data:image，
+`javascript:`/`ftp:` 一律不动 ✓（属性值 esc() 转义 + ST DOMPurify 兜底）· CSS 自有前缀 + 兜底同步
+
+### 另：用户说「装插件之前生成的不用在意」—— 对，旧楼我们一个字都不改 ✓
+
+### 夹具：**479 → 487 条**
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **487/487** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
 ## 未发版（2026-10-14）— cine-dialogue 0.8.10：空名字的行收起名字列
 
 ### 现象（用户截图：海津岛那楼）

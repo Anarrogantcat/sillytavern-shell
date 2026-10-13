@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.10';
+export const VERSION = '0.8.11';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -818,6 +818,22 @@ export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG, extr
  *   · 我们的行 → 合成 `<div class="cd-root">` 网格（上色 / 对齐 / 层样式）
  *   · 其它行   → **原样返回文本**，交给 showdown / ST 正常渲染（思考块、散文完全不受影响）
  */
+/**
+ * 把 markdown 图片 `![alt](url)` 变成真的 `<img>`。
+ *
+ * 为什么必须做（真机实测）：我们交给 ST 的是**一整块 HTML** ⇒ showdown **不再解析块内的 markdown** ✗
+ * ⇒ 原样的 `![pic435](https://…)` 会以**字面文字**露出来 ✗
+ * （独立一行、夹在句子里，两种都中招 —— 实测过，不是猜的。）
+ *
+ * 安全：只认 `http(s)://` 与 `data:image/…;base64,…` —— 其它一律**原样不动**（不转换）✓
+ * 属性值走 esc() 转义 ✓；最终还有 ST 自己的 DOMPurify 兜一道 ✓
+ */
+export function renderInlineImages(text) {
+    const RE = /!\[([^\]]{0,120})\]\(\s*(https?:\/\/[^\s)]{1,2000}|data:image\/[a-z+.\-]{1,20};base64,[A-Za-z0-9+/=]{1,500000})\s*\)/g;
+    return String(text == null ? '' : text).replace(RE, (m0, alt, url) =>
+        '<img class="cd-img" src="' + esc(url) + '" alt="' + esc(alt) + '" loading="lazy">');
+}
+
 export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const layers = allLayers(cfg);
@@ -916,7 +932,7 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
         if (s.kind === 'text') {
             const raw = s.lines.join('\n');                                  // 原样，一个字不改
             const body = opts.wrapThinking ? wrapThinkingBlock(raw, cfg) : raw;   // ← 预设覆盖不到时由我们折叠
-            return PLAIN_ANCHOR + '\n' + body;                               // 锚点：供 decorate() 对齐到正文列
+            return PLAIN_ANCHOR + '\n' + renderInlineImages(body);   // 锚点：供 decorate() 对齐；顺带把 markdown 图片变成 <img>
         }
         return renderGrid(s.groups, seg.colors, cfg, i === lastOurs ? optHTML : '');
     });
