@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.0');
+eq('version 与 manifest 一致', VERSION, '0.8.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1174,6 +1174,36 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 默认全部收起（body 初始 display:none）', /body\.style\.display = open \? '' : 'none'/.test(src));
     ok('★ CSS 有 .cd-sec-h.cd-grp-toggle 与 data-cd-collapsed 规则',
         cssText.indexOf('.cd-sec-h.cd-grp-toggle') >= 0 && cssText.indexOf('data-cd-collapsed') >= 0);
+}
+
+/* ============================================================================
+   ★ 专属正则：状态检查 + 装/卸前确认
+   为什么：updateTavernRegexesWith **会重载整个聊天**。重复点不会装重（我们幂等），
+   但会白白重载一次聊天（用户反馈：「我刚刚就不小心点了安装」）。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+
+    ok('★ 有状态检查（regexState / refreshRegexState）',
+        /function regexState/.test(src) && /function refreshRegexState/.test(src));
+    ok('★ 有内容指纹（判断「装过之后内容变没变」）',
+        /function regexFingerprint/.test(src) && /cd-regex-stamp/.test(src));
+    ok('★★ 已装好且内容没变时，明确提示「重装只会再重载一次聊天」',
+        src.indexOf('已经装好、内容也没变') >= 0 && src.indexOf('重载一次聊天') >= 0);
+    ok('★★ 安装前必须确认，且写明会重载整个聊天',
+        /confirmRegexAction\('安装\/更新专属正则'/.test(src) && src.indexOf('**重载整个聊天**') >= 0);
+    ok('★★ 移除前也要确认', /confirmRegexAction\('移除专属正则'/.test(src));
+    ok('★ 取消不静默（有「已取消」提示）',
+        src.indexOf('已取消安装') >= 0 && src.indexOf('已取消移除') >= 0);
+    ok('★ 确认弹窗有降级（callGenericPopup 不可用时退到 window.confirm）',
+        /window\.confirm\(/.test(src));
+    ok('★ 读不到正则列表时不报错、仍可安装（多路读法 + 返回 null）',
+        /function readRegexList/.test(src) && /Array\.isArray\(v\)/.test(src));
+    ok('★ 面板有状态行并会刷新', /id="cd-regex-state"/.test(src) && /refreshRegexState\(\);/.test(src));
+    ok('★ 状态行覆盖五种情况（已装 / 装一半 / 没装 / 读不到 / 没酒馆助手）',
+        ['已安装 ', '装了 ', '未安装', '读不到列表', '需要酒馆助手'].every(t => src.indexOf(t) >= 0));
+    ok('★ 安装成功后写入指纹、移除后清掉',
+        /localStorage\.setItem\('cd-regex-stamp'/.test(src) && /localStorage\.removeItem\('cd-regex-stamp'/.test(src));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

@@ -712,6 +712,23 @@ async function installRegexes(silent) {
         notify('需要酒馆助手（TavernHelper）才能注册专属正则', 'warning');
         return false;
     }
+    /* ★ 先检查再问：已经装好且内容没变 → 明确告诉用户「重装只会再重载一次聊天」 */
+    const st = regexState();
+    const fp = regexFingerprint();
+    let stamp = '';
+    try { stamp = localStorage.getItem('cd-regex-stamp') || ''; } catch (_) { stamp = ''; }
+    if (st.ok && st.readable && stamp && stamp === fp) {
+        const go = await confirmRegexAction('专属正则：已经装好了',
+            '4 条专属正则**已经装好、内容也没变**。' + String.fromCharCode(10, 10)
+            + '重装只会把它们再写一遍，并**重载一次聊天**（会卡几秒）。' + String.fromCharCode(10)
+            + '如果你不是想强制重载，建议直接点「取消」。');
+        if (!go) { notify('已取消（正则本来就是最新的）', 'info'); return false; }
+    } else {
+        const go = await confirmRegexAction('安装/更新专属正则',
+            '会往你的正则列表写入 4 条（只作用最近 3 楼、只改显示，不动提示词）。' + String.fromCharCode(10, 10)
+            + '⚠️ 这一步会**重载整个聊天**（会卡几秒）。确定继续？');
+        if (!go) { notify('已取消安装', 'info'); return false; }
+    }
     try {
         const want = buildRegexes();
         const mine = new Set(want.map(r => r.script_name));
@@ -720,6 +737,8 @@ async function installRegexes(silent) {
                 .filter(r => !mine.has(r && r.script_name) && !String((r && r.id) || '').startsWith('cd-r'))
                 .concat(want)
         , { type: 'global' });
+        try { localStorage.setItem('cd-regex-stamp', regexFingerprint()); } catch (_) { /* 记不住指纹只影响下次的提示 */ }
+        refreshRegexState();
         if (!silent) notify('【分镜】专属正则已安装/更新（4 条，只作用最近 3 楼）', 'success');
         console.log('[' + EXT_ID + '] 专属正则已写入（全局，display-only）');
         return true;
@@ -730,15 +749,86 @@ async function installRegexes(silent) {
     }
 }
 
+/* ---------------------------------------------------------------- 专属正则：状态检查 + 确认
+   为什么需要：`updateTavernRegexesWith` **会重载整个聊天** —— 重复点「安装」不会装重（我们幂等），
+   但会白白重载一次聊天（用户反馈：「我刚刚就不小心点了安装」）。
+   所以：① 先**检查**当前装没装、内容变没变；② 装/卸前**确认**，并写明会重载聊天。 */
+
+/** 读当前的正则列表。★ 读不到就返回 null（只影响状态显示，不影响安装/移除） */
+function readRegexList() {
+    const th = TH() || {};
+    const w = window.TavernHelper || {};
+    const tries = [
+        () => (typeof th.getTavernRegexes === 'function') ? th.getTavernRegexes({ type: 'global' }) : null,
+        () => (typeof th.getTavernRegexes === 'function') ? th.getTavernRegexes() : null,
+        () => Array.isArray(th.tavernRegexes) ? th.tavernRegexes : null,
+        () => (typeof w.getTavernRegexes === 'function') ? w.getTavernRegexes({ type: 'global' }) : null,
+    ];
+    for (const f of tries) {
+        try { const v = f(); if (Array.isArray(v)) return v; } catch (_) { /* 换下一种读法 */ }
+    }
+    return null;
+}
+
+/** 我们这 4 条的「内容指纹」—— 用来判断装过之后内容有没有变 */
+function regexFingerprint() {
+    try { return JSON.stringify(REGEX_DEFS.map(d => [d.script_name, d.find_regex, d.replace_string, !!d.enabled, d.max_depth])); }
+    catch (_) { return ''; }
+}
+
+/** 当前状态：{ available, readable, installed[], missing[], ok } */
+function regexState() {
+    if (!regexAvailable()) return { available: false, readable: false, installed: [], missing: REGEX_DEFS.map(d => d.script_name), ok: false, total: REGEX_DEFS.length };
+    const list = readRegexList();
+    if (list === null) return { available: true, readable: false, installed: [], missing: [], ok: false, total: REGEX_DEFS.length };
+    const names = new Set(list.map(r => String((r && (r.script_name || r.scriptName)) || '')));
+    const installed = REGEX_DEFS.filter(d => names.has(d.script_name)).map(d => d.script_name);
+    const missing = REGEX_DEFS.filter(d => !names.has(d.script_name)).map(d => d.script_name);
+    return { available: true, readable: true, installed, missing, ok: installed.length === REGEX_DEFS.length, total: REGEX_DEFS.length };
+}
+
+/** 把状态写进面板那一行（顺便把按钮文案做成有信息量的） */
+function refreshRegexState() {
+    const el = document.getElementById('cd-regex-state');
+    const st = regexState();
+    if (el) {
+        if (!st.available) el.textContent = '专属正则：需要酒馆助手（TavernHelper）才能安装 —— 没装也不影响渲染。';
+        else if (!st.readable) el.textContent = '专属正则：读不到列表（不影响安装）—— 安装前会再问你一次。';
+        else if (st.ok) el.textContent = '专属正则：已安装 ' + st.installed.length + '/' + st.total + ' 条（只作用最近 3 楼、只改显示）—— 重装只会重载一次聊天。';
+        else if (st.installed.length) el.textContent = '专属正则：装了 ' + st.installed.length + '/' + st.total + ' 条，缺：' + st.missing.join('、') + ' —— 建议点「安装/更新」。';
+        else el.textContent = '专属正则：未安装（装与不装都不影响渲染，只在 DOM 降级路径下需要）。';
+    }
+    return st;
+}
+
+/** 装/卸前的确认。★ 会重载整个聊天，所以要问清楚；弹窗 API 不可用时退到 window.confirm */
+async function confirmRegexAction(title, text) {
+    try {
+        if (typeof callGenericPopup === 'function' && typeof POPUP_TYPE !== 'undefined') {
+            const r = await callGenericPopup(text, POPUP_TYPE.CONFIRM, title, { okButton: '继续', cancelButton: '取消' });
+            const YES = (typeof POPUP_RESULT !== 'undefined' && POPUP_RESULT) ? POPUP_RESULT.AFFIRMATIVE : 1;
+            return r === YES;
+        }
+    } catch (_) { /* 退到 window.confirm */ }
+    try { return window.confirm(title + String.fromCharCode(10, 10) + text); } catch (_) { return true; }
+}
+
 /** 卸载我们注册的正则（只删自己的，不碰别人的） */
 async function removeRegexes() {
     if (!regexAvailable()) { notify('需要酒馆助手才能改正则', 'warning'); return false; }
+    {
+        const go = await confirmRegexAction('移除专属正则',
+            '会从你的正则列表里删掉我们的 4 条，并**重载整个聊天**（会卡几秒）。' + String.fromCharCode(10, 10) + '确定继续？');
+        if (!go) { notify('已取消移除', 'info'); return false; }
+    }
     try {
         const mine = new Set(REGEX_DEFS.map(d => d.script_name));
         await TH().updateTavernRegexesWith(list =>
             (Array.isArray(list) ? list : [])
                 .filter(r => !mine.has(r && r.script_name) && !String((r && r.id) || '').startsWith('cd-r'))
         , { type: 'global' });
+        try { localStorage.removeItem('cd-regex-stamp'); } catch (_) { /* 无所谓 */ }
+        refreshRegexState();
         notify('【分镜】专属正则已移除', 'success');
         return true;
     } catch (e) {
@@ -1941,6 +2031,7 @@ function buildSettingsPanel() {
         '        <button type="button" class="menu_button" id="cd-diag">诊断信息</button>',
         '      </div>',
         '      <pre id="cd-hb" class="cd-heartbeat">点「诊断信息」看核内钩子接线状态 / 渲染计数</pre>',
+        '      <div id="cd-regex-state" class="cd-note"></div>',
 
         /* ---- 配色（L6）---- */
         '      <div class="cd-sec"><div class="cd-sec-h">配色 —— 颜色 = 角色</div>',
@@ -2004,6 +2095,7 @@ function buildSettingsPanel() {
     rebuildDynamic();
     /* ★ 手写段折叠化：必须在 rebuildDynamic 之后（那时 #cd-colors / #cd-layers 等都已填好） */
     wireSectionToggles(p);
+    try { refreshRegexState(); } catch (e) { console.warn('[' + EXT_ID + '] 刷新正则状态失败（不影响使用）', e); }
     const collapsed = makeSectionsCollapsible();
     if (collapsed) console.log('[' + EXT_ID + '] 已把 ' + collapsed + ' 个面板段折叠化');
     applyInfoOpen();
