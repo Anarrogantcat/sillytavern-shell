@@ -53,7 +53,7 @@
     {
       "id": "cine-dialogue",
       "display_name": "分镜对话 (Cine Dialogue)",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "files": [
         {
           "path": "CHANGELOG.md",
@@ -67,18 +67,18 @@
         },
         {
           "path": "index.js",
-          "size": 15715,
-          "sha1": "ba155703bb42dabf45bcd5821c4bab73e9bbe1c1"
+          "size": 18447,
+          "sha1": "a3f64f5637e9f5676ada547eb1592ddfe928bdb9"
         },
         {
           "path": "logic.js",
-          "size": 10161,
-          "sha1": "71e12570a3fba132c20fed9b2b3e3baf972e06f6"
+          "size": 12440,
+          "sha1": "f789c8c79dc4498d36003ee854e79a6bb52b7161"
         },
         {
           "path": "manifest.json",
-          "size": 406,
-          "sha1": "cdfd6aa7dcd184ade3e0972db7aceadd96a9a2c5"
+          "size": 504,
+          "sha1": "f34143afb10a4ff3cf562e7612fa7464e3e860f9"
         },
         {
           "path": "style.css",
@@ -125,5 +125,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-13T15:02:10.933Z"
+  "generatedAt": "2026-10-13T15:15:14.205Z"
 }

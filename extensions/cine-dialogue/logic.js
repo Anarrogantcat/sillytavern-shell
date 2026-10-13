@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -78,9 +78,18 @@ export const RE_NARR = /^旁白\s*[·・:：]\s*(.+)$/;
 /** 选项行：1. 文本 | 备注 */
 export const RE_OPT = /^(\d+)[.、)]\s*(.+?)\s*(?:\|\s*(.*))?$/;
 
-/** 标记区 */
+/** 选项行的另一种（预设 `<options>` 块里用的是 `>选项一：[…]`） */
+export const RE_OPT_ALT = /^[>＞]\s*(选项?[一二三四五六七八九十\d]+|\d+)\s*[:：]\s*(.+)$/;
+
+/** 标记区 —— **两种写法都认**：
+ *   · `[FRONTEND]…[/FRONTEND]`  ← 我们自己的正则（R2/R3）替换出来的，DOM 后处理路径会看到
+ *   · `<htmlcontent>…</htmlcontent>` ← 预设原样输出的，**渲染漏斗钩子**路径看到的是这个
+ *     （钩子在 messageFormatting 开头跑，那时正则还没跑，所以标记还没被换掉）
+ */
 export const RE_FRONTEND_BLOCK = /\[FRONTEND\]([\s\S]*?)\[\/FRONTEND\]/g;
 export const RE_OPTIONS_BLOCK = /\[OPTIONS\]([\s\S]*?)\[\/OPTIONS\]/g;
+export const RE_HTMLCONTENT_BLOCK = /<htmlcontent>([\s\S]*?)<\/htmlcontent>/gi;
+export const RE_OPTIONS_TAG_BLOCK = /<options>([\s\S]*?)<\/options>/gi;
 
 // ---------------------------------------------------------------- 解析
 
@@ -107,29 +116,32 @@ export function isOurLine(line) {
 }
 
 /**
- * 从消息原文里切出三段：[FRONTEND] / [OPTIONS] / 正文
- * 切掉的标记区**不进正文**，由调用方决定怎么安置。
+ * 从消息原文里切出三段：前端区 / 选项区 / 正文
+ * 前端区与选项区的标记**两种写法都认**（见上面四个常量的注释）。
+ * 切掉的标记区不进正文，由调用方决定怎么安置（钩子路径：原样拼回；DOM 路径：保留原节点）。
  */
 export function splitSections(raw) {
     const text = String(raw == null ? '' : raw);
 
     const frontend = [];
-    let rest = text.replace(RE_FRONTEND_BLOCK, (_m, inner) => {
-        frontend.push(inner);
-        return '\n';
-    });
+    const grab = (src, re, sink) => String(src).replace(re, (_m, inner) => { sink.push(inner); return '\n'; });
+
+    let rest = text;
+    rest = grab(rest, RE_FRONTEND_BLOCK, frontend);
+    rest = grab(rest, RE_HTMLCONTENT_BLOCK, frontend);
 
     const optionsRaw = [];
-    rest = rest.replace(RE_OPTIONS_BLOCK, (_m, inner) => {
-        optionsRaw.push(inner);
-        return '\n';
-    });
+    rest = grab(rest, RE_OPTIONS_BLOCK, optionsRaw);
+    rest = grab(rest, RE_OPTIONS_TAG_BLOCK, optionsRaw);
 
     const options = [];
     for (const block of optionsRaw) {
         for (const line of block.split('\n')) {
-            const m = line.trim().match(RE_OPT);
-            if (m) options.push({ index: m[1], text: m[2].trim(), note: (m[3] || '').trim() });
+            const t = line.trim();
+            if (!t) continue;
+            const m = t.match(RE_OPT) || t.match(RE_OPT_ALT);
+            if (!m) continue;
+            if (m[1] && m[2]) options.push({ index: String(m[1]).trim(), text: String(m[2]).trim(), note: (m[3] || '').trim() });
         }
     }
 
@@ -266,6 +278,30 @@ export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG) {
     if (!hasAny) return { html: null, groups, errs, names, colors: map };
 
     return { html: renderGrid(groups, map, cfg), groups, errs, names, colors: map };
+}
+
+/**
+ * ★ 渲染漏斗钩子路径的入口 —— 返回**整条消息**的 HTML
+ *
+ * 与 renderMessage 的区别：钩子跑在 messageFormatting 开头，返回的字符串后面还要过
+ * showdown + DOMPurify，我们**不能再依赖"保留原 DOM 节点"**，所以前端区要自己原样拼回。
+ *
+ * @returns {{html:string,names:string[],errs:number,colors:object,sections:object}|null}
+ *          null = 这条消息没有我们的行 → 调用方原样返回，一个字节不改
+ */
+export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFIG) {
+    const cfg = { ...DEFAULT_CONFIG, ...config };
+    const text = String(rawText == null ? '' : rawText);
+    if (!hasOurLines(text)) return null;
+
+    const sections = splitSections(text);
+    const res = renderMessage(sections.body, colorMap, cfg);
+
+    let html = res.html || '';
+    for (const f of sections.frontend) html += '\n' + f;          // 前端区：原样，一个字不动
+    if (sections.options.length) html += '\n' + renderOptions(sections.options, cfg);
+
+    return { html, names: res.names, errs: res.errs, colors: res.colors, sections };
 }
 
 /** 一条消息里有没有「我们的行」（用来决定碰不碰它） */

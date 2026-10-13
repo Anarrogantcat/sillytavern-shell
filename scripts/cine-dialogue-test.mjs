@@ -4,7 +4,8 @@
 import {
     VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
-    assignColors, renderGrid, renderOptions, renderMessage, hasOurLines, stats,
+    assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML,
+    hasOurLines, stats,
 } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
@@ -16,7 +17,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.1.0');
+eq('version 与 manifest 一致', VERSION, '0.2.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -129,6 +130,27 @@ ok('hasOurLines 不认纯散文', !hasOurLines('她站在门口，没有动。')
 eq('splitSections 容忍 null', splitSections(null).options.length, 0);
 eq('renderMessage 容忍 null', renderMessage(null).html, null);
 eq('stats 有版本', stats().version, VERSION);
+
+/* ---------------------------- 钩子路径（核内补丁 #001） ---------------------------- */
+// 钩子跑在 messageFormatting 开头 —— 那时正则还没跑，
+// 所以它看到的是预设的**原始**标签 <htmlcontent>/<options>，不是我们替换后的 [FRONTEND]
+const hRaw = '林野·动作 我把她按在床上。\n<htmlcontent><div>前端</div></htmlcontent>\n<options>\n>选项一：吻她\n>选项二：按住她\n</options>';
+const hSec = splitSections(hRaw);
+eq('认 <htmlcontent>（钩子路径的外壳形式）', hSec.frontend.length, 1);
+ok('前端 HTML 原样保留、不被转义', hSec.frontend[0].includes('<div>前端</div>'));
+eq('认 <options> 的「>选项一：」写法', hSec.options.length, 2);
+eq('选项一文本', hSec.options[0].text, '吻她');
+eq('选项标签名', hSec.options[0].index, '选项一');
+ok('正文里不再含 <htmlcontent>', !hSec.body.includes('<htmlcontent>'));
+ok('正文里不再含 <options>', !hSec.body.includes('<options>'));
+
+eq('renderMessageHTML：没有我们的行 → null（一个字节不改）', renderMessageHTML('就是一段普通散文。'), null);
+const hRes = renderMessageHTML(hRaw, {}, DEFAULT_CONFIG);
+ok('钩子产出网格', !!hRes && hRes.html.includes('cd-grid'));
+ok('钩子产出：前端 HTML 未被转义（原样拼回）', hRes.html.includes('<div>前端</div>'));
+ok('钩子产出：选项按钮已渲染', hRes.html.includes('data-cd-text="吻她"'));
+ok('钩子产出：标签不出现', !hRes.html.includes('·动作'));
+ok('钩子产出：旁白无名字', renderMessageHTML('旁白·灯灭了。').html.includes('cd-L-narr"><span class="cd-who"></span>'));
 
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);

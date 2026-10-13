@@ -1,5 +1,40 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.2.0 (2026-10-13) — 接入核内渲染漏斗钩子：标签永不进 DOM
+
+### 新增：`window.CineDialogueFormat` 钩子路径
+配合 `patches/001-messageFormatting-hook.patch`（ST 本体 `public/script.js`）。
+装了补丁时 ST 会在 **`messageFormatting()` 开头**调它 —— 那时 markdown / showdown / DOMPurify **都还没跑**。
+
+**解决了 4 件事：**
+
+| # | 问题 | 钩子路径下 |
+|---|---|---|
+| 1 | **流式期间标签裸奔可见** | 标签**永不进入 DOM**（一次 6000t 生成要几分钟，这是最肉眼可见的缺陷） |
+| 2 | 与 card-compat 的时序竞争 | 不存在了（`updateMessageBlock` 会重走 `messageFormatting`） |
+| 3 | 「我们的行」和别的内容混在一块 → 整块跳过 | 钩子拿整条原文，可整体处理 |
+| 4 | 编辑 / swipe / 重渲染要额外补跑 | 自动正确 |
+
+### 双路径共存（自动降级）
+- **打了补丁**：钩子接管；`window.__cdMessageFormattingHook = true` → DOM 后处理**自动停用**（`run()` / `refreshAt()` 早退）
+- **没打补丁**：`window.CineDialogueFormat` 无人调用，自动走原来的 DOM 后处理
+- **两条路共用同一个 `logic.js`** —— 渲染逻辑只有一份
+
+### `logic.js` 新增
+- `renderMessageHTML(raw, colors, config)` —— 钩子路径入口，返回**整条消息**的 HTML
+  （钩子不能改 DOM，所以前端区要自己原样拼回；选项区渲染成按钮）
+- `splitSections` **同时认两种外壳形式**：
+  - `[FRONTEND]…[/FRONTEND]` / `[OPTIONS]…[/OPTIONS]` —— 我们正则换出来的（DOM 路径看到）
+  - `<htmlcontent>…</htmlcontent>` / `<options>…</options>` —— 预设原始输出（**钩子路径看到**，因为钩子在正则之前跑）
+- `RE_OPT_ALT` —— 认预设 `<options>` 里的 `>选项一：…` 写法
+
+### 夹具
+- **60 → 73 条**（新增 13 条：双形式外壳、`>选项一：`、`renderMessageHTML` 的 null 分支/前端原样/选项渲染/标签不出现）
+
+### 安全
+- 钩子里**任何异常都原样返回原文**（`catch { return mes }`）—— 绝不把消息弄坏
+- `ctx.isSystem` / `ctx.isUser && !transformUserMessages` 直接放行
+
 ## v0.1.0 (2026-10-13) — 首次发布：核心渲染（L1）
 
 ### 新增

@@ -33,6 +33,7 @@ import {
     hasOurLines,
     isOurLine,
     renderMessage,
+    renderMessageHTML,
     renderOptions,
     splitSections,
 } from './logic.js';
@@ -134,6 +135,49 @@ function isLightTheme() {
     }
 }
 
+/* ---------------------------------------------------------------- 渲染漏斗钩子
+   （依赖核内补丁 patches/001-messageFormatting-hook.patch）
+
+   装了补丁时，ST 会在 messageFormatting() 开头调 window.CineDialogueFormat(mes, ctx)——
+   那时 markdown / showdown / DOMPurify 都还没跑。
+
+   好处：标签**永不进入 DOM**（流式期间也不裸奔）、没有与 card-compat 的时序竞争、
+        编辑 / swipe / 重渲染自动正确。
+
+   没打补丁时：window.__cdMessageFormattingHook 不存在 → 自动走下面的 DOM 后处理路径（降级）。
+   两条路共用同一个 logic.js。
+   ------------------------------------------------------------------ */
+
+const hookStats = { formatted: 0, lastMid: -1 };
+
+/** 核内补丁接线了没有（补丁里会设这个标记） */
+function hookActive() {
+    return typeof window !== 'undefined' && window.__cdMessageFormattingHook === true;
+}
+
+/** 钩子入口：原文 → HTML 字符串（**不能改 DOM，只能返回字符串**） */
+function formatHook(mes, ctx) {
+    try {
+        const c = cfg();
+        if (!c.enabled) return mes;
+        if (ctx && ctx.isSystem) return mes;
+        if (ctx && ctx.isUser && !c.transformUserMessages) return mes;
+        if (!hasOurLines(mes)) return mes;                        // 没有我们的行 → 一个字不改
+
+        const mid = (ctx && Number.isFinite(Number(ctx.messageId))) ? Number(ctx.messageId) : -1;
+        const res = renderMessageHTML(mes, colorMap[mid] || {}, c);
+        if (!res || !res.html) return mes;
+
+        if (mid >= 0) colorMap[mid] = res.colors;                 // 同角色同色，跨消息保持
+        hookStats.formatted++;
+        hookStats.lastMid = mid;
+        return res.html;
+    } catch (e) {
+        console.error('[' + EXT_ID + '] format hook failed', e);
+        return mes;                                               // 出错就原样放行 —— 绝不把消息弄坏
+    }
+}
+
 // ---------------------------------------------------------------- DOM 工具
 
 /** 节点文本：<br> 视为换行 */
@@ -162,6 +206,7 @@ function containsOurLine(node) {
 /** 定向刷新一楼 —— 给「会重渲染消息」的兄弟扩展（card-compat / plot-pilot）调 */
 function refreshAt(mesId) {
     try {
+        if (hookActive()) return true;   // 核内钩子已接管：updateMessageBlock 会重走 messageFormatting，无需我们插手
         const id = Number(mesId);
         if (!Number.isFinite(id) || id < 0) return false;
         const mesEl = document.querySelector('#chat .mes[mesid="' + id + '"]');
@@ -288,6 +333,10 @@ function schedule(scope) {
 }
 
 function run(all) {
+    /* 核内钩子已接管 → 不再做 DOM 后处理。
+       否则我们会把钩子刚生成的分镜 HTML 再解析一遍（它里面已经不含标签了，等于白跑）。 */
+    if (hookActive()) return;
+
     const list = all
         ? Array.from(document.querySelectorAll('#chat .mes'))
         : Array.from(document.querySelectorAll('#chat .mes')).slice(-3);   // 只处理最近三楼
@@ -335,6 +384,9 @@ function bind() {
 // ---------------------------------------------------------------- 对外 API（阶段 7 扩全，先把地基留好）
 
 function exposeApi() {
+    /* ★ 核内补丁 #001 的挂钩点 —— messageFormatting() 开头会调它（没打补丁时无人调用，无副作用） */
+    window.CineDialogueFormat = formatHook;
+
     window.CineDialogue = {
         version: VERSION,
         get config() { return { ...cfg() }; },
@@ -395,6 +447,8 @@ function exposeApi() {
                     } catch (_) { return { error: true }; }
                 })() : null,
                 light: isLightTheme(),
+                /** 核内补丁 #001 接线状态 + 它处理了多少条 */
+                hook: { active: hookActive(), formatted: hookStats.formatted, lastMid: hookStats.lastMid },
             };
         },
     };

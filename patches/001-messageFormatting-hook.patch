@@ -1,8 +1,8 @@
 diff --git a/public/script.js b/public/script.js
-index 68a546111..3398db258 100644
+index 68a546111..a2a831239 100644
 --- a/public/script.js
 +++ b/public/script.js
-@@ -1755,6 +1755,29 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
+@@ -1755,6 +1755,30 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
          return '';
      }
  
@@ -20,6 +20,7 @@ index 68a546111..3398db258 100644
 +       === END sillytavern-shell patch #001 === */
 +    if (!isReasoning && typeof window.CineDialogueFormat === 'function') {
 +        try {
++            window.__cdMessageFormattingHook = true;   // 接线标记：扩展靠它判断「钩子已接管」→ 跳过 DOM 后处理
 +            const __cdOut = window.CineDialogueFormat(mes, { messageId, ch_name, isSystem, isUser, isReasoning });
 +            if (typeof __cdOut === 'string') {
 +                mes = __cdOut;

@@ -1,5 +1,31 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.3.0 (2026-10-13) — 功能更新：分镜对话接入核内渲染漏斗钩子（cine-dialogue 0.2.0）
+
+> 套壳版本 2.2.56 → **2.3.0**（加功能 → minor +1，patch 归零）
+
+### 功能
+- **cine-dialogue 0.1.0 → 0.2.0**：接入**核内渲染漏斗钩子**，标签**永不进入 DOM**
+  - 装了 `patches/001-messageFormatting-hook.patch` 时，ST 在 `messageFormatting()` 开头调 `window.CineDialogueFormat`
+  - **一次解决 4 件事**：① 流式期间 `名字·层 ` 标签裸奔可见（最肉眼可见的缺陷，一次 6000t 要几分钟）② 与 card-compat 的时序竞争 ③ 混块跳过 ④ 编辑/swipe/重渲染要补跑
+  - **双路径自动降级**：打了补丁 → 钩子接管（`window.__cdMessageFormattingHook` 标记 → DOM 后处理自动停用）；没打补丁 → 走原 DOM 后处理。两条路共用同一个 `logic.js`
+  - 钩子内**任何异常都原样返回原文**，绝不把消息弄坏
+- **`logic.js` 新增**：`renderMessageHTML()`（钩子路径入口，返回整条消息 HTML）；`splitSections` 同时认 `[FRONTEND]`/`<htmlcontent>` 与 `[OPTIONS]`/`<options>` 两种外壳；`RE_OPT_ALT` 认预设的 `>选项一：…` 写法
+
+### 核内改动
+- `patches/001-messageFormatting-hook.patch`：补丁里加接线标记 `window.__cdMessageFormattingHook = true`
+- 全链路复验：**apply → check → revert → check → apply → check 全 exit 0**
+- **回滚后 `git status` 只剩用户原有的两个文件**（`default/config.yaml` / `public/index.html`）→ 补丁完全隔离、可完全复原
+- 语法校验（按 ESM 解析 `public/script.js`）：**exit 0**（原始态 + 应用态各一次）
+
+### 夹具
+- **cine-dialogue 60 → 73 条**（全过）；compat-logic 658 / plot-pilot 67 / ext-manage 49 不变
+- `extensions/index.json` 重建（cine-dialogue **0.2.0**），`--check` **exit 0**
+
+### 说明
+- 本次**有套壳版本变更** → 允许发包（依据 AGENTS §1.1）；打 tag `v2.3.0`，**GitHub Release 未创建**（等你拍板）
+- 核内改动依据 `AGENTS.md` §0.5 例外登记（仅 cine-dialogue），且**已配可重放补丁**（§0.5 第 2 条）
+
 ## 未发版（2026-10-13）— 首次动用 §0.5 豁免：ST 本体补丁集 + 渲染漏斗钩子（patch #001）
 
 ### 核内改动（**本插件专属豁免，见 AGENTS §0.5**）
