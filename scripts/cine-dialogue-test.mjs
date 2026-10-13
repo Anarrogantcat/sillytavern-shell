@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.20');
+eq('version 与 manifest 一致', VERSION, '0.8.21');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1604,6 +1604,16 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★★ 下一楼老角色颜色不变（沙良）', b['沙良'], a['沙良']);
     const e = resolveColors(['染'], { charColors: { 染: '#ABCDEF' } }, {});
     eq('★ 用户在面板点名的颜色优先', e['染'], '#ABCDEF');
+}
+
+/* ★ 老默认 rowGap=0.8 的迁移（我当年只改了默认值，对老配置没生效 —— 用户反馈「间距有点大」） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 有 migrateRowGap()，且只在 0.8 时改成 0.5',
+        /function migrateRowGap\(\)/.test(src) && /if \(Number\(c\.rowGap\) === 0\.8\)/.test(src));
+    ok('★ start() 里调用了它', src.indexOf('migrateRowGap();') >= 0);
+    ok('★ 只跑一次（stamp）', /rowGapStamp === 'v2'/.test(src));
+    eq('★ 默认值确实是 0.5', DEFAULT_CONFIG.rowGap, 0.5);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

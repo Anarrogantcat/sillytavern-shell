@@ -994,6 +994,28 @@ function chatWideColors() {
 }
 
 /** 一次性迁移：清掉 0.8.13~0.8.19 期间我自动写进 charColors 的错误颜色 */
+/**
+ * 一次性迁移：把**老默认值** rowGap=0.8 改成 0.5。
+ * 为什么：我当年"修间距"时只改了**默认值**，而用户配置里已经存着 0.8，
+ * 所以那个修复从来没对用户生效（用户反馈「间距有点大」）。这里做一次迁移。
+ * 用户在面板里改过的话，之后的版本不会再动它（stamp 只跑一次）。
+ */
+function migrateRowGap() {
+    try {
+        const c = cfg();
+        if (c.rowGapStamp === 'v2') return;
+        if (Number(c.rowGap) === 0.8) {
+            c.rowGap = 0.5;
+            c.rowGapStamp = 'v2';
+            saveSettingsDebounced();
+            console.info('[' + EXT_ID + '] 行间距已从老默认 0.8 迁移为 0.5');
+        } else {
+            c.rowGapStamp = 'v2';
+            saveSettingsDebounced();
+        }
+    } catch (e) { console.warn('[' + EXT_ID + '] 行间距迁移失败（不影响渲染）', e); }
+}
+
 function migrateColorStamp() {
     try {
         const c = cfg();
@@ -2240,6 +2262,7 @@ function buildSettingsPanel() {
 
 function start() {
     try { migrateColorStamp(); } catch (_) { }
+    try { migrateRowGap(); } catch (_) { }
     /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
        这个坑踩过两次：
          · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行
