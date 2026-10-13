@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.7.8';
+export const VERSION = '0.8.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -249,7 +249,11 @@ export const PANEL_GROUPS = [
  * 夹具就能断言「每个 key 都真的存在于 DEFAULT_CONFIG」—— 挡住拼错 key 这类静默失效。
  */
 export const PANEL_FIELDS = [
-    { key: 'enabled', group: '基本', kind: 'bool', label: '启用分镜渲染', note: '关掉后一个字节都不改消息' },
+    /* ★ 总开关：`group: null` = 不归任何一组，**常驻面板顶部**（全插件的开关不该被折叠藏起来）。
+       它不是「只停渲染」：关掉后提示词注入、思考块兜底、双击复制、Alt 跳场景一并停用，
+       并把**已经渲染过的楼层恢复成 ST 原生渲染**。 */
+    { key: 'enabled', group: null, kind: 'bool', label: '总开关（整个插件）',
+      note: '关掉后完全停用：不渲染 / 不注入提示词 / 不介入思考块 / 不接管双击与跳场景；已渲染的楼层会恢复原样' },
     { key: 'transformUserMessages', group: '基本', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
     { key: 'indentOnlyWrapped', group: '排版', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },
     { key: 'markErrors', group: '基本', kind: 'bool', label: '格式错的行标红', note: '关掉 = 不显示（不推荐，会静默吞掉格式错误）' },

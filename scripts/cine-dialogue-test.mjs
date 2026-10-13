@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.8');
+eq('version 与 manifest 一致', VERSION, '0.8.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1094,7 +1094,8 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★ 默认展开的是「基本」', PANEL_GROUPS[0].name, '基本');
 
     const ung = PANEL_FIELDS.filter(f => !f.group).map(f => f.key);
-    ok('★★ 每个字段都必须标组（以后加字段忘了标 → 这里直接报错）', ung.length === 0, ung);
+    /* ★ 总开关（enabled）有意不分组 —— 它常驻面板顶部，不该被折叠藏起来。其余必须标组。 */
+    eq('★★ 除了总开关，每个字段都必须标组（以后加字段忘了标 → 这里直接报错）', ung.join(','), 'enabled');
 
     const unknown = PANEL_FIELDS.filter(f => f.group && !PANEL_GROUPS.some(g => g.name === f.group)).map(f => f.key);
     ok('★★ 每个组名都必须登记在 PANEL_GROUPS', unknown.length === 0, unknown);
@@ -1114,6 +1115,65 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         /Object\.prototype\.hasOwnProperty\.call\(saved, g\.name\)/.test(idxSrc));
     ok('★ CSS 有 #cd-panel .cd-grp 规则',
         cssText.indexOf('#cd-panel .cd-grp') >= 0 && cssText.indexOf('#cd-panel .cd-grp-body') >= 0);
+}
+
+/* ============================================================================
+   ★★ 总开关：关掉后**整个插件**停用（不是只停渲染）
+   旧版 enabled 只停渲染 —— 提示词注入、思考块兜底、双击复制、Alt 跳场景都还在跑。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    eq('★ enabled 提升为总开关（group: null → 常驻顶部）',
+        PANEL_FIELDS.find(f => f.key === 'enabled').group, null);
+    eq('★★ 只有总开关不分组（其余字段都必须归组）',
+        PANEL_FIELDS.filter(f => !f.group).map(f => f.key).join(','), 'enabled');
+    ok('★ 标签写明它是整个插件的开关', /总开关（整个插件）/.test(fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8')));
+
+    ok('★ 关掉时把已渲染楼层恢复原样（restoreAllMessages + updateMessageBlock(rerenderMessage)）',
+        /function restoreAllMessages/.test(src)
+        && /updateMessageBlock\(id, chat\[id\], \{ rerenderMessage: true \}\)/.test(src));
+    ok('★★ 用 getContext() 拿函数，**不新增 import**（避免又一次 ESM 链接失败）',
+        /typeof ctx\.updateMessageBlock !== 'function'/.test(src)
+        && !/import\s*\{[^{}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/\.\.\/script\.js'[\s\S]{0,300}updateMessageBlock/.test(src));
+
+    ok('★ 提示词注入受总开关约束', /!!c\.injectPrompt && !!c\.enabled/.test(src));
+    ok('★ Alt 跳场景受总开关约束', /if \(!effectiveConfig\(\)\.enabled\) return;\s*\/\/ ★ 总开关关掉 → 不接管 Alt/.test(src));
+    ok('★ 双击复制受总开关约束', /!effectiveConfig\(\)\.enabled \|\| !effectiveConfig\(\)\.copyOnClick/.test(src));
+    ok('★ run() 顶部短路（连 decorate 都不跑）',
+        /function run\(all\) \{[\s\S]{0,160}if \(!effectiveConfig\(\)\.enabled\) return;/.test(src));
+    ok('★ 改总开关会触发额外动作（清注入 + 恢复楼层）',
+        /if \(key === 'enabled'\) \{ applyMasterSwitch\(\); return; \}/.test(src));
+
+    const mi = src.indexOf('masterHTML(c),');
+    const ri = src.indexOf('\n        rows,');
+    ok('★ 总开关在面板里排在配置分组之前（常驻顶部）', mi > 0 && ri > 0 && mi < ri, { mi, ri });
+    ok('★ CSS 有 #cd-panel .cd-master', cssText.indexOf('#cd-panel .cd-master') >= 0);
+}
+
+/* ============================================================================
+   ★ 手写段折叠化：配色 / 层样式 / 自定义层 / 交互 / 这张卡·数据 / 专属预设 / 格式错误
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    ok('★ 有折叠化函数并真的调用了',
+        /function makeSectionsCollapsible/.test(src) && /const collapsed = makeSectionsCollapsible\(\)/.test(src));
+    ok('★★ 必须在 rebuildDynamic **之后**调用（那时 #cd-colors / #cd-layers 才填好）',
+        src.indexOf('rebuildDynamic();') < src.indexOf('makeSectionsCollapsible()'));
+    ok('★ 用 :scope > .cd-sec-h 只挑直接标题（不会误抓嵌套段的标题）',
+        /querySelector\(':scope > \.cd-sec-h'\)/.test(src));
+    ok('★ 把标题之后的兄弟节点搬进折叠体（id 不变 → rebuildDynamic 照常找得到）',
+        /head\.nextSibling[\s\S]{0,220}body\.appendChild/.test(src));
+    ok('★ 折叠状态持久化（localStorage cd-sec-open）', /cd-sec-open/.test(src));
+    ok('★ 幂等：已折叠过的段不会重复包（data-cd-collapsed）', /data-cd-collapsed/.test(src));
+    ok('★ 默认全部收起（body 初始 display:none）', /body\.style\.display = open \? '' : 'none'/.test(src));
+    ok('★ CSS 有 .cd-sec-h.cd-grp-toggle 与 data-cd-collapsed 规则',
+        cssText.indexOf('.cd-sec-h.cd-grp-toggle') >= 0 && cssText.indexOf('data-cd-collapsed') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

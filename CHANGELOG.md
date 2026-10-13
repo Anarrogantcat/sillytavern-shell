@@ -1,5 +1,25 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.8.0：总开关 + 面板段全部可折叠
+
+### ① 总开关
+原来的「启用分镜渲染」**不是总开关** —— 关掉只停渲染，提示词注入 / 思考块兜底 / 双击复制 / Alt 跳场景照跑。
+现在 `enabled` 提升为真总开关：`group: null` ⇒ **常驻面板顶部**；关掉后四项全停，
+并**把已渲染楼层恢复原样**（`getContext().updateMessageBlock(..., {rerenderMessage:true})` 让 ST 重渲染）。
+★ 用 `getContext()` 拿函数，**不新增 import**（避免又一次 ESM 链接失败）。
+
+### ② 面板 7 个手写段也折叠
+配色 / 层样式 / 自定义层 / 交互 / 这张卡·数据 / 专属预设 / 格式错误。
+用 **DOM 后处理**（`makeSectionsCollapsible()`）把「标题之后的兄弟节点」搬进折叠体 ——
+不动原 HTML、id 不变、`rebuildDynamic()` 照常工作；`:scope >` 精确取标题、幂等、默认收起、状态持久化。
+
+### 夹具：**369 → 389 条**
+- 总开关：只有它不分组 · 三处 guard · 恢复楼层 · 不新增 import
+- 段折叠：必须在 `rebuildDynamic()` 之后 · 精确取标题 · 幂等 · 默认收起
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **389/389** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
 ## 未发版（2026-10-13）— cine-dialogue 0.7.8：面板字段分组折叠（21 → 7 组）
 
 ### 问题

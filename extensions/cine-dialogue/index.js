@@ -461,6 +461,8 @@ function alignPlains(mesEl) {
     });
 }
 function run(all) {
+    /* 总开关关掉 → 整条路径短路（连 decorate 都不跑，避免动到 DOM） */
+    if (!effectiveConfig().enabled) return;
     let list = Array.from(document.querySelectorAll('#chat .mes'));
 
     if (all) {
@@ -664,7 +666,7 @@ const PROMPT_KEY = 'CINE_DIALOGUE_FORMAT';
 function applyPromptInjection() {
     try {
         const c = cfg();
-        const use = !!c.injectPrompt;
+        const use = !!c.injectPrompt && !!c.enabled;      // ★ 总开关关掉 → 注入清空
         const pos = Number(c.promptPosition) === 1
             ? extension_prompt_types.IN_CHAT
             : extension_prompt_types.IN_PROMPT;
@@ -1017,7 +1019,7 @@ function bindInteractions() {
         sendOption(btn.getAttribute('data-cd-text'), btn);
     }, true);
     document.addEventListener('dblclick', (ev) => {
-        if (!effectiveConfig().copyOnClick) return;
+        if (!effectiveConfig().enabled || !effectiveConfig().copyOnClick) return;
         const body = ev.target && ev.target.closest ? ev.target.closest('.custom-cd-body') : null;
         if (!body) return;
         const row = body.closest('.custom-cd-row');
@@ -1027,6 +1029,7 @@ function bindInteractions() {
     });
 
     document.addEventListener('keydown', (ev) => {
+        if (!effectiveConfig().enabled) return;      // ★ 总开关关掉 → 不接管 Alt+↑/↓
         if (!ev.altKey || ev.ctrlKey || ev.metaKey) return;
         const tag = (ev.target && ev.target.tagName) || '';
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (ev.target && ev.target.isContentEditable)) return;
@@ -1327,6 +1330,8 @@ function wirePanel() {
             if (key === 'injectPrompt' || key === 'promptDepth' || key === 'promptPosition') {
                 applyPromptInjection();
             }
+            /* ★ 总开关：关掉要恢复已渲染的楼层、并清掉提示词注入（不是只停渲染） */
+            if (key === 'enabled') { applyMasterSwitch(); return; }
             schedule(true);                       // 改完立即全量重渲染
         });
     });
@@ -1795,7 +1800,10 @@ function infoSecHTML() {
 /** 面板分组：按 PANEL_GROUPS 把字段折成若干块（默认只展开「基本」） */
 function groupsHTML(c) {
     const by = {};
-    for (const f of PANEL_FIELDS) { const g = f.group || '其它'; (by[g] = by[g] || []).push(fieldHTML(f, c)); }
+    for (const f of PANEL_FIELDS) {
+        if (!f.group) continue;      // group:null = 总开关，常驻顶部、不折叠
+        (by[f.group] = by[f.group] || []).push(fieldHTML(f, c));
+    }
     return PANEL_GROUPS.map(g => {
         const rows = by[g.name] || [];
         if (!rows.length) return '';
@@ -1806,6 +1814,100 @@ function groupsHTML(c) {
             + rows.join('') + '</div></div>';
     }).join('');
 }
+/** 总开关那一行：取 group 为空的字段（**常驻面板顶部**，不折叠） */
+function masterHTML(c) {
+    const f = PANEL_FIELDS.find(x => !x.group);
+    if (!f) return '';
+    return '<div class="cd-master">' + fieldHTML(f, c) + '</div>';
+}
+
+/**
+ * 让 ST 重新渲染每一楼 —— 用来把**已经渲染过的楼层恢复原样**。
+ * 关了总开关之后我们的钩子/降级路径都不再接管 ⇒ ST 按原文渲染 ⇒ 恢复 ✓
+ * ★ 用 getContext() 拿函数，**不新增 import** —— 避免又一次 ESM 链接失败（0.1.0 的教训）。
+ */
+function restoreAllMessages() {
+    try {
+        const ctx = getContext();
+        if (!ctx || typeof ctx.updateMessageBlock !== 'function') return 0;
+        const chat = chatArr();
+        let n = 0;
+        document.querySelectorAll('#chat .mes').forEach(el => {
+            const id = Number(el.getAttribute('mesid'));
+            if (!Number.isFinite(id) || id < 0 || !chat[id]) return;
+            try { ctx.updateMessageBlock(id, chat[id], { rerenderMessage: true }); n++; } catch (_) { /* 单楼失败不影响其它楼 */ }
+        });
+        return n;
+    } catch (e) { console.warn('[' + EXT_ID + '] 恢复楼层失败（不影响其它功能）', e); return 0; }
+}
+/** 总开关的动作：启用 → 重渲染；停用 → 清注入 + 把已渲染楼层恢复原样 */
+function applyMasterSwitch() {
+    const on = !!cfg().enabled;
+    applyPromptInjection();                 // 关掉时这里会把注入清空（见 use 判断）
+    if (on) { schedule(true); notify('分镜对话已启用', 'success'); return; }
+    const n = restoreAllMessages();
+    notify(n ? ('分镜对话已停用，' + n + ' 个楼层已恢复原样') : '分镜对话已停用（当前没有可恢复的楼层）', 'info');
+}
+
+/*
+ * 把面板里**手写的** `.cd-sec` 段统一变成可折叠（配色 / 层样式 / 自定义层 / 交互 / 这张卡·数据 /
+ * 专属预设 / 格式错误 …）。
+ *
+ * ★ 为什么用 DOM 后处理而不是重写那堆 HTML：那些段的 innerHTML 是几十行字符串拼接，
+ *   重写风险大、还容易漏；直接把「标题之后的兄弟节点」搬进一个 body 容器就行，
+ *   id（#cd-colors / #cd-layers …）都不变，rebuildDynamic 照常找得到。
+ */
+function makeSectionsCollapsible() {
+    const panel = document.getElementById('cd-panel');
+    if (!panel) return 0;
+    let n = 0;
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('cd-sec-open') || '{}') || {}; } catch (_) { saved = {}; }
+    for (const node of Array.from(panel.children)) {
+        if (node.nodeType !== 1 || !node.classList.contains('cd-sec')) continue;
+        if (node.getAttribute('data-cd-collapsed') === '1') continue;
+        const head = node.querySelector(':scope > .cd-sec-h');
+        if (!head) continue;
+        const title = String(head.textContent || '').trim();
+        const body = document.createElement('div');
+        body.className = 'cd-grp-body';
+        /* 把标题之后的兄弟节点全部搬进 body */
+        let cur = head.nextSibling;
+        while (cur) { const next = cur.nextSibling; body.appendChild(cur); cur = next; }
+        const open = saved[title] === true;
+        body.style.display = open ? '' : 'none';
+        head.classList.add('cd-grp-toggle');
+        head.setAttribute('role', 'button');
+        head.setAttribute('tabindex', '0');
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.setAttribute('data-cd-sec-toggle', title);
+        head.textContent = (open ? '▾ ' : '▸ ') + title;
+        node.appendChild(body);
+        node.setAttribute('data-cd-collapsed', '1');
+        n++;
+    }
+    return n;
+}
+
+function wireSectionToggles(panel) {
+    if (!panel) return;
+    panel.addEventListener('click', (ev) => {
+        const head = ev.target && ev.target.closest ? ev.target.closest('[data-cd-sec-toggle]') : null;
+        if (!head) return;
+        const title = head.getAttribute('data-cd-sec-toggle');
+        const body = head.parentElement ? head.parentElement.querySelector('.cd-grp-body') : null;
+        if (!body) return;
+        const open = body.style.display === 'none';
+        body.style.display = open ? '' : 'none';
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.textContent = (open ? '▾ ' : '▸ ') + title;
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem('cd-sec-open') || '{}') || {}; } catch (_) { saved = {}; }
+        saved[title] = open;
+        try { localStorage.setItem('cd-sec-open', JSON.stringify(saved)); } catch (_) { /* 存不了只影响本次 */ }
+    });
+}
+
 function buildSettingsPanel() {
     if (document.getElementById('cd-panel')) return;                 // 幂等
     const host = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
@@ -1828,6 +1930,8 @@ function buildSettingsPanel() {
         '      <div class="cd-hint">把「<code>名字·层 内容</code>」渲染成分镜式对话：'
         + '<b>颜色 = 角色</b>、<b>样式 = 层</b>、标签永不出现。</div>',
         howtoSecHTML(),
+
+        masterHTML(c),
 
         rows,
         '      <div class="cd-btn-row">',
@@ -1895,12 +1999,16 @@ function buildSettingsPanel() {
         '</div>',
     ].join('\n'));
 
+    const p = document.getElementById('cd-panel');
     wirePanel();
     rebuildDynamic();
+    /* ★ 手写段折叠化：必须在 rebuildDynamic 之后（那时 #cd-colors / #cd-layers 等都已填好） */
+    wireSectionToggles(p);
+    const collapsed = makeSectionsCollapsible();
+    if (collapsed) console.log('[' + EXT_ID + '] 已把 ' + collapsed + ' 个面板段折叠化');
     applyInfoOpen();
 
     /* 让面板里的原生控件跟着主题走（否则某些主题下 input 是白底 + 浅色文字 = 看不见） */
-    const p = document.getElementById('cd-panel');
     if (p && isLightTheme()) p.classList.add('cd-light');
 
     console.log('[' + EXT_ID + '] 设置抽屉已挂到 #' + host.id);

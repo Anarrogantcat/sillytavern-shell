@@ -445,3 +445,16 @@
 #cd-panel .cd-grp-toggle[aria-expanded="true"] { opacity: .95; }
 
 #cd-panel .cd-grp-body { padding: 2px 0 4px; }
+
+/* 总开关：常驻面板顶部，比普通字段显眼一点 */
+#cd-panel .cd-master {
+    margin: 8px 0 4px;
+    padding: 7px 9px;
+    border: 1px solid rgba(128, 140, 160, .3);
+    border-radius: 8px;
+    background: rgba(128, 140, 160, .12);
+}
+
+/* 手写段折叠化之后：标题就是折叠开关（.cd-sec-h 拿到 .cd-grp-toggle 的样式） */
+#cd-panel .cd-sec-h.cd-grp-toggle { margin-bottom: 2px; }
+#cd-panel .cd-sec[data-cd-collapsed="1"] { margin: 6px 0 4px; }
