@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.30';
+export const VERSION = '0.8.31';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -85,11 +85,14 @@ export const DEFAULT_CONFIG = {
      */
     /**
      * ★ 未标注的**第三人称**段落 ⇒ 当旁白渲染（用户 2026-10-14「旁白问题」）。
-     * 判据**保守**：不含「我/咱/俺」的散文段落才算旁白 ✓
+     * ★★ 已确认**判据不可靠**（用户 2026-10-14 两次纠正）：中文常省略主语 ——
      * —— 带「我」的句子**不猜**（那是第一人称，模型该写成 `名字·层`）✗
-     * 旁白本来就**没有「我」**（这是我们 FORMAT_SPEC 里写死的定义 ✓），所以这条判据是安全的 ✓
+     *    「手指还在发抖。」「视线落在她身上。」**都是第一人称**，却一个「我」字都没有 ✗
+     *    ⇒ 拿「我」当判据**根本分不出**"第三人称描写"和"省略主语的第一人称" ✗
+     * ⇒ 所以**默认关闭**：插件不该猜（用户明确要求）✗
+     *    想用时可在面板打开，但要接受它会把省略主语的第一人称也当旁白 ✗
      */
-    narrateUnlabeled: true,
+    narrateUnlabeled: false,
     roleBlueNames: '',
     rolePurpleNames: '',
     roleBlueColor: '#3B82F6',
@@ -306,7 +309,7 @@ export const PANEL_FIELDS = [
     { key: 'enabled', group: null, kind: 'bool', label: '总开关（整个插件）',
       note: '关掉后完全停用：不渲染 / 不注入提示词 / 不介入思考块 / 不接管双击与跳场景；已渲染的楼层会恢复原样' },
     { key: 'narrateUnlabeled', group: '基本', kind: 'bool', label: '未标注的第三人称段落当旁白',
-      note: '模型漏写「旁白·」时兜底；带「我」的句子不动（不猜）' },
+      note: '⚠️ 默认关：中文常省略主语，插件**分不出**「第三人称描写」和「省略主语的第一人称」⇒ 会把第一人称也当旁白 ✗' },
     { key: 'roleBlueNames', group: '基本', kind: 'text', label: '蓝名单（用户/男性角色）',
       note: '逗号分隔；你的用户角色会自动算在内。例：染, 老王' },
     { key: 'rolePurpleNames', group: '基本', kind: 'text', label: '紫名单（女性/扶她角色）',

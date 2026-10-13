@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.30');
+eq('version 与 manifest 一致', VERSION, '0.8.31');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1743,19 +1743,19 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const L2 = allLayers(DEFAULT_CONFIG);
     const p = (x) => narratePlain(x, L2);
     eq('★★ 第三人称段落 ⇒ 加「旁白·」', p('门锁发出轻微的转动声。'), '旁白·门锁发出轻微的转动声。');
-    eq('★★ 带「我」的句子 ⇒ 不动（不猜）', p('我隔着房门感觉到了气息。'), '我隔着房门感觉到了气息。');
+    eq('★ 带「我」的句子不动', p('我隔着房门感觉到了气息。'), '我隔着房门感觉到了气息。');
     eq('★ 已经是旁白行 ⇒ 不动', p('旁白·门锁响了一声。'), '旁白·门锁响了一声。');
     eq('★ 已经是分镜行 ⇒ 不动', p('久美·动作 我推开门。'), '久美·动作 我推开门。');
     eq('★ 结构块 / markdown ⇒ 不动', p('<div class="x">内容</div>'), '<div class="x">内容</div>');
     eq('★ 表格式行（含 |）⇒ 不动', p('| 甲 | 乙 | 内容 |'), '| 甲 | 乙 | 内容 |');
     eq('★ 引号开头的对白 ⇒ 不动', p('「你回来了。」她说。'), '「你回来了。」她说。');
     eq('★ 太短 ⇒ 不动', p('门响了。'), '门响了。');
-    ok('★ 开关默认开', DEFAULT_CONFIG.narrateUnlabeled === true);
+    ok('★★ 开关**默认关**（判据不可靠 ⇒ 插件不猜 ✗）', DEFAULT_CONFIG.narrateUnlabeled === false);
     /* 整楼：第三人称段落要变成 cd-L-narr 行 */
-    const html = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, DEFAULT_CONFIG).html);
-    ok('★★ 整楼渲染：那段被当成旁白行（cd-L-narr）', html.indexOf('cd-L-narr') >= 0);
-    const html0 = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, { ...DEFAULT_CONFIG, narrateUnlabeled: false }).html);
-    ok('★ 关掉开关就不当旁白（原行为）', html0.indexOf('cd-L-narr') < 0);
+    const html = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, { ...DEFAULT_CONFIG, narrateUnlabeled: true }).html);
+    ok('★★ 手动打开时才当旁白（cd-L-narr）', html.indexOf('cd-L-narr') >= 0);
+    const html0 = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, DEFAULT_CONFIG).html);
+    ok('★★ 默认（不打开）时**不会**把段落判成旁白 ✗', html0.indexOf('cd-L-narr') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
