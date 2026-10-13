@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.31';
+export const VERSION = '0.8.32';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1389,9 +1389,39 @@ export const PRESET_UPSTREAM = {
 };
 
 /** 配方参数（差分清单就写在这里，改配方只改这一处） */
+/**
+ * 篇幅与节奏（用户 2026-10-14：「这个应该属于预设」）
+ * ⇒ 它作为**预设里的一条提示条目**存在，由生成器写入；
+ *   插件只负责把它放进预设，不参与渲染判断 ✓
+ *   条目名带「可改」⇒ 你在酒馆里改了**不会被覆盖** ✓
+ * ★ 不用星号（免得模型把 markdown 抄进正文 ✗）
+ */
+export const LENGTH_SPEC = [
+    '【篇幅与节奏 · 一次生成】',
+    '',
+    '总目标：控制在 6000 token 以内 ≈ 10000 中文字（含「名字·层」标签开销约 8%），可用正文约 9200 字。',
+    '',
+    '一组 = 5 行，约 920 字：',
+    '  ① 名字·动作   ~300 字（写过程、写细节，不是概括）',
+    '  ② 名字·感官   ~300 字（触感 / 温度 / 气味 / 声音）',
+    '  ③ 名字·台词   ~10 字',
+    '  ④ 名字·台词   ~10 字',
+    '  ⑤ 名字·心理   ~300 字（犹豫 / 欲望 / 算计）',
+    '',
+    '一次生成 10 组 = 50 行 ≈ 9200 字：',
+    '  · 其中 7 组是重场（5 行满配）',
+    '  · 3 组是过渡（2–3 行，只写一两句台词 + 一条短心理）',
+    '  · 要有起伏，不要每组都写满',
+    '',
+    '留约 300 token 余量给收尾句。',
+    '如果你发现自己开始漏写「名字·层」标签，就在当前这一组写完时收住，不要再往下写 ——',
+    '宁可少写一组，也不要输出没有标签的散文（散文不会被识别成行，排版会崩）。',
+].join('\n');
+
 export const PRESET_RECIPE = {
     promptName: '【分镜】正文行格式',
     noteName: '📋分镜派生说明（勿启用）',
+    lengthName: '【分镜】篇幅与节奏（可改）',
     /* ★ 适配（用户要求「专属预设对插件进行适配」）：
        格式说明插到 prompt_order 的**最末尾** —— 越贴近输出，模型遵循率越高 ✓
        （原来插在第 143 位，被前后一堆条目夹着，权重被稀释 ✗）
@@ -1519,6 +1549,29 @@ export function applyPresetRecipe(srcObj, opts = {}) {
             changes.push('把「' + R.promptName + '」挪到所有启用项之后（最贴近输出）');
         }
     }
+
+    /* ④ 篇幅与节奏（用户：「这个应该属于预设」）—— **只创建一次，绝不覆盖**：
+       你在酒馆里改了组数/字数，下次跑生成器不会把你的改动冲掉 ✓ */
+    try {
+        const lp = prompts.find(x => String(x.name || '') === R.lengthName);
+        if (!lp) {
+            const nl = {
+                identifier: 'cine-dialogue-length',
+                name: R.lengthName,
+                system_prompt: false,
+                role: 'system',
+                content: opts.lengthSpec || LENGTH_SPEC,
+                injection_position: 0,
+                injection_depth: 4,
+                injection_order: 100,
+            };
+            prompts.push(nl);
+            order.push({ identifier: nl.identifier, enabled: true });
+            changes.push('新增提示条目「' + R.lengthName + '」并启用（放在 order 最末尾）');
+        } else {
+            changes.push('提示条目「' + R.lengthName + '」已存在（**不覆盖** —— 留给你在酒馆里改 ✓）');
+        }
+    } catch (e) { changes.push('篇幅条目处理失败：' + e.message); }
 
     // ②③ 两处开关
     for (const [name, want] of R.toggles) {

@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.31');
+eq('version 与 manifest 一致', VERSION, '0.8.32');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1732,8 +1732,9 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const od = r.preset.prompt_order[0].order;
     /* ★ 注意：派生说明（停用）会被追加在它后面 ⇒ 判据看「最后一条**启用**的」 */
     const lastOn = od.filter((x) => x.enabled).slice(-1)[0];
-    eq('★★ 我们是最后一条**启用**的（最贴近输出）', String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name), PRESET_RECIPE.promptName);
-    eq('★ order 里共 4 条（原有 2 + 格式说明 + 停用的派生说明）', od.length, 4);
+    /* ★ 0.8.32 起：最后一条启用的是「篇幅与节奏」（它排在格式说明之后 ⇒ 最贴近输出 ✓） */
+    eq('★★ 最后一条启用的是「篇幅与节奏」', String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name), PRESET_RECIPE.lengthName);
+    eq('★ order 里共 5 条（原有 2 + 格式说明 + 篇幅 + 停用的派生说明）', od.length, 5);
     ok('★ 原有的两条仍启用（没被挤掉）', od[0].enabled === true && od[1].enabled === true);
 }
 
@@ -1756,6 +1757,31 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★ 手动打开时才当旁白（cd-L-narr）', html.indexOf('cd-L-narr') >= 0);
     const html0 = String(renderMessageHTML('由于隔墙传来的动静，房间里还残留着气息。' + N3 + '久美·动作 我推开门。', {}, DEFAULT_CONFIG).html);
     ok('★★ 默认（不打开）时**不会**把段落判成旁白 ✗', html0.indexOf('cd-L-narr') < 0);
+}
+
+/* ★★ 篇幅与节奏属于**预设**（用户 2026-10-14）；只创建一次、不覆盖用户改动 */
+{
+    const base = {
+        prompts: [{ identifier: 'a', name: '甲', content: 'a' }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'a', enabled: true }] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
+    const lp = r.preset.prompts.find((p) => String(p.name || '') === PRESET_RECIPE.lengthName);
+    ok('★★ 预设里新增了「篇幅与节奏」条目', !!lp);
+    ok('★★ 内容是 LENGTH_SPEC（含 10 组 / 每行 300 字）', String(lp.content).indexOf('一次生成 10 组') >= 0 && String(lp.content).indexOf('~300 字') >= 0);
+    ok('★ 条目不用星号（免得模型抄进正文）', String(lp.content).indexOf('*') < 0);
+    const od = r.preset.prompt_order[0].order;
+    /* 停用的派生说明会排在它后面 ⇒ 判据看「最后一条启用」✓ */
+    let lastOnIdx = -1;
+    for (let k = od.length - 1; k >= 0; k--) { if (od[k].enabled) { lastOnIdx = k; break; } }
+    eq('★★ 篇幅条目是最后一条启用的（最贴近输出）', String(od[lastOnIdx].identifier), 'cine-dialogue-length');
+    /* 用户改过 ⇒ 第二次不许覆盖 */
+    lp.content = '我自己改过的内容：每次 6 组';
+    const r2 = applyPresetRecipe(r.preset, { srcName: 't', srcHash: 'h' });
+    const lp2 = r2.preset.prompts.find((p) => String(p.name || '') === PRESET_RECIPE.lengthName);
+    eq('★★ 不覆盖用户改动', lp2.content, '我自己改过的内容：每次 6 组');
+    ok('★ 报告里写明不覆盖', r2.changes.some((x) => x.indexOf('不覆盖') >= 0));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
