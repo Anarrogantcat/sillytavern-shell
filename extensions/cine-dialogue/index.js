@@ -237,7 +237,6 @@ function formatHook(mes, ctx) {
         if (!res || !res.html) return mes;
 
         if (mid >= 0) colorMap[mid] = res.colors;                 // 本楼缓存
-        pinColors(res.colors);                                    // ★ 跨楼稳定：分到就钉死 ✓
         hookStats.formatted++;
         hookStats.lastMid = mid;
         return res.html;
@@ -323,7 +322,6 @@ function transformMessage(mesEl, mesId) {
 
     // 颜色表回写（同角色同色，跨消息保持）
     colorMap[mesId] = res.colors;
-        pinColors(res.colors);                                    // ★ 跨楼稳定：分到就钉死 ✓
 
     // 1) 摘掉我们的旧输出 + 收集要保留的节点
     const keep = [];
@@ -957,30 +955,6 @@ function chatArr() {
 }
 
 /** 当前角色卡的身份键（文件名），用于逐卡配置 */
-/**
- * 把「刚分配到的颜色」**钉死**进 settings.charColors —— 让**同一个角色跨楼永远同色**。
- *
- * 为什么必须做（真机踩到）：原来颜色是**按每楼的出现顺序**从调色板拿的，缓存又以
- * **消息 id** 为键 ⇒ 同一个角色在 A 楼是青色、在 B 楼可能是黄色 ✗✗
- * 这与我们自己的规格「**颜色 = 角色**」直接矛盾 ✓（用户：「这就是咱们的问题」——对的）。
- *
- * 做法：渲染完把**没被用户点名过**的名字写进 charColors ⇒ 首次分配到什么色，
- * 之后**所有楼都用它** ✓ 而且用户随时能在面板里改（改了就永久生效 ✓）。
- */
-function pinColors(colors) {
-    try {
-        if (!colors || typeof colors !== 'object') return;
-        const c = cfg();
-        c.charColors = { ...(c.charColors || {}) };
-        let changed = false;
-        for (const n of Object.keys(colors)) {
-            if (!n || c.charColors[n]) continue;      // 已有的（含用户点名的）一律不动 ✓
-            c.charColors[n] = colors[n];
-            changed = true;
-        }
-        if (changed) saveSettingsDebounced();
-    } catch (e) { console.warn('[' + EXT_ID + '] 颜色钉死失败（不影响渲染）', e); }
-}
 
 function cardKey() {
     try {

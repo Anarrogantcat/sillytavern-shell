@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.18');
+eq('version 与 manifest 一致', VERSION, '0.8.19');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1585,24 +1585,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 真角色名仍能补上（向后找也对）', rep[1].p.name === '林野');
 }
 
-/* ============================================================================
-   ★★ 颜色跨楼稳定（0.8.13）
-   真机踩到：颜色按「每楼出现顺序」分配、缓存又以**消息 id** 为键
-   ⇒ 同一个角色在 A 楼青色、在 B 楼黄色 ✗ 与规格「**颜色 = 角色**」直接矛盾。
-   修法：渲染完把**没被用户点名过**的名字钉进 settings.charColors ⇒ 首次分到什么色，
-   之后所有楼都用它 ✓（用户随时能在面板改，改了就永久生效 ✓）。
-   ============================================================================ */
-{
-    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
-    ok('★★ 有 pinColors()，且只在缺色时写入（用户点过的一律不动）',
-        /function pinColors\(colors\)/.test(src) && /if \(!n \|\| c\.charColors\[n\]\) continue;/.test(src));
-    ok('★ 写入后走 saveSettingsDebounced（会持久化）',
-        /if \(changed\) saveSettingsDebounced\(\);/.test(src));
-    eq('★★ 钩子路径与 DOM 路径都接上了（两条渲染通路都要稳定）',
-        (src.match(/pinColors\(res\.colors\);/g) || []).length, 2);
-    ok('★ 失败不致命（try/catch，不影响渲染）',
-        /颜色钉死失败（不影响渲染）/.test(src));
-}
+
 
 /* ============================================================================
    ★★ 颜色稳定性（0.8.16 定稿判据）
