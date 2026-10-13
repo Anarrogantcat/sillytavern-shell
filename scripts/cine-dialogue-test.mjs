@@ -10,7 +10,7 @@ import {
     MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
     allLayers, layerVars, resolveColors, validateLayerName, rowDimmed,
     highlightPlan, sceneTitle, messageTitle, rowRegexFor,
-    serializeConfig, parseConfig, stClassPrefix,
+    serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats,
@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.10');
+eq('version 与 manifest 一致', VERSION, '0.6.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -231,8 +231,8 @@ ok('每个面板字段的 key 都真实存在于 DEFAULT_CONFIG（挡拼错 key�
     PANEL_FIELDS.filter(f => !Object.prototype.hasOwnProperty.call(DEFAULT_CONFIG, f.key)).map(f => f.key));
 eq('面板字段 key 不重复', new Set(PANEL_FIELDS.map(f => f.key)).size, PANEL_FIELDS.length);
 ok('每个字段都有标签 + 已知类型',
-    PANEL_FIELDS.every(f => !!f.label && ['bool', 'select', 'number'].indexOf(f.kind) >= 0),
-    PANEL_FIELDS.filter(f => !f.label || ['bool', 'select', 'number'].indexOf(f.kind) < 0).map(f => f.key));
+    PANEL_FIELDS.every(f => !!f.label && ['bool', 'select', 'number', 'text'].indexOf(f.kind) >= 0),
+    PANEL_FIELDS.filter(f => !f.label || ['bool', 'select', 'number', 'text'].indexOf(f.kind) < 0).map(f => f.key));
 ok('select 字段都带非空 options',
     PANEL_FIELDS.filter(f => f.kind === 'select').every(f => Array.isArray(f.options) && f.options.length > 0));
 ok('number 字段都带 min/max/step',
@@ -541,6 +541,45 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 思维链结束标记原样保留', textSeg.lines.indexOf('</konatan_planning~>') >= 0);
     ok('★ text 段拼回去后仍是原来的行', textSeg.lines.join('\n').indexOf('</konatan_planning~>') >= 0);
     ok('★ 分镜行没有被混进 text 段', textSeg.lines.every(l => l.indexOf('·动作') < 0 && l.indexOf('·台词') < 0));
+}
+
+/* ============================================================================
+   思考块兜底（预设覆盖不到时由插件介入）
+   预设那条「美化最近 N 层思维链」带 maxDepth；更早的楼思考原本原样裸露。
+   本功能让插件在预设够不到的地方补上 —— 核心隐藏靠 `<details>` **原生折叠**，不依赖 CSS。
+   ============================================================================ */
+{
+    const thinkSample = '{思考内容}\n我在想事情。\n</konatan_planning~>\n染·动作 我按住她。\n沙良·台词 「别。」';
+
+    ok('hasThinkingBlock 认得出思考块', hasThinkingBlock(thinkSample, DEFAULT_CONFIG));
+    ok('hasThinkingBlock 不认普通散文', !hasThinkingBlock('就是一段散文。', DEFAULT_CONFIG));
+
+    const wrapped = wrapThinkingBlock(thinkSample, DEFAULT_CONFIG);
+    ok('兜底包成 <details>（原生折叠 = 天然隐藏）', wrapped.indexOf('<details') >= 0 && wrapped.indexOf('<summary') >= 0);
+    ok('兜底默认**不展开**（折叠）', !/<details[^>]*\sopen/.test(wrapped), wrapped.slice(0, 120));
+    ok('思考块标记被消费掉（这样预设不会重复包装）',
+        wrapped.indexOf('konatan_planning~') < 0 && wrapped.indexOf('{思考内容}') < 0);
+    ok('思考正文完整保留', wrapped.indexOf('我在想事情。') >= 0);
+    ok('分镜行不受影响（还在原文里）', wrapped.indexOf('·动作') >= 0);
+    ok('展开模式会带 open', /<details[^>]*\sopen/.test(wrapThinkingBlock(thinkSample, { ...DEFAULT_CONFIG, thinkingOpen: true })));
+
+    eq('thinkingPattern 留空 → 原样返回（不做兜底）',
+        wrapThinkingBlock(thinkSample, { ...DEFAULT_CONFIG, thinkingPattern: '' }), thinkSample);
+    eq('thinkingPattern 写坏 → 原样返回（绝不弄丢别人内容）',
+        wrapThinkingBlock(thinkSample, { ...DEFAULT_CONFIG, thinkingPattern: '(' }), thinkSample);
+
+    const segWrapped = renderMessageHTML(thinkSample, {}, DEFAULT_CONFIG, { wrapThinking: true });
+    ok('opts.wrapThinking=true → text 段被折叠', segWrapped.html.indexOf('<details') >= 0);
+    const segPlain = renderMessageHTML(thinkSample, {}, DEFAULT_CONFIG);
+    ok('不带 opts → 不折叠（向后兼容）', segPlain.html.indexOf('<details') < 0);
+    ok('两种情况下分镜都照常渲染',
+        segWrapped.html.indexOf('cd-grid') >= 0 && segPlain.html.indexOf('cd-grid') >= 0);
+
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    ok('★ CSS 有 .custom-cd-think 规则', cssText.indexOf('.custom-cd-think') >= 0);
+    ok('★ CSS 有 .custom-cd-think-sum 与 -body',
+        cssText.indexOf('.custom-cd-think-sum') >= 0 && cssText.indexOf('.custom-cd-think-body') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

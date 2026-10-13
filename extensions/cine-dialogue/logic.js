@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.10';
+export const VERSION = '0.6.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -59,6 +59,15 @@ export const DEFAULT_CONFIG = {
     indentOnlyWrapped: true,
     /** 格式错的行要不要标红 */
     markErrors: true,
+    /* ---- 思考块兜底（预设覆盖不到时由插件介入）---- */
+    /** 'auto' = 只包预设覆盖不到的楼层 | 'always' = 所有楼层都包（换预设/预设那条被关时用） | 'off' = 不管 */
+    thinkingWrap: 'auto',
+    /** auto 模式下，认为「预设已经管到」的深度。与专属预设那条正则的 maxDepth 保持一致（现为 20） */
+    thinkingDepth: 20,
+    /** 兜底包出来的 <details> 是否默认展开（默认折叠 = 隐藏） */
+    thinkingOpen: false,
+    /** 思考块的识别正则（捕获组 1 = 要展示的正文；留空 = 不做兜底） */
+    thinkingPattern: '\\{思考内容\\}([\\s\\S]*?)<\\/konatan_planning~>',
     /** 自定义调色板（空 = 用 PALETTE） */
     palette: [],
     /** 层样式覆盖（留空 = 用 style.css 的默认） */
@@ -206,6 +215,12 @@ export const PANEL_FIELDS = [
     { key: 'leadIndent', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },
 
     /* ---- L3 提示词层 ---- */
+    { key: 'thinkingWrap', kind: 'select', label: '思考块兜底',
+      note: '预设那条思维链正则只覆盖最近 2 层；更早的层由插件折叠（消费掉标记后预设不会重复包装）',
+      options: [['auto', '自动（只补预设覆盖不到的）'], ['always', '全部楼层都由插件包'], ['off', '不管']] },
+    { key: 'thinkingDepth', kind: 'number', label: '预设已覆盖的深度', unit: '层', min: 0, max: 50, step: 1 },
+    { key: 'thinkingOpen', kind: 'bool', label: '兜底的思考默认展开', note: '默认关 = 折叠隐藏' },
+    { key: 'thinkingPattern', kind: 'text', label: '思考块识别正则', note: '捕获组 1 = 展示正文；留空 = 不做兜底' },
     { key: 'injectPrompt', kind: 'bool', label: '自动注入格式说明',
       note: '默认关：专属预设里已有同样说明，两边同时开会重复占提示词' },
     { key: 'promptDepth', kind: 'number', label: '注入深度', unit: '层', min: 0, max: 20, step: 1 },
@@ -699,7 +714,7 @@ export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
  * @returns {{html:string,names:string[],errs:number,colors:object,sections:object}|null}
  *          null = 这条消息没有我们的行 → 调用方原样返回，一个字节不改
  */
-export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFIG) {
+export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFIG, opts = {}) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const text = String(rawText == null ? '' : rawText);
     const sections = splitSections(text);
@@ -720,7 +735,10 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     const lastOurs = seg.segments.map(s => s.kind).lastIndexOf('ours');
 
     const parts = seg.segments.map((s, i) => {
-        if (s.kind === 'text') return s.lines.join('\n');                    // 原样，一个字不改
+        if (s.kind === 'text') {
+            const raw = s.lines.join('\n');                                  // 原样，一个字不改
+            return opts.wrapThinking ? wrapThinkingBlock(raw, cfg) : raw;    // ← 预设覆盖不到时由我们折叠
+        }
         return renderGrid(s.groups, seg.colors, cfg, i === lastOurs ? optHTML : '');
     });
 
@@ -903,6 +921,61 @@ export function parseConfig(text) {
         out[k] = v;
     }
     return { ok: true, config: out, dropped };
+}
+
+// ---------------------------------------------------------------- 思考块兜底（预设覆盖不到时由插件介入）
+
+/**
+ * 把思考块包成**原生 `<details>`**（默认折叠 ⇒ 天然隐藏，**不依赖任何 CSS**）。
+ *
+ * 为什么需要：预设那条 `1美化最近二层思维链` 带 `maxDepth: 2` ——
+ * **只美化最近 2 层**，更早的楼思考原样显示（真机反馈：「上面的思考没隐藏」）。
+ * 本函数让插件在**预设覆盖不到的地方**补上，两者互补：
+ *   预设管 depth ≤ N，我们管 depth > N；我们消费掉标记后预设自然不再匹配，**不会双重包装**。
+ *
+ * @param {string} text  文本段原文（逐字节保真的那份）
+ * @param {object} config 读 thinkingPattern / thinkingOpen
+ * @returns {string}
+ */
+export function wrapThinkingBlock(text, config = {}) {
+    const cfg = { ...DEFAULT_CONFIG, ...config };
+    const src = String(text == null ? '' : text);
+    const pattern = String(cfg.thinkingPattern || '').trim();
+    if (!pattern) return src;
+
+    let re;
+    try {
+        re = new RegExp(pattern, 'g');
+    } catch (e) {
+        /* 正则被写坏 → **原样返回**：绝不因为一个兜底功能把别人的内容弄丢 */
+        console.warn('[' + EXT_ID + '] thinkingPattern 不是合法正则，已跳过思考块兜底：', e && e.message);
+        return src;
+    }
+
+    const openAttr = cfg.thinkingOpen ? ' open' : '';
+    return src.replace(re, function () {
+        const args = Array.prototype.slice.call(arguments);
+        const whole = args[0];
+        // 有捕获组就用捕获组（标记本身被丢掉）；没有就用整段匹配
+        const body = (args.length > 2 && typeof args[1] === 'string') ? args[1] : whole;
+        return '<details class="cd-think"' + openAttr
+            + ' style="margin:.6em 0;border:1px solid rgba(128,140,160,.28);border-radius:.3em;background:rgba(128,140,160,.08)">'
+            + '<summary class="cd-think-sum" style="cursor:pointer;padding:.35em .7em;font-size:.9em;opacity:.8">💭 思考（点击展开）</summary>'
+            + '<div class="cd-think-body" style="padding:0 .8em .6em;opacity:.72;white-space:pre-wrap;word-break:break-word;font-size:.92em">' + body + '</div>'
+            + '</details>';
+    });
+}
+
+/** 这条文本里有没有思考块（按配置的正则判；正则坏了就算没有） */
+export function hasThinkingBlock(text, config = {}) {
+    const cfg = { ...DEFAULT_CONFIG, ...config };
+    const pattern = String(cfg.thinkingPattern || '').trim();
+    if (!pattern) return false;
+    try {
+        return new RegExp(pattern).test(String(text == null ? '' : text));
+    } catch (_) {
+        return false;
+    }
 }
 
 /** 统计（面板/排障用） */

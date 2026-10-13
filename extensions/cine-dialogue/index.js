@@ -143,6 +143,17 @@ function sendOption(text, btn) {
 }
 sendOption.last = 0;
 
+/** 复刻 ST 的深度算法（script.js:1828-1830）：**从末尾数，不计 system 楼** */
+function depthOf(mesId) {
+    try {
+        const chat = chatArr();
+        const usable = chat.map((m, i) => ({ m, i })).filter(x => !(x.m && x.m.is_system));
+        const at = usable.findIndex(x => x.i === Number(mesId));
+        return at < 0 ? undefined : (usable.length - at - 1);
+    } catch (_) {
+        return undefined;
+    }
+}
 /** 取原文：优先走酒馆助手 API，没有就退回 ST 原生 */
 function getRawMes(mesId) {
     const th = TH();
@@ -210,7 +221,15 @@ function formatHook(mes, ctx) {
         if (!hasOurLines(mes)) return mes;                        // 没有我们的行 → 一个字不改
 
         const mid = (ctx && Number.isFinite(Number(ctx.messageId))) ? Number(ctx.messageId) : -1;
-        const res = renderMessageHTML(mes, colorMap[mid] || {}, c);
+
+        /* 思考块兜底：预设那条思维链正则只覆盖最近 N 层，更早的层由我们折叠。
+           depth 算不出来时**选择包**（宁可折叠也不要把思考摊在外面）。 */
+        const mode = String(c.thinkingWrap || 'auto');
+        const d = depthOf(mid);
+        const wrapThinking = (mode === 'always')
+            || (mode === 'auto' && (d === undefined || d > (Number(c.thinkingDepth) || 0)));
+
+        const res = renderMessageHTML(mes, colorMap[mid] || {}, c, { wrapThinking });
         if (!res || !res.html) return mes;
 
         if (mid >= 0) colorMap[mid] = res.colors;                 // 同角色同色，跨消息保持
@@ -1133,6 +1152,11 @@ function fieldHTML(f, c) {
             + esc(o[1]) + '</option>').join('');
         return '<div class="cd-line">' + lab + '<select data-cd-key="' + key + '">' + opts + '</select>' + note + '</div>';
     }
+    if (f.kind === 'text') {
+        return '<div class="cd-line">' + lab
+            + '<input type="text" data-cd-key="' + key + '" value="' + esc(c[f.key]) + '">'
+            + note + '</div>';
+    }
     const unit = f.unit ? ' ' + f.unit : '';
     const when = f.when ? '（' + esc(f.when) + ' 时生效）' : '';
     return '<div class="cd-line">' + lab
@@ -1236,7 +1260,8 @@ function wirePanel() {
             /* 数值型的 select（如注入位置）必须转成数字 —— 否则存进去是字符串，
                parseConfig 的类型校验会把它当脏数据丢掉 */
             const v = (type === 'checkbox') ? el.checked
-                : (el.tagName === 'SELECT') ? (typeof def === 'number' ? Number(el.value) : el.value)
+                : (el.tagName === 'SELECT' || type === 'text' || type === 'color')
+                    ? (typeof def === 'number' ? Number(el.value) : el.value)
                     : Number(el.value);
             cfg()[key] = v;
             saveSettingsDebounced();

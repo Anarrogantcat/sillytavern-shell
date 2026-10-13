@@ -299,3 +299,29 @@
     flex: 1 1 auto;
 }
 
+/* ---------------------------------------------------------------- 思考块兜底
+   预设那条「美化最近 N 层思维链」只覆盖最近 N 层，更早的层由插件补这一层。
+   核心隐藏靠 `<details>` **原生折叠**（不依赖 CSS）；这里只是让它好看一点。 */
+
+.custom-cd-think {
+    margin: .6em 0;
+    border: 1px solid rgba(128, 140, 160, .28);
+    border-radius: .3em;
+    background: rgba(128, 140, 160, .08);
+}
+
+.custom-cd-think-sum {
+    cursor: pointer;
+    padding: .35em .7em;
+    font-size: .9em;
+    opacity: .8;
+    user-select: none;
+}
+
+.custom-cd-think-body {
+    padding: 0 .8em .6em;
+    opacity: .72;
+    font-size: .92em;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

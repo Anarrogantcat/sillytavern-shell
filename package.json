@@ -18,6 +18,7 @@
     "build:lite": "npm run clean -- lite && electron-builder --win nsis --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
     "build:portable": "electron-builder --win zip --config electron-builder-lite.json --config.directories.output='dist-electron-v3-lite'",
     "ext:index": "node scripts/ext-index.mjs",
+    "preset:cine": "node scripts/cine-preset.mjs",
     "ext:install": "node scripts/ext-install.mjs",
     "ext:test": "node scripts/compat-logic-test.mjs && node scripts/plot-pilot-test.mjs && node scripts/cine-dialogue-test.mjs && node scripts/ext-manage-test.mjs",
     "ext:manage:test": "node scripts/ext-manage-test.mjs",
