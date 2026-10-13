@@ -66,6 +66,11 @@
           "sha1": "f4d6e1f2545eefd101dfc6d7b0b981cc719873ca"
         },
         {
+          "path": "REQUIREMENTS.md",
+          "size": 4273,
+          "sha1": "77ce8de66d15035d37983bb300b79874413a0cfc"
+        },
+        {
           "path": "index.js",
           "size": 114946,
           "sha1": "d088278c802c787507b8caabcae4998779d9a8df"
@@ -125,5 +130,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-13T20:58:16.264Z"
+  "generatedAt": "2026-10-13T21:15:01.663Z"
 }
