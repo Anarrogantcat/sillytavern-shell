@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.35');
+eq('version 与 manifest 一致', VERSION, '0.8.36');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1734,7 +1734,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const lastOn = od.filter((x) => x.enabled).slice(-1)[0];
     /* ★ 0.8.32 起：最后一条启用的是「篇幅与节奏」（它排在格式说明之后 ⇒ 最贴近输出 ✓） */
     eq('★★ 最后一条启用的是「篇幅与节奏」', String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name), PRESET_RECIPE.lengthName);
-    eq('★ order 里共 5 条（原有 2 + 格式说明 + 篇幅 + 停用的派生说明）', od.length, 5);
+    eq('★ order 里共 6 条（原有 2 + 格式说明 + 篇幅 + 50% + 停用的派生说明）', od.length, 6);
     ok('★ 原有的两条仍启用（没被挤掉）', od[0].enabled === true && od[1].enabled === true);
 }
 
@@ -1818,6 +1818,31 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     });
     const rv3 = applyPresetRecipe(mk3('旧 v3：按需要来回波动'), { srcName: 't', srcHash: 'h' });
     ok('★★ v3 也认（会被更新成含多人规则的新版）', String(rv3.preset.prompts[0].content).indexOf('每个开口的人至少一句') >= 0);
+}
+
+/* ★★ 字段形态必须和原生条目一致（真机踩到：缺 marker ⇒ 列表里不显示 ✗） */
+{
+    const base = {
+        prompts: [
+            { identifier: 'a', name: '甲', content: 'a', marker: false, forbid_overrides: false, enabled: true },
+            { identifier: 'fm', name: PRESET_RECIPE.promptName, content: 'x' },
+        ],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'a', enabled: true }, { identifier: 'fm', enabled: true }] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
+    const fm = r.preset.prompts.find((p) => p.name === PRESET_RECIPE.promptName);
+    ok('★★ 我们的条目补上了 marker', fm.marker === false);
+    ok('★★ 补上了 forbid_overrides', fm.forbid_overrides === false);
+    ok('★★ 补上了 enabled', fm.enabled === true);
+    const p50 = r.preset.prompts.find((p) => p.name === PRESET_RECIPE.dbl50Name);
+    ok('★★ 没有 50% 条目时会创建', !!p50);
+    ok('★★ 50% 条目也带 marker/forbid_overrides', p50 && p50.marker === false && p50.forbid_overrides === false);
+    eq('★ 50% 默认关闭（不擅自改你的对白量）', (r.preset.prompt_order[0].order.find((x) => x.identifier === p50.identifier) || {}).enabled, false);
+    /* 已存在时内容不动 */
+    p50.content = '我自己改过的 50% 文案';
+    const r2 = applyPresetRecipe(r.preset, { srcName: 't', srcHash: 'h' });
+    eq('★★ 50% 已存在时内容不覆盖', r2.preset.prompts.find((p) => p.name === PRESET_RECIPE.dbl50Name).content, '我自己改过的 50% 文案');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

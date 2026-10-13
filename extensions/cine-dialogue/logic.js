@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.35';
+export const VERSION = '0.8.36';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1429,6 +1429,8 @@ export const PRESET_RECIPE = {
     promptName: '【分镜】正文行格式',
     noteName: '📋分镜派生说明（勿启用）',
     lengthName: '【分镜】篇幅与节奏（可改）',
+    dbl50Name: '👤对白量：一半（50%）',
+    dbl50Text: '{{setvar::dbl::，对白与描写大致各半，正文中的文字应由对白提供50％左右}}',
     /* ★ 适配（用户要求「专属预设对插件进行适配」）：
        格式说明插到 prompt_order 的**最末尾** —— 越贴近输出，模型遵循率越高 ✓
        （原来插在第 143 位，被前后一堆条目夹着，权重被稀释 ✗）
@@ -1586,6 +1588,36 @@ export function applyPresetRecipe(srcObj, opts = {}) {
             changes.push('提示条目「' + R.lengthName + '」已被你改过（**不覆盖** ✓）');
         }
     } catch (e) { changes.push('篇幅条目处理失败：' + e.message); }
+
+    /* ★★ 字段形态对齐（真机踩到）：酒馆原生条目都带 marker / forbid_overrides / enabled …，
+       我们只写最少的字段 ⇒ **列表里不显示** ✗（用户：「就是没有」）
+       ⇒ 这里把我们三条统一补成原生形态 ✓ */
+    try {
+        const SHAPE = {
+            system_prompt: false, role: 'system',
+            injection_position: 0, injection_depth: 4, injection_order: 100,
+            marker: false, forbid_overrides: false, enabled: true,
+        };
+        const oursNames = [R.promptName, R.lengthName, R.dbl50Name];
+        for (const nm of oursNames) {
+            const p = prompts.find(x => String(x.name || '') === nm);
+            if (!p) continue;
+            let added = 0;
+            for (const k of Object.keys(SHAPE)) { if (p[k] === undefined) { p[k] = SHAPE[k]; added++; } }
+            if (added) changes.push('补全「' + nm + '」的字段形态（' + added + ' 个）');
+        }
+
+        /* 50% 那条：没有就创建（只创建一次；已存在**不覆盖内容** ⇒ 你可以自己改 ✓） */
+        let p50 = prompts.find(x => String(x.name || '') === R.dbl50Name);
+        if (!p50) {
+            p50 = Object.assign({ identifier: 'cine-dialogue-dbl-50', name: R.dbl50Name, content: opts.dbl50Text || R.dbl50Text }, SHAPE);
+            prompts.push(p50);
+            order.push({ identifier: p50.identifier, enabled: false });
+            changes.push('新增条目「' + R.dbl50Name + '」（默认关闭，和原生那三条并列）');
+        } else {
+            changes.push('条目「' + R.dbl50Name + '」已存在（内容不动 ✓）');
+        }
+    } catch (e) { changes.push('字段形态对齐失败：' + e.message); }
 
     // ②③ 两处开关
     for (const [name, want] of R.toggles) {
