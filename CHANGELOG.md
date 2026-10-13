@@ -1,5 +1,30 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.5.5：设置页按钮竖排
+
+### 现象 / 根因
+- 四个按钮变成**竖排单字列**
+- 根因：**flex 项的 `min-content` 对中文只有一个汉字宽** → 4 个按钮全挤一行、每个只剩一个字宽
+
+### 修法
+- `#cd-panel .cd-btn-row .menu_button { flex: 0 0 auto; white-space: nowrap; }`
+  → 禁收缩（配合 `flex-wrap: wrap` 自然换行）+ `min-content` = 整段文字宽
+- `.cd-line` 加 `flex-wrap: wrap`（窄面板下标签+控件换行而不是被压扁）
+
+### ★ 「宿主样式 + flex 语义」第三次咬人
+1. 选项按钮白底（主题变量拼在 `.cd-root` 外）
+2. 输入框白块（没显式接管 `background`/`color`）
+3. 按钮竖排（flex `min-content` 对中文只有一个字宽）
+⇒ **自建 UI 时，"会换行 / 会收缩 / 有底色"的控件都要显式写死**，不能依赖默认。
+
+### 夹具：**175 → 178 条**
+- 新增：按钮 nowrap 规则存在 / 锁了 `white-space: nowrap` / 禁了收缩
+- CSS 白名单：**55 个选择器全部**在 `#cd-panel` / `.cd-` 内 ✓
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **178/178** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
+
 ## 未发版（2026-10-13）— cine-dialogue 0.5.4：分段渲染（修「没有美化」）
 
 ### 真因

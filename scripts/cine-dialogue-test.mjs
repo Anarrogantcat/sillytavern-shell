@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.4');
+eq('version 与 manifest 一致', VERSION, '0.5.5');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -462,6 +462,14 @@ if (!fs.existsSync(ST_PUBLIC)) {
     ok('★ 面板输入框显式设了 background（否则吃 ST 默认白底 → 白块）', /background\s*:/.test(seg), seg.slice(0, 120));
     ok('★ 面板输入框显式设了 color', /color\s*:/.test(seg), seg.slice(0, 120));
     ok('★ color-scheme 跟着主题走（原生控件与光标颜色）', /color-scheme\s*:\s*dark/.test(css) && /color-scheme\s*:\s*light/.test(css));
+
+    /* ★ 回归：按钮不能被压成「一列一个字」
+       （flex 项的 min-content 对中文只有一个汉字宽 → 不锁 nowrap 就会竖排，真机截图） */
+    const btnAt = css.indexOf('#cd-panel .cd-btn-row .menu_button');
+    ok('★ 按钮有专门的 nowrap 规则', btnAt >= 0);
+    const btnSeg = btnAt >= 0 ? css.slice(btnAt, btnAt + 300) : '';
+    ok('★ 按钮锁了 white-space: nowrap', /white-space\s*:\s*nowrap/.test(btnSeg), btnSeg.slice(0, 100));
+    ok('★ 按钮禁了收缩（flex: 0 0 auto）', /flex\s*:\s*0\s+0\s+auto/.test(btnSeg), btnSeg.slice(0, 100));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
