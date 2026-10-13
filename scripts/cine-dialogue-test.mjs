@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.13');
+eq('version 与 manifest 一致', VERSION, '0.8.14');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -115,7 +115,10 @@ ok('动作行带 cd-L-act', r.html.includes('cd-L-act'));
 ok('心理行带 cd-L-mind', r.html.includes('cd-L-mind'));
 ok('旁白行带 cd-L-narr', r.html.includes('cd-L-narr'));
 ok('名字在 cd-who 里', r.html.includes('<span class="cd-who">林野</span>'));
-ok('颜色写进 --c 变量', r.html.includes('--c:' + PALETTE[0]));
+    /* ★ 意图「颜色要作为 --c 发出」不变；判据改为「与 resolveColors 给出的一致」
+       （0.8.14 起颜色按名字哈希，不再按下标取色 ⇒ 不能再钉死 PALETTE[0]） */
+    const cLin = resolveColors(['林野'], DEFAULT_CONFIG, {})['林野'];
+    ok('颜色写进 --c 变量（与 resolveColors 一致）', r.html.includes('--c:' + cLin));
 ok('旁白不显示名字（名字列收起 ⇒ 正文从最左开始）', /cd-L-narr[^>]*><span class="cd-who cd-noname"/.test(r.html));
 ok('标签不出现在输出里', !r.html.includes('·动作') && !r.html.includes('旁白·'));
 ok('渲染结果里没有 .mes_text 选择器', !r.html.includes('.mes_text'));
@@ -342,8 +345,15 @@ ok('层名校验：接受「系统」', validateLayerName('系统').ok === true 
 
 /* 配色 */
 eq('resolveColors：点名颜色优先', resolveColors(['林野'], { charColors: { '林野': '#123456' } })['林野'], '#123456');
-eq('resolveColors：没点名的按出现顺序', resolveColors(['林野', '苏晴'], {})['林野'], PALETTE[0]);
-eq('resolveColors：点名不影响别人拿色', resolveColors(['林野', '苏晴'], { charColors: { '苏晴': '#abcdef' } })['林野'], PALETTE[0]);
+    /* ★★ 旧断言「按出现顺序」已废除（0.8.14 起按名字哈希 ⇒ 顺序无关）
+       真机回归：0.8.12 改解析后顺序变了 ⇒ 颜色全部洗牌，用户报「颜色不对」✗ */
+    eq('resolveColors：没点名的按**名字**推导（与顺序无关）',
+        resolveColors(['林野'], DEFAULT_CONFIG, {})['林野'],
+        resolveColors(['林野', '苏晴', '林婉婷'], DEFAULT_CONFIG, {})['林野']);
+    /* ★ 意图不变（钉死一个人不该改变别人的颜色 ✓），判据改为与「无人被点名时」比较 */
+    eq('resolveColors：点名不影响别人拿色',
+        resolveColors(['林野'], { ...DEFAULT_CONFIG, charColors: { 苏晴: '#123456' } }, {})['林野'],
+        resolveColors(['林野'], DEFAULT_CONFIG, {})['林野']);
 
 /* 只看某角色 */
 ok('rowDimmed：非选中角色变淡', rowDimmed({ kind: 'row', name: '苏晴' }, '林野') === true);
@@ -1592,6 +1602,27 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         (src.match(/pinColors\(res\.colors\);/g) || []).length, 2);
     ok('★ 失败不致命（try/catch，不影响渲染）',
         /颜色钉死失败（不影响渲染）/.test(src));
+}
+
+/* ============================================================================
+   ★★ 颜色必须与「出现顺序 / 渲染了哪些楼」完全无关（0.8.14，真机回归的守卫）
+   真机：0.8.12 剔掉一批假"元数据行"后，出现顺序变了 ⇒ 沙良/染/久美**全部洗牌** ✗✗
+   用户报「颜色不对」。这条夹具就是防止那种事再发生。
+   ============================================================================ */
+{
+    const a = resolveColors(['沙良', '染', '久美'], {}, {});
+    const b = resolveColors(['久美', '沙良', '染'], {}, {});
+    eq('★★ 打乱顺序后颜色不变（沙良）', a['沙良'], b['沙良']);
+    eq('★★ 打乱顺序后颜色不变（染）', a['染'], b['染']);
+    eq('★★ 打乱顺序后颜色不变（久美）', a['久美'], b['久美']);
+    const c = resolveColors(['染'], {}, {});
+    eq('★★ 只出现一个角色时，它的颜色与同批出现时一致', c['染'], a['染']);
+    const d = resolveColors(['染'], {}, { 别人: '#123456' });
+    eq('★★ 别的角色存在时也不影响', d['染'], a['染']);
+    const e = resolveColors(['染'], { charColors: { 染: '#ABCDEF' } }, {});
+    eq('★ 用户在面板点名的颜色优先', e['染'], '#ABCDEF');
+    eq('★ 确定性（同输入同输出）',
+        JSON.stringify(resolveColors(['甲', '乙'], {}, {})), JSON.stringify(resolveColors(['甲', '乙'], {}, {})));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

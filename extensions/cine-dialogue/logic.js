@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.13';
+export const VERSION = '0.8.14';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1009,20 +1009,22 @@ export function resolveColors(names, config = {}, seed = {}) {
         if (fixed[n]) map[n] = fixed[n];
     }
 
-    // 2) 没点名的按出现顺序拿「还没被占用」的调色板颜色。
-    //    ★ 不能按 Object.keys(map).length 取下标 —— 那样「钉死 苏晴」会把 林野 挤到第 2 色。
-    //      钉死一个人不该改变别人的颜色。
-    const used = new Set(Object.keys(map).map(k => map[k]));
-    let k = 0;
+    // 2) 没点名的**按名字确定性推导**（★ 0.8.14 整改）。
+    //    ★★ 为什么不能再用"出现顺序"（真机回归，用户报「颜色不对」）：
+    //    顺序分配 ⇒ **哪些楼被渲染、行怎么解析，都会改掉顺序** ⇒ 0.8.12 剔掉一批假"元数据行"后，
+    //    沙良 / 染 / 久美 的颜色**全部洗牌**（0.8.11→0.8.12：沙良 #D982EF→#00F5EF …）✗✗
+    //    ⇒ 与规格「颜色 = 角色」矛盾 ✓
+    //    现在改成**名字哈希**：同一个名字永远同一个下标，与顺序、与渲染了哪些楼**完全无关** ✓
+    //    以后不论怎么改解析都不会再变色 ✓（代价：同楼偶尔撞色，用户可在面板点名指定 ✓）
+    const slotOf = (nm) => {
+        let h = 0;
+        const t = String(nm == null ? '' : nm);
+        for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+        return h % palette.length;
+    };
     for (const n of names) {
         if (map[n]) continue;
-        while (k < palette.length && used.has(palette[k])) k++;
-        const color = k < palette.length
-            ? palette[k]
-            : 'hsl(' + ((k * 137.508) % 360).toFixed(0) + ', 78%, 66%)';
-        map[n] = color;
-        used.add(color);
-        k++;
+        map[n] = palette[slotOf(n)];
     }
     return map;
 }
