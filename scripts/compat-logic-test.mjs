@@ -1618,7 +1618,14 @@ check('78 通用 HTML 全部进 KEEP_BLOCKS（不会被当未声明块删掉）'
 const momStrip = stripUndeclaredBlocks('<html><head><title>x</title></head><body>正文</body></html>', { declared: new Set(momProf.rawTags || []), keep: KEEP_BLOCKS, bookTitles: [], knownFields: [] });
 check('78 <html>…</html> 包裹不再被删', String(momStrip.text).indexOf('<html>') >= 0 && (momStrip.removed || []).length === 0, momStrip.removed);
 const momSrc = readFileSync(new URL('../extensions/card-compat/index.js', import.meta.url), 'utf8');
-check('78 版本号已升 0.33.0（const VERSION 一处）', momSrc.indexOf("const VERSION = '0.33.0'") > 0);
+// 原先这里写死 "const VERSION = '0.33.0'" —— 每次升版本都会假红（0.33.1 就踩了）。
+// 改成断言「代码里的 VERSION == manifest.json 的 version」：意图一样（版本号真升了、且只有一处来源），
+// 但不会再随版本号漂移，而且能抓到真正的漂移（代码与 manifest 不一致）。
+const momManifest = JSON.parse(readFileSync(new URL('../extensions/card-compat/manifest.json', import.meta.url), 'utf8'));
+check('78 版本号一致（const VERSION == manifest.json，且 ≥ 0.33.0）',
+    momSrc.indexOf("const VERSION = '" + momManifest.version + "'") > 0
+    && momManifest.version.localeCompare('0.33.0', undefined, { numeric: true }) >= 0,
+    { code: (momSrc.match(/const VERSION = '([^']+)'/) || [])[1], manifest: momManifest.version });
 
 console.log('结果: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);

@@ -1,5 +1,40 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.2.1 (2026-10-13) — 自检修出 3 个缺陷
+
+### 修 ①（严重）：钩子路径会把**正文整段丢掉**
+`renderMessageHTML` 原来用**整条原文**做 `hasOurLines` 判据：
+
+```js
+if (!hasOurLines(text)) return null;   // ← 用了整条原文
+```
+
+若标签**只出现在 `<htmlcontent>` / `[FRONTEND]` 里**，整条原文判为「有我们的行」，
+但 `splitSections` 把外壳切走后正文里没有我们的行 → `renderMessage` 返回 `html:null`
+→ 继续拼 `'' + 前端 + 选项` 得到**非空字符串** → 钩子的 `!res.html` 拦不住 → **正文消失**。
+
+**改法**：判据改用**切完之后的正文**，并加双保险 `if (!res.html) return null`。
+
+### 修 ②：钩子路径丢失「首行缩进」与「名字列统一」
+`run()` 里写了 `if (hookActive()) return;` —— 一退到底，于是 `applyIndent` / `unifyNameColumn`
+在钩子路径下**永远不跑**；`refreshAt()` 同样直接 return。
+
+**改法**：抽出 `decorate(mesEl)`（只做这两件「必须看渲染结果才能做」的事），
+**两条路径都跑**：钩子路径 → 只补装饰；降级路径 → 渲染 + 装饰。
+
+### 修 ③：夹具把版本号写死 → 每次升版本假红
+`scripts/compat-logic-test.mjs` 夹具 78 断言 `const VERSION = '0.33.0'` 字面量，
+升到 0.33.1 就失败（本轮实测：658/0 → 657/1）。
+
+**改法**：改成断言「代码里的 `VERSION` == `manifest.json` 的 `version`」且 ≥ 0.33.0 ——
+意图不变（版本号真升了、且只有一处来源），但不再随版本漂移，**还能抓到真正的漂移**。
+
+### 夹具
+- **73 → 76 条**：新增 3 条**回归对照**（按 AGENTS §1.4.6「旧行为可复现 + 新行为断言同时存在」）
+  - 旧行为可复现：`hasOurLines(整条原文) === true`（证明这个坑真实存在）
+  - 新行为锁死：`renderMessageHTML(...) === null`（绝不吃掉正文）
+  - 正文判据确认为 false
+
 ## v0.2.0 (2026-10-13) — 接入核内渲染漏斗钩子：标签永不进 DOM
 
 ### 新增：`window.CineDialogueFormat` 钩子路径

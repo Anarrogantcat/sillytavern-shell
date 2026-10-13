@@ -206,13 +206,18 @@ function containsOurLine(node) {
 /** 定向刷新一楼 —— 给「会重渲染消息」的兄弟扩展（card-compat / plot-pilot）调 */
 function refreshAt(mesId) {
     try {
-        if (hookActive()) return true;   // 核内钩子已接管：updateMessageBlock 会重走 messageFormatting，无需我们插手
         const id = Number(mesId);
         if (!Number.isFinite(id) || id < 0) return false;
         const mesEl = document.querySelector('#chat .mes[mesid="' + id + '"]');
         if (!mesEl) return false;
+
+        /* 核内钩子已接管：updateMessageBlock 会重走 messageFormatting → 渲染是自动的。
+           但「名字列统一 / 首行缩进」要看渲染结果，所以这里仍要补一次装饰。
+           （自检发现：原来这里直接 return，导致钩子路径下装饰整片不跑。） */
+        if (hookActive()) { decorate(mesEl); return true; }
+
         const r = transformMessage(mesEl, id);
-        if (r.ok) { unifyNameColumn(mesEl); applyIndent(mesEl); }
+        if (r.ok) decorate(mesEl);
         return r.ok;
     } catch (e) {
         console.error('[' + EXT_ID + '] refreshAt failed', e);
@@ -332,26 +337,34 @@ function schedule(scope) {
     }, 60);
 }
 
-function run(all) {
-    /* 核内钩子已接管 → 不再做 DOM 后处理。
-       否则我们会把钩子刚生成的分镜 HTML 再解析一遍（它里面已经不含标签了，等于白跑）。 */
-    if (hookActive()) return;
+/** 装饰层：只做「必须看渲染结果才能做」的两件小事
+ *   ① 整楼名字列宽统一（出现多个 .cd-root 时才需要）
+ *   ② 首行缩进只给「真的换行」的段落
+ *  ★ 这两件**两条路径下都要跑** —— 自检发现：钩子路径曾因 run() 一退到底而整片丢失。 */
+function decorate(mesEl) {
+    try { unifyNameColumn(mesEl); } catch (_) { /* 装饰失败不影响渲染 */ }
+    try { applyIndent(mesEl); } catch (_) { /* 同上 */ }
+}
 
+function run(all) {
     const list = all
         ? Array.from(document.querySelectorAll('#chat .mes'))
         : Array.from(document.querySelectorAll('#chat .mes')).slice(-3);   // 只处理最近三楼
+
+    const hooked = hookActive();
 
     for (const mesEl of list) {
         const mesId = Number(mesEl.getAttribute('mesid'));
         if (!Number.isFinite(mesId) || mesId < 0) continue;
         try {
+            /* 核内钩子已渲染好了 → 只补装饰，不再解析 DOM
+               （钩子的输出里已不含标签，重解析等于白跑，还会把成果再包一层） */
+            if (hooked) { decorate(mesEl); continue; }
+
             const r = transformMessage(mesEl, mesId);
-            if (r.ok) {
-                unifyNameColumn(mesEl);
-                applyIndent(mesEl);
-            }
+            if (r.ok) decorate(mesEl);
         } catch (e) {
-            console.error('[' + EXT_ID + '] transform failed, mes=' + mesId, e);
+            console.error('[' + EXT_ID + '] render failed, mes=' + mesId, e);
         }
     }
 }

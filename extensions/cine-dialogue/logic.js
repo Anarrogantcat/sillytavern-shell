@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -292,12 +292,18 @@ export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG) {
 export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFIG) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const text = String(rawText == null ? '' : rawText);
-    if (!hasOurLines(text)) return null;
-
     const sections = splitSections(text);
-    const res = renderMessage(sections.body, colorMap, cfg);
 
-    let html = res.html || '';
+    /* ★ 判据必须用「切完之后」的正文，不能用整条原文。
+       反例：标签只出现在 <htmlcontent> / [FRONTEND] 里时，对整条原文 hasOurLines 为真，
+       但外壳被切走后正文没有我们的行 → renderMessage 返回 html:null
+       → 若继续拼 `'' + 前端 + 选项`，就会返回一个非空字符串，**正文整段丢失**。 */
+    if (!hasOurLines(sections.body)) return null;
+
+    const res = renderMessage(sections.body, colorMap, cfg);
+    if (!res.html) return null;                     // 双保险：宁可整条不改，也不能只输出外壳
+
+    let html = res.html;
     for (const f of sections.frontend) html += '\n' + f;          // 前端区：原样，一个字不动
     if (sections.options.length) html += '\n' + renderOptions(sections.options, cfg);
 

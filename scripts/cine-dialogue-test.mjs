@@ -17,7 +17,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.2.0');
+eq('version 与 manifest 一致', VERSION, '0.2.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -151,6 +151,17 @@ ok('钩子产出：前端 HTML 未被转义（原样拼回）', hRes.html.includ
 ok('钩子产出：选项按钮已渲染', hRes.html.includes('data-cd-text="吻她"'));
 ok('钩子产出：标签不出现', !hRes.html.includes('·动作'));
 ok('钩子产出：旁白无名字', renderMessageHTML('旁白·灯灭了。').html.includes('cd-L-narr"><span class="cd-who"></span>'));
+
+/* ---------------------------- 回归对照（自检发现的坑，§1.4.6 留对照夹具） ----------------------------
+   坑：renderMessageHTML 原来用「整条原文」做 hasOurLines 判据。
+   若标签**只出现在 <htmlcontent> / [FRONTEND] 里**，整条原文判为「有我们的行」，
+   但 splitSections 把外壳切走后正文里没有我们的行 → renderMessage 返回 html:null
+   → 继续拼 `'' + 前端 + 选项` 会返回**非空字符串**，钩子的 `!res.html` 拦不住 → **正文整段丢失**。
+   下面两条断言必须同时成立：旧行为（整条判为真）可复现 + 新行为（返回 null）被锁死。 */
+const onlyFront = '<htmlcontent>\n林野·动作 这是前端里的示例文本\n</htmlcontent>\n这一行是普通正文，不该被吃掉。';
+ok('回归·旧行为可复现：整条原文 hasOurLines 确实为真（说明这个坑真实存在）', hasOurLines(onlyFront) === true);
+eq('回归·新行为：标签只在外壳里 → 返回 null（绝不吃掉正文）', renderMessageHTML(onlyFront), null);
+eq('回归：正文里真的没有我们的行', hasOurLines(splitSections(onlyFront).body), false);
 
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);

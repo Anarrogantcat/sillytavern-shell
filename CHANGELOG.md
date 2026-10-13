@@ -1,5 +1,29 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— 自检审查：cine-dialogue 0.2.1 修 3 个缺陷（含 1 个静默丢正文）
+
+### 修 ①（严重，静默数据丢失）：钩子路径会把**正文整段丢掉**
+- `renderMessageHTML` 用**整条原文**做 `hasOurLines` 判据 → 标签只在 `<htmlcontent>`/`[FRONTEND]` 里时误判为「有我们的行」
+- 外壳被 `splitSections` 切走后正文没有我们的行 → `renderMessage` 返回 `html:null` → 继续拼 `'' + 前端 + 选项` 得到**非空字符串** → 钩子的 `!res.html` 拦不住 → **正文消失**
+- 改法：判据改用**切完之后的正文** + 双保险 `if (!res.html) return null`
+
+### 修 ②：钩子路径丢失「首行缩进」与「名字列统一」
+- `run()` / `refreshAt()` 里 `if (hookActive()) return;` 一退到底 → `applyIndent` / `unifyNameColumn` 在钩子路径下**永不执行**
+- 改法：抽出 `decorate(mesEl)`，**两条路径都跑**（钩子路径只补装饰；降级路径渲染 + 装饰）
+
+### 修 ③：compat 夹具把版本号写死 → 每次升版本假红
+- `scripts/compat-logic-test.mjs` 夹具 78 断言字面量 `const VERSION = '0.33.0'` → 升 0.33.1 后 **658/0 → 657/1**
+- 改法：改成断言「代码 `VERSION` == `manifest.json` 的 `version`」且 ≥ 0.33.0 —— 意图不变，不再随版本漂移，**还能抓到真正的漂移**
+
+### 夹具（§1.3 第 3 步本轮补做）
+- cine-dialogue **73 → 76 条**：新增 3 条**回归对照**（AGENTS §1.4.6：旧行为可复现 + 新行为断言同时存在）
+- 全量：compat-logic **658/0** / plot-pilot **67/67** / cine-dialogue **76/76** / ext-manage **49/49**，`ext:test` **exit 0**
+- `extensions/index.json` 重建（cine-dialogue **0.2.1**），`--check` **exit 0**
+
+### 说明
+- **只改扩展 + 夹具** → 不升套壳版本号、不打 tag、不发包（AGENTS §1.1）；套壳维持 **2.3.0**（tag 已推）
+- 核内补丁未改动（仍是 patch #001，已应用）
+
 ## v2.3.0 (2026-10-13) — 功能更新：分镜对话接入核内渲染漏斗钩子（cine-dialogue 0.2.0）
 
 > 套壳版本 2.2.56 → **2.3.0**（加功能 → minor +1，patch 归零）
