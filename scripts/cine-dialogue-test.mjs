@@ -4,6 +4,10 @@
 import {
     VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS,
     FORMAT_SPEC, REGEX_DEFS, SLASH_COMMAND,
+    MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
+    allLayers, layerVars, resolveColors, validateLayerName, rowDimmed,
+    highlightPlan, sceneTitle, messageTitle, rowRegexFor,
+    serializeConfig, parseConfig,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML,
     hasOurLines, stats,
@@ -18,7 +22,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.4.0');
+eq('version 与 manifest 一致', VERSION, '0.5.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -102,7 +106,7 @@ ok('心理行带 cd-L-mind', r.html.includes('cd-L-mind'));
 ok('旁白行带 cd-L-narr', r.html.includes('cd-L-narr'));
 ok('名字在 cd-who 里', r.html.includes('<span class="cd-who">林野</span>'));
 ok('颜色写进 --c 变量', r.html.includes('--c:' + PALETTE[0]));
-ok('旁白没有名字', /cd-L-narr"><span class="cd-who"><\/span>/.test(r.html));
+ok('旁白没有名字', /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(r.html));
 ok('标签不出现在输出里', !r.html.includes('·动作') && !r.html.includes('旁白·'));
 ok('渲染结果里没有 .mes_text 选择器', !r.html.includes('.mes_text'));
 
@@ -151,7 +155,7 @@ ok('钩子产出网格', !!hRes && hRes.html.includes('cd-grid'));
 ok('钩子产出：前端 HTML 未被转义（原样拼回）', hRes.html.includes('<div>前端</div>'));
 ok('钩子产出：选项按钮已渲染', hRes.html.includes('data-cd-text="吻她"'));
 ok('钩子产出：标签不出现', !hRes.html.includes('·动作'));
-ok('钩子产出：旁白无名字', renderMessageHTML('旁白·灯灭了。').html.includes('cd-L-narr"><span class="cd-who"></span>'));
+ok('钩子产出：旁白无名字', /cd-L-narr[^>]*><span class="cd-who"><\/span>/.test(renderMessageHTML('旁白·灯灭了。').html));
 
 /* ---------------------------- 回归对照（自检发现的坑，§1.4.6 留对照夹具） ----------------------------
    坑：renderMessageHTML 原来用「整条原文」做 hasOurLines 判据。
@@ -236,6 +240,90 @@ ok('子命令 ≥ 3 个且都有名字与说明',
 eq('子命令名唯一', new Set(SLASH_COMMAND.subcommands.map(s => s.name)).size, SLASH_COMMAND.subcommands.length);
 ok('refresh/stats/config/regex 四个子命令都在',
     ['refresh', 'stats', 'config', 'regex'].every(n => SLASH_COMMAND.subcommands.some(s => s.name === n)));
+
+/* ---------------------------- L5/L6/L8 配置面（0.5.0） ---------------------------- */
+
+/* ★ 回归断言：border-style:none 会让 used border-width 归零 → 那一行整体左移 3px，
+   和有线行对不齐（这个坑早先在预览原型里踩过一次，这里锁死）。 */
+ok('layerVars 永不输出 --cd-mark:none（否则 3px 会塌、行会左移）',
+    LAYERS.every(l => !layerVars(l, {}).includes('--cd-mark:none')),
+    LAYERS.map(l => [l, layerVars(l, {})]));
+ok('无标记的层用「solid 兜底 + transparent」保住 3px',
+    layerVars('台词', {}).includes('--cd-mark:solid') && layerVars('台词', {}).includes('--cd-mark-color:transparent'));
+ok('心理层默认双线 + 斜体',
+    layerVars('心理', {}).includes('--cd-mark:double') && layerVars('心理', {}).includes('--cd-italic:italic'));
+ok('逐层覆盖生效（动作改虚线）',
+    layerVars('动作', { layerStyles: { '动作': { mark: 'dashed' } } }).includes('--cd-mark:dashed'));
+ok('非法 mark 被忽略（回落默认，不注入脏 CSS）',
+    layerVars('动作', { layerStyles: { '动作': { mark: '<script>' } } }).includes('--cd-mark:solid'));
+ok('五层都有默认样式且 mark 合法',
+    LAYERS.every(l => DEFAULT_LAYER_STYLES[l] && MARK_OPTIONS.indexOf(DEFAULT_LAYER_STYLES[l].mark) >= 0));
+
+/* 自定义层 */
+eq('allLayers：无自定义时就是内置五层', allLayers({}), LAYERS);
+eq('allLayers：追加自定义层', allLayers({ customLayers: [{ name: '系统' }] }).length, 6);
+eq('allLayers：与内置重名时去重', allLayers({ customLayers: [{ name: '台词' }, { name: '系统' }] }).length, 6);
+ok('自定义层能被解析（名字·系统 内容）',
+    parseLine('广播·系统 提示音响起。', allLayers({ customLayers: [{ name: '系统' }] })).kind === 'row');
+ok('没登记过的层名 → other（不乱认，避免把散文当分镜）', parseLine('广播·未登记 提示音。').kind === 'other');
+ok('rowRegexFor 在有自定义层时返回不同的正则',
+    rowRegexFor(allLayers({ customLayers: [{ name: '系统' }] })) !== rowRegexFor(LAYERS));
+
+/* 层名校验 */
+ok('层名校验：拒绝空', validateLayerName('').ok === false);
+ok('层名校验：拒绝含空格或 ·', validateLayerName('系 统').ok === false && validateLayerName('系·统').ok === false);
+ok('层名校验：拒绝超长', validateLayerName('一二三四五六七').ok === false);
+ok('层名校验：拒绝与内置重名', validateLayerName('台词').ok === false);
+ok('层名校验：接受「系统」', validateLayerName('系统').ok === true && validateLayerName('系统').name === '系统');
+
+/* 配色 */
+eq('resolveColors：点名颜色优先', resolveColors(['林野'], { charColors: { '林野': '#123456' } })['林野'], '#123456');
+eq('resolveColors：没点名的按出现顺序', resolveColors(['林野', '苏晴'], {})['林野'], PALETTE[0]);
+eq('resolveColors：点名不影响别人拿色', resolveColors(['林野', '苏晴'], { charColors: { '苏晴': '#abcdef' } })['林野'], PALETTE[0]);
+
+/* 只看某角色 */
+ok('rowDimmed：非选中角色变淡', rowDimmed({ kind: 'row', name: '苏晴' }, '林野') === true);
+ok('rowDimmed：选中角色不变', rowDimmed({ kind: 'row', name: '林野' }, '林野') === false);
+ok('rowDimmed：旁白不受影响', rowDimmed({ kind: 'narr' }, '林野') === false);
+ok('rowDimmed：没设过滤时都不变', rowDimmed({ kind: 'row', name: '苏晴' }, '') === false);
+
+/* 高亮 */
+eq('highlightPlan：空查询 → 单段不命中', highlightPlan('abc', ''), [{ t: 'abc', hit: false }]);
+eq('highlightPlan：两个命中', highlightPlan('aXbXc', 'X').filter(p => p.hit).length, 2);
+ok('highlightPlan：大小写不敏感', highlightPlan('AbC', 'b')[1].hit === true);
+ok('highlightPlan：没命中就单段', highlightPlan('abc', 'zz').every(p => !p.hit));
+eq('highlightPlan：拼回去等于原文', highlightPlan('aXbXc', 'X').map(p => p.t).join(''), 'aXbXc');
+
+/* 大纲标题 */
+eq('sceneTitle：只认旁白', sceneTitle({ kind: 'row', name: '林野', layer: '动作', text: 'x' }), '');
+ok('sceneTitle：超长截断', sceneTitle({ kind: 'narr', body: '一'.repeat(50) }).endsWith('…'));
+eq('messageTitle：取第一条旁白', messageTitle([{ kind: 'row' }, { kind: 'narr', body: '灯灭了' }]), '灯灭了');
+
+/* 导出 / 导入 */
+const expText = serializeConfig({ ...DEFAULT_CONFIG, charColors: { '林野': '#111111' } });
+const expObj = JSON.parse(expText);
+eq('导出带 schema', expObj.schema, EXPORT_SCHEMA);
+eq('导出带 charColors', expObj.config.charColors['林野'], '#111111');
+const back = parseConfig(expText);
+ok('导入：自己的导出能读回来', back.ok === true && back.config.charColors['林野'] === '#111111');
+eq('导入：schema 不匹配要拒绝', parseConfig('{"schema":"别的@9","config":{}}').ok, false);
+eq('导入：坏 JSON 要拒绝', parseConfig('{不是 json').ok, false);
+ok('导入：未知键被丢弃并报告', (() => {
+    const r = parseConfig('{"config":{"enabled":true,"evil":"x"}}');
+    return r.ok && r.dropped.indexOf('evil') >= 0 && r.config.evil === undefined;
+})());
+ok('导入：类型不对的键被丢弃', (() => {
+    const r = parseConfig('{"config":{"rowGap":"不是数字"}}');
+    return r.ok && r.dropped.indexOf('rowGap') >= 0;
+})());
+
+/* 配置面覆盖度：加了配置键却忘了给 UI —— 这里会拦下来 */
+const CODE_MANAGED = ['palette', 'layerStyles', 'charColors', 'perCard', 'customLayers', 'onlyChar', 'highlight'];
+ok('每个 DEFAULT_CONFIG 键要么有面板字段、要么登记为代码管理',
+    Object.keys(DEFAULT_CONFIG).every(k => PANEL_FIELDS.some(f => f.key === k) || CODE_MANAGED.indexOf(k) >= 0),
+    Object.keys(DEFAULT_CONFIG).filter(k => !PANEL_FIELDS.some(f => f.key === k) && CODE_MANAGED.indexOf(k) < 0));
+ok('configKeys 白名单覆盖全部 DEFAULT_CONFIG 键',
+    Object.keys(DEFAULT_CONFIG).every(k => configKeys().indexOf(k) >= 0));
 
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);

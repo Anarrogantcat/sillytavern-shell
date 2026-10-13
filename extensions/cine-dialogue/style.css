@@ -65,8 +65,10 @@
 
 .cd-body {
     min-width: 0;
-    /* 所有行的 border 宽度必须一致，只换颜色/样式 —— 否则有线行被推偏 */
-    border-left: 3px solid transparent;
+    /* ★ 所有行的 border 宽度必须恒为 3px，只用颜色/样式区分 —— 否则有线行被推偏。
+       （没有标记的层：style 兜底 solid + color=transparent，见 logic.js layerVars） */
+    border-left: 3px var(--cd-mark, solid) var(--cd-mark-color, transparent);
+    font-style: var(--cd-italic, normal);
     padding-left: .7em;
 }
 
@@ -75,15 +77,32 @@
     text-indent: var(--cd-indent);
 }
 
-/* ---------------------------------------------------------------- 层 → 样式 */
+/* ---------------------------------------------------------------- 层 → 样式
+   静态默认值；运行时可由配置逐层覆盖（行内 --cd-mark / --cd-mark-color / --cd-italic） */
 
-.cd-L-speech .cd-body {}                                   /* 台词：无标记（「」自己就有） */
-.cd-L-act    .cd-body { border-left-style: solid;  border-left-color: currentColor; }
-.cd-L-sense  .cd-body { border-left-style: dotted; border-left-color: currentColor; opacity: .94; }
-.cd-L-mind   .cd-body { border-left-style: double; border-left-color: currentColor; font-style: italic; }
+.cd-L-speech { --cd-mark: solid;  --cd-mark-color: transparent; --cd-italic: normal; }
+.cd-L-act    { --cd-mark: solid;  --cd-mark-color: currentColor; --cd-italic: normal; }
+.cd-L-sense  { --cd-mark: dotted; --cd-mark-color: currentColor; --cd-italic: normal; opacity: .94; }
+.cd-L-mind   { --cd-mark: double; --cd-mark-color: currentColor; --cd-italic: italic; }
+.cd-L-narr   { --cd-mark: solid;  --cd-mark-color: transparent; --cd-italic: normal; }
+/* 自定义层：没在 LAYER_CLS 里的层名落到这里，靠行内变量出样式 */
+.cd-L-custom { --cd-mark: dashed; --cd-mark-color: currentColor; --cd-italic: normal; }
 
 /* 旁白：没有名字格，内容用中性灰 */
 .cd-L-narr  .cd-body { color: var(--cd-sub); opacity: .92; }
+
+/* ---------------------------------------------------------------- L2 交互态 */
+
+/* 只看某角色：其余行凸显变淡 */
+.cd-row.cd-dim { opacity: .32; }
+.cd-row.cd-dim:hover { opacity: .85; }
+
+/* 搜索命中 */
+.cd-hit {
+    background: rgba(255, 214, 0, .30);
+    border-radius: .15em;
+    box-shadow: 0 0 0 1px rgba(255, 214, 0, .35);
+}
 
 /* ---------------------------------------------------------------- 段间分隔 */
 
@@ -231,5 +250,55 @@
     background: rgba(0, 0, 0, .22);
     border-radius: .25em;
     opacity: .88;
+}
+
+/* 分区 */
+#cd-panel .cd-sec {
+    margin-top: .9em;
+    padding-top: .6em;
+    border-top: 1px solid var(--cd-sep);
+}
+
+#cd-panel .cd-sec-h {
+    font-weight: 600;
+    font-size: .95em;
+    margin-bottom: .35em;
+    opacity: .95;
+}
+
+#cd-panel input[type="text"] {
+    flex: 0 1 auto;
+    min-width: 8em;
+}
+
+#cd-panel select {
+    flex: 0 0 auto;
+    max-width: 12em;
+}
+
+#cd-panel .cd-hidden {
+    display: none;
+}
+
+/* 格式错误列表 */
+#cd-panel .cd-errlist {
+    margin-top: .4em;
+    max-height: 14em;
+    overflow: auto;
+    font-size: .85em;
+}
+
+#cd-panel .cd-errrow {
+    display: flex;
+    align-items: baseline;
+    gap: .5em;
+    margin: .2em 0;
+}
+
+#cd-panel .cd-errtext {
+    color: var(--cd-err);
+    opacity: .9;
+    word-break: break-all;
+    flex: 1 1 auto;
 }
 

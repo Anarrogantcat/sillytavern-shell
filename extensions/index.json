@@ -53,12 +53,12 @@
     {
       "id": "cine-dialogue",
       "display_name": "分镜对话 (Cine Dialogue)",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 12077,
-          "sha1": "2f5204c3e2d3bc15dadebf303786d469364144e7"
+          "size": 15591,
+          "sha1": "44c54b39b37a8cf96cb6d7f83e6db06d7b815a14"
         },
         {
           "path": "README.md",
@@ -67,23 +67,23 @@
         },
         {
           "path": "index.js",
-          "size": 31933,
-          "sha1": "77c262af86eebe6bea00482f7d88efc46631d65a"
+          "size": 57172,
+          "sha1": "555a3b297d79a0cc6901d673a1316736dd9d4606"
         },
         {
           "path": "logic.js",
-          "size": 20944,
-          "sha1": "8676970813a0484f943314ef7a2c600c8cfe3a03"
+          "size": 31184,
+          "sha1": "e22e6e252f34bc54360a37db6df2a578900a6b57"
         },
         {
           "path": "manifest.json",
           "size": 466,
-          "sha1": "b2ad6b7ba9f8d7853ff6084dd614807bc6eae5de"
+          "sha1": "7cb2593c10e9652e17a77c9a63f443cb389276be"
         },
         {
           "path": "style.css",
-          "size": 6115,
-          "sha1": "ae5503a0b5fa349651278f3dd995878ff59afd4d"
+          "size": 7780,
+          "sha1": "d1d7b7db005d7949654d6e321a1b473b6239afbb"
         }
       ]
     },
@@ -125,5 +125,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-13T15:38:00.418Z"
+  "generatedAt": "2026-10-13T15:45:08.265Z"
 }

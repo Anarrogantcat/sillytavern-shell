@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -65,6 +65,24 @@ export const DEFAULT_CONFIG = {
     promptDepth: 4,
     /** 注入位置：0=系统提示后（in-chat 用 1） */
     promptPosition: 0,
+
+    /* ---- L5 数据层 ---- */
+    /** 逐角色指定颜色：{ 名字: '#rrggbb' }；没指定的按出现顺序分配 */
+    charColors: {},
+    /** 逐卡配置覆盖：{ 角色卡文件名: { …覆盖项 } }（由代码维护，不在面板里手改） */
+    perCard: {},
+    /** 自定义层：[{ name:'系统', mark:'dashed', italic:false }] */
+    customLayers: [],
+    /** 批量渲染只处理最近 N 楼；更早的不做 DOM 降级渲染（<=0 = 不限） */
+    maxRenderFloors: 80,
+
+    /* ---- L2 交互层 ---- */
+    /** 只看某角色（其余凸显变淡）；空 = 不过滤 */
+    onlyChar: '',
+    /** 行内高亮搜索词；空 = 不搜索 */
+    highlight: '',
+    /** 双击行复制该行文本 */
+    copyOnClick: true,
 };
 
 /**
@@ -180,6 +198,15 @@ export const PANEL_FIELDS = [
     { key: 'injectPrompt', kind: 'bool', label: '自动注入格式说明',
       note: '默认关：专属预设里已有同样说明，两边同时开会重复占提示词' },
     { key: 'promptDepth', kind: 'number', label: '注入深度', unit: '层', min: 0, max: 20, step: 1 },
+    { key: 'promptPosition', kind: 'select', label: '注入位置',
+      options: [['0', '系统提示内'], ['1', '对话内（更靠后）']] },
+
+    /* ---- L5 数据层 ---- */
+    { key: 'maxRenderFloors', kind: 'number', label: '批量渲染上限', unit: '楼',
+      min: 0, max: 2000, step: 20, note: '0 = 不限；只影响 DOM 降级路径，装了核内钩子时由 ST 自己按窗口渲染' },
+
+    /* ---- L2 交互层 ---- */
+    { key: 'copyOnClick', kind: 'bool', label: '双击复制该行', note: '关掉 = 双击不复制（Alt+↑/↓ 跳场景不受影响）' },
 ];
 
 /**
@@ -223,6 +250,32 @@ export const RE_ROW = /^([^\s·・:：]{1,12})\s*[·・:：]\s*(台词|动作|�
 /** 旁白·内容 —— 没有名字字段 */
 export const RE_NARR = /^旁白\s*[·・:：]\s*(.+)$/;
 
+const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 内置层 + 配置里的自定义层（去重、保序） */
+export function allLayers(config = {}) {
+    const custom = Array.isArray(config.customLayers) ? config.customLayers : [];
+    const names = custom.map(l => (typeof l === 'string' ? l : (l && l.name))).filter(Boolean);
+    return LAYERS.concat(names.filter(n => LAYERS.indexOf(n) < 0));
+}
+
+/* 动态层名正则的缓存：不给每一行都 new 一个 RegExp */
+let _layerRe = { key: '', re: null };
+
+/** 取「认哪些层」的行正则；没有自定义层时直接返回内置 RE_ROW */
+export function rowRegexFor(layers) {
+    const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
+    if (!extra.length) return RE_ROW;
+    const key = extra.join('\u0001');
+    if (_layerRe.key !== key) {
+        _layerRe = {
+            key,
+            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(台词|动作|感官|心理|' + extra.map(escRe).join('|') + ')\\s+(.+)$'),
+        };
+    }
+    return _layerRe.re;
+}
+
 /** 选项行：1. 文本 | 备注 */
 export const RE_OPT = /^(\d+)[.、)]\s*(.+?)\s*(?:\|\s*(.*))?$/;
 
@@ -247,19 +300,19 @@ export const RE_OPTIONS_TAG_BLOCK = /<options>([\s\S]*?)<\/options>/gi;
  *         | {kind:'narr',body:string}
  *         | {kind:'other',raw:string}}
  */
-export function parseLine(line) {
+export function parseLine(line, layers = LAYERS) {
     const n = line.match(RE_NARR);
     if (n) return { kind: 'narr', body: n[1].trim() };
 
-    const r = line.match(RE_ROW);
+    const r = line.match(rowRegexFor(layers));
     if (r) return { kind: 'row', name: r[1].trim(), layer: r[2], text: r[3].trim() };
 
     return { kind: 'other', raw: line };
 }
 
 /** 这行是不是「我们的行」 */
-export function isOurLine(line) {
-    const p = parseLine(line);
+export function isOurLine(line, layers = LAYERS) {
+    const p = parseLine(line, layers);
     return p.kind === 'row' || p.kind === 'narr';
 }
 
@@ -300,7 +353,7 @@ export function splitSections(raw) {
  * 正文 → 段落分组
  * 空行分段；每组是若干「行对象」；不匹配的行保留为 other（原样输出）
  */
-export function parseBlocks(body) {
+export function parseBlocks(body, layers = LAYERS) {
     const groups = [];
     let cur = [];
     let errs = 0;
@@ -311,7 +364,7 @@ export function parseBlocks(body) {
             if (cur.length) { groups.push(cur); cur = []; }
             continue;
         }
-        const p = parseLine(line);
+        const p = parseLine(line, layers);
         if (p.kind === 'other') errs++;
         cur.push(p);
     }
@@ -356,18 +409,27 @@ export function assignColors(names, seed = {}, palette = PALETTE) {
 
 // ---------------------------------------------------------------- 渲染
 
+/** 层 → CSS 类；自定义层回落到 cd-L-custom（样式靠行内变量） */
+export function layerClass(layer) {
+    return LAYER_CLS[layer] || 'cd-L-custom';
+}
+
 function rowHTML(r, colorMap, config) {
+    const dim = rowDimmed(r, config.onlyChar) ? ' cd-dim' : '';
+
     if (r.kind === 'narr') {
-        return '<div class="cd-row cd-L-narr">'
+        return '<div class="cd-row cd-L-narr' + dim + '" style="' + esc(layerVars('旁白', config)) + '">'
             + '<span class="cd-who"></span>'
-            + '<span class="cd-body">' + esc(r.body) + '</span>'
+            + '<span class="cd-body" title="双击复制这一行">' + esc(r.body) + '</span>'
             + '</div>';
     }
     if (r.kind === 'row') {
         const c = colorMap[r.name] || PALETTE[0];
-        return '<div class="cd-row ' + LAYER_CLS[r.layer] + '" style="--c:' + esc(c) + '">'
+        const lv = layerVars(r.layer, config);
+        const css = '--c:' + esc(c) + (lv ? ';' + esc(lv) : '');
+        return '<div class="cd-row ' + layerClass(r.layer) + dim + '" style="' + css + '">'
             + '<span class="cd-who">' + esc(r.name) + '</span>'
-            + '<span class="cd-body">' + esc(r.text) + '</span>'
+            + '<span class="cd-body" title="双击复制这一行">' + esc(r.text) + '</span>'
             + '</div>';
     }
     // other：格式不对的行 —— 显式暴露，不静默降级
@@ -415,9 +477,9 @@ export function renderOptions(options, config = DEFAULT_CONFIG) {
 /** 总入口：正文 → 完整 HTML（不含 frontend —— 那块由 index.js 搬 DOM 节点） */
 export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
-    const { groups, errs } = parseBlocks(body);
+    const { groups, errs } = parseBlocks(body, allLayers(cfg));
     const names = collectNames(groups);
-    const map = assignColors(names, colorMap, cfg.palette);
+    const map = resolveColors(names, cfg, colorMap);
 
     /* 一条「我们的行」都没有 → 什么都不产出（调用方据此决定不碰 DOM）。
        注意判据不能只看 names.length：整条都是散文时 names=[] 但 errs>0，
@@ -446,7 +508,7 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
        反例：标签只出现在 <htmlcontent> / [FRONTEND] 里时，对整条原文 hasOurLines 为真，
        但外壳被切走后正文没有我们的行 → renderMessage 返回 html:null
        → 若继续拼 `'' + 前端 + 选项`，就会返回一个非空字符串，**正文整段丢失**。 */
-    if (!hasOurLines(sections.body)) return null;
+    if (!hasOurLines(sections.body, allLayers(cfg))) return null;
 
     const res = renderMessage(sections.body, colorMap, cfg);
     if (!res.html) return null;                     // 双保险：宁可整条不改，也不能只输出外壳
@@ -459,12 +521,178 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
 }
 
 /** 一条消息里有没有「我们的行」（用来决定碰不碰它） */
-export function hasOurLines(body) {
+export function hasOurLines(body, layers = LAYERS) {
     for (const line of String(body == null ? '' : body).split('\n')) {
         const t = line.trim();
-        if (t && isOurLine(t)) return true;
+        if (t && isOurLine(t, layers)) return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------- L5/L6/L8 配置面
+
+/** 左侧标记可选值（层样式编辑器用） */
+export const MARK_OPTIONS = ['none', 'solid', 'dotted', 'double', 'dashed'];
+
+/** 五层的**默认**样式（style.css 的静态值就是这些；配置可逐层覆盖） */
+export const DEFAULT_LAYER_STYLES = {
+    '台词': { mark: 'none', italic: false },
+    '动作': { mark: 'solid', italic: false },
+    '感官': { mark: 'dotted', italic: false },
+    '心理': { mark: 'double', italic: true },
+    '旁白': { mark: 'none', italic: false },
+};
+
+/** 导出文件的 schema 版本（导入时校验，避免把旧格式吃进来） */
+export const EXPORT_SCHEMA = 'cine-dialogue/config@1';
+
+/** 可配置键白名单（导入只接受这些） */
+export function configKeys() {
+    return Object.keys(DEFAULT_CONFIG).concat(['charColors', 'perCard', 'onlyChar', 'highlight', 'customLayers']);
+}
+
+/**
+ * 层 → 行内 CSS 变量（覆盖 style.css 的静态默认）
+ * @returns {string} 形如 `--cd-mark:dashed;--cd-italic:italic;`
+ */
+export function layerVars(layer, config = {}) {
+    const merged = { ...(DEFAULT_LAYER_STYLES[layer] || DEFAULT_LAYER_STYLES['旁白']), ...((config.layerStyles || {})[layer] || {}) };
+    const hasMark = !!merged.mark && merged.mark !== 'none' && MARK_OPTIONS.indexOf(merged.mark) >= 0;
+    /* ★ 关键：没有任何标记时也必须保持 **3px 宽 + transparent**。
+       若把 border-style 设成 none，浏览器会把 used border-width 归零 → 该行整体左移 3px，
+       和有线行对不齐（这个坑早先在预览里踩过）。所以样式恒为 solid 兜底，用颜色控制可见性。 */
+    return '--cd-mark:' + (hasMark ? merged.mark : 'solid')
+        + ';--cd-mark-color:' + (hasMark ? 'currentColor' : 'transparent')
+        + ';--cd-italic:' + (merged.italic ? 'italic' : 'normal');
+}
+
+/**
+ * 颜色解析：**用户点名的颜色优先**，其余按出现顺序分配（纯函数）
+ */
+export function resolveColors(names, config = {}, seed = {}) {
+    const fixed = config.charColors || {};
+    const palette = (config.palette && config.palette.length) ? config.palette : PALETTE;
+    const map = { ...seed };
+
+    // 1) 用户点名的先钉死
+    for (const n of names) {
+        if (fixed[n]) map[n] = fixed[n];
+    }
+
+    // 2) 没点名的按出现顺序拿「还没被占用」的调色板颜色。
+    //    ★ 不能按 Object.keys(map).length 取下标 —— 那样「钉死 苏晴」会把 林野 挤到第 2 色。
+    //      钉死一个人不该改变别人的颜色。
+    const used = new Set(Object.keys(map).map(k => map[k]));
+    let k = 0;
+    for (const n of names) {
+        if (map[n]) continue;
+        while (k < palette.length && used.has(palette[k])) k++;
+        const color = k < palette.length
+            ? palette[k]
+            : 'hsl(' + ((k * 137.508) % 360).toFixed(0) + ', 78%, 66%)';
+        map[n] = color;
+        used.add(color);
+        k++;
+    }
+    return map;
+}
+
+/** 自定义层名校验：1–6 字符、不含分隔符与空格、不与内置层重名 */
+export function validateLayerName(name, existing = LAYERS) {
+    const n = String(name == null ? '' : name).trim();
+    if (!n) return { ok: false, error: '层名不能为空' };
+    if (/[\s·・:：]/.test(n)) return { ok: false, error: '层名不能含空格或 · ・ : ：' };
+    if (n.length > 6) return { ok: false, error: '层名最多 6 个字符' };
+    if (existing.indexOf(n) >= 0) return { ok: false, error: '与已有层重名：' + n };
+    return { ok: true, name: n };
+}
+
+/** 「只看某角色」的凸显判定（旁白不受影响） */
+export function rowDimmed(row, onlyChar) {
+    if (!onlyChar) return false;
+    if (!row || row.kind !== 'row') return false;
+    return row.name !== onlyChar;
+}
+
+/** 高亮计划：按查询词切成 [{t, hit}]（大小写不敏感，纯函数） */
+export function highlightPlan(text, query) {
+    const s = String(text == null ? '' : text);
+    const q = String(query == null ? '' : query).trim();
+    if (!q) return [{ t: s, hit: false }];
+    const out = [];
+    const lower = s.toLowerCase();
+    const lq = q.toLowerCase();
+    let i = 0;
+    for (;;) {
+        const at = lower.indexOf(lq, i);
+        if (at < 0) { if (i < s.length) out.push({ t: s.slice(i), hit: false }); break; }
+        if (at > i) out.push({ t: s.slice(i, at), hit: false });
+        out.push({ t: s.slice(at, at + q.length), hit: true });
+        i = at + q.length;
+    }
+    return out.length ? out : [{ t: s, hit: false }];
+}
+
+/** 这一行适不适合当「分段标题」：旁白且不太长 */
+export function sceneTitle(row, max = 28) {
+    if (!row || row.kind !== 'narr') return '';
+    const t = String(row.body || '').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    return t.length > max ? t.slice(0, max) + '…' : t;
+}
+
+/** 这一楼的分段标题（第一条可用旁白） */
+export function messageTitle(rows) {
+    for (const r of (rows || [])) {
+        const t = sceneTitle(r);
+        if (t) return t;
+    }
+    return '';
+}
+
+// ---------------------------------------------------------------- L5 导出 / 导入
+
+/** 只导出白名单内的键 */
+export function serializeConfig(config = {}) {
+    const out = {};
+    for (const k of Object.keys(DEFAULT_CONFIG)) {
+        if (config[k] === undefined) continue;
+        if (k === 'layerStyles' || k === 'palette') continue;
+        out[k] = config[k];
+    }
+    out.layerStyles = config.layerStyles || {};
+    out.charColors = config.charColors || {};
+    out.perCard = config.perCard || {};
+    return JSON.stringify({ schema: EXPORT_SCHEMA, exportedAt: new Date().toISOString(), config: out }, null, 2);
+}
+
+/**
+ * 解析导入的配置：**只接受白名单键** + 逐项类型校验；
+ * 不合格的键丢进 `dropped` —— 不静默接受脏数据。
+ */
+export function parseConfig(text) {
+    let obj;
+    try { obj = JSON.parse(String(text == null ? '' : text)); }
+    catch (e) { return { ok: false, error: 'JSON 解析失败：' + (e && e.message ? e.message : String(e)) }; }
+    if (!obj || typeof obj !== 'object') return { ok: false, error: '不是一个对象' };
+    if (obj.schema && obj.schema !== EXPORT_SCHEMA) return { ok: false, error: 'schema 不匹配：' + obj.schema };
+
+    const src = (obj.config && typeof obj.config === 'object') ? obj.config : obj;
+    const allowed = configKeys();
+    const out = {};
+    const dropped = [];
+
+    for (const k of Object.keys(src)) {
+        if (allowed.indexOf(k) < 0) { dropped.push(k); continue; }
+        const v = src[k];
+        const def = DEFAULT_CONFIG[k];
+        if (typeof def === 'boolean' && typeof v !== 'boolean') { dropped.push(k); continue; }
+        if (typeof def === 'number' && !Number.isFinite(Number(v))) { dropped.push(k); continue; }
+        if (typeof def === 'string' && typeof v !== 'string') { dropped.push(k); continue; }
+        if (['layerStyles', 'charColors', 'perCard'].indexOf(k) >= 0 && (v === null || typeof v !== 'object' || Array.isArray(v))) { dropped.push(k); continue; }
+        out[k] = v;
+    }
+    return { ok: true, config: out, dropped };
 }
 
 /** 统计（面板/排障用） */

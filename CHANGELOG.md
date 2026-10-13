@@ -1,5 +1,30 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.5.0：L2/L5/L6/L7/L8 补完（八层齐）
+
+### 新增（cine-dialogue 0.4.0 → **0.5.0**）
+- **L5 数据层**：**逐卡配置**（`perCard[卡文件名]` + 面板存取，渲染全走 `effectiveConfig()`）· **导出/导入**（`serializeConfig`/`parseConfig`，**白名单键 + 逐项类型校验**，脏键丢进 `dropped` 并报告）· 批量渲染上限 · **MVU 只读**（`CineDialogue.mvu()`，**绝不写** —— 写数据是 card-compat 的职责，§0.3.1）
+- **L2 交互层**：只看某角色（其余 `.cd-dim`）· 搜索高亮（纯函数 + DOM 后处理）· 双击复制该行 · Alt+↑/↓ 跳上一/下一有分镜的楼层 · **格式错误面板**（按需扫描，不维护状态）
+  - ★ 不用 hover 复制按钮：按钮放进 `.cd-body` 会**污染 `textContent`**（复制到的文本、高亮重建的文本都会带上它）
+- **L6 UI 层**：**配色管理**（取色器，改一下即钉死）· **层样式编辑器**（CSS 改**变量驱动**：`--cd-mark`/`--cd-mark-color`/`--cd-italic`）· **自定义层**（校验后解析器立刻认）
+- **L7 服务端层**：**导出全部分镜为 Markdown**（Blob 下载）—— 原计划要动本体，**实测不需要**，这一层不用碰 ST
+- **L8 生态层**：`detect` / `registerLayer` / `errors` / `exportStory` / `effectiveConfig` / `cardKey` / `mvu` + **`eventSource.emit('cine:rendered')`** 事件广播
+
+### 夹具：109 → **150 条**
+- ★ **回归**：`layerVars` **永不输出 `--cd-mark:none`** —— `border-style:none` 会让 used border-width 归零 → 该行左移 3px（早先踩过的坑，现在锁死）
+- ★ **配置面覆盖度断言**抓出 4 个：`promptPosition`/`maxRenderFloors`/`copyOnClick` **漏了 UI**；`lazyRender` 是**从没实现的死配置** → 删掉
+- ★ **`resolveColors` 真 bug**：钉死一个角色的颜色会把别人挤后一位 → 改为「取未被占用的调色板颜色」
+- 修 2 条**过时断言**（旁白行现在带 `style`/`title`）
+
+### 结果
+- 全量夹具：compat-logic **658/0** · plot-pilot **67/67** · cine-dialogue **150/150** · ext-manage **49/49**
+- CSS **选择器白名单**：**48 个选择器全部**在 `#cd-panel` / `.cd-` 内 ✓
+- `extensions/index.json` 重建（cine-dialogue **0.5.0**），`--check` **exit 0**
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
+- 核内补丁 #001 未改动
+
 ## 未发版（2026-10-13）— cine-dialogue 0.4.0：L3 提示词注入 + L4 斜杠命令 + 专属正则
 
 ### 新增

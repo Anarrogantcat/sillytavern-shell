@@ -35,14 +35,28 @@ import {
     FORMAT_SPEC,
     REGEX_DEFS,
     SLASH_COMMAND,
+    LAYERS,
+    MARK_OPTIONS,
+    DEFAULT_LAYER_STYLES,
+    EXPORT_SCHEMA,
+    allLayers,
     assignColors,
+    collectNames,
     esc,
     hasOurLines,
+    highlightPlan,
     isOurLine,
+    layerVars,
+    messageTitle,
+    parseBlocks,
+    parseConfig,
     renderMessage,
     renderMessageHTML,
     renderOptions,
+    resolveColors,
+    serializeConfig,
     splitSections,
+    validateLayerName,
 } from './logic.js';
 
 // ---------------------------------------------------------------- 配置
@@ -165,7 +179,7 @@ function hookActive() {
 /** 钩子入口：原文 → HTML 字符串（**不能改 DOM，只能返回字符串**） */
 function formatHook(mes, ctx) {
     try {
-        const c = cfg();
+        const c = effectiveConfig();
         if (!c.enabled) return mes;
         if (ctx && ctx.isSystem) return mes;
         if (ctx && ctx.isUser && !c.transformUserMessages) return mes;
@@ -242,7 +256,7 @@ function htmlToElement(html) {
 
 /** 把 .mes_text 里「是我们的」块换成网格；其余原样保留 */
 function transformMessage(mesEl, mesId) {
-    const c = cfg();
+    const c = effectiveConfig();
     if (!c.enabled) return { ok: false, reason: 'disabled' };
 
     const isUser = mesEl.getAttribute('is_user') === 'true';
@@ -316,7 +330,7 @@ function unifyNameColumn(mesEl) {
 
 /** 首行缩进：只给「真的换行」的段落；台词永不缩进 */
 function applyIndent(mesEl) {
-    const c = cfg();
+    const c = effectiveConfig();
     mesEl.querySelectorAll('.cd-body').forEach(b => {
         b.classList.remove('cd-wrap');
         const row = b.parentElement;
@@ -354,11 +368,20 @@ function decorate(mesEl) {
 }
 
 function run(all) {
-    const list = all
-        ? Array.from(document.querySelectorAll('#chat .mes'))
-        : Array.from(document.querySelectorAll('#chat .mes')).slice(-3);   // 只处理最近三楼
+    let list = Array.from(document.querySelectorAll('#chat .mes'));
+
+    if (all) {
+        /* 长聊天保护：批量只处理最近 maxRenderFloors 楼（<=0 表示不设上限）。
+           注意：装了核内钩子时这条路径本来就不干活（ST 自己按窗口渲染），
+           所以这个上限只影响 DOM 降级路径。 */
+        const cap = Number(effectiveConfig().maxRenderFloors);
+        if (Number.isFinite(cap) && cap > 0 && list.length > cap) list = list.slice(-cap);
+    } else {
+        list = list.slice(-3);   // 只处理最近三楼
+    }
 
     const hooked = hookActive();
+    let rendered = 0;
 
     for (const mesEl of list) {
         const mesId = Number(mesEl.getAttribute('mesid'));
@@ -369,11 +392,16 @@ function run(all) {
             if (hooked) { decorate(mesEl); continue; }
 
             const r = transformMessage(mesEl, mesId);
-            if (r.ok) decorate(mesEl);
+            if (r.ok) { decorate(mesEl); rendered++; }
         } catch (e) {
             console.error('[' + EXT_ID + '] render failed, mes=' + mesId, e);
         }
     }
+
+    try { applyHighlight(); } catch (e) { console.error('[' + EXT_ID + '] highlight failed', e); }
+
+    /* L8：对外广播（别的扩展可用 eventSource.on('cine:rendered', fn) 接） */
+    try { eventSource.emit('cine:rendered', { rendered, hooked, total: list.length, at: Date.now() }); } catch (_) { /* 广播失败不影响渲染 */ }
 }
 
 // ---------------------------------------------------------------- 事件（6 个触发点）
@@ -429,12 +457,55 @@ function exposeApi() {
          *     · plot-pilot   → 发送/推进动作之后
          */
         refreshAt: (mesId) => refreshAt(mesId),
+
+        /* ---- L8 生态：给别的扩展 / 卡内嵌脚本用 ---- */
+
+        /** 只解析不渲染：返回 { groups, errs } */
+        detect(text) {
+            return parseBlocks(splitSections(text).body, allLayers(effectiveConfig()));
+        },
+
+        /** 注册一个自定义层（别的扩展也能调） */
+        registerLayer(layer) {
+            const v = validateLayerName(layer && (layer.name || layer), allLayers(cfg()));
+            if (!v.ok) return v;
+            const c = cfg();
+            c.customLayers = (c.customLayers || []).filter(l => l.name !== v.name)
+                .concat([{ name: v.name, mark: (layer && layer.mark) || 'dashed', italic: !!(layer && layer.italic) }]);
+            saveSettingsDebounced(); rebuildDynamic(); schedule(true);
+            return { ok: true, name: v.name };
+        },
+
+        /** 格式错误清单（按需扫描，不维护状态） */
+        errors: (limit) => scanFormatErrors(limit || 30),
+
+        /** 导出全部分镜 Markdown（只返回字符串，不下载） */
+        exportStory: () => buildStoryMarkdown(),
+
+        /** 当前生效配置（含逐卡覆盖） */
+        get effectiveConfig() { return { ...effectiveConfig() }; },
+
+        /** 当前卡的身份键 */
+        cardKey: () => cardKey(),
+
+        /** MVU 只读快照 —— **绝不写**（写数据是 card-compat 的职责，见 AGENTS §0.3.1） */
+        mvu() {
+            const m = MVU();
+            if (!m || typeof m.getMvuData !== 'function') return null;
+            try {
+                return m.getMvuData({ type: 'message', message_id: Math.max(0, chatArr().length - 1) });
+            } catch (e) {
+                console.warn('[' + EXT_ID + '] 读 MVU 失败（只读探测，不影响渲染）', e);
+                return null;
+            }
+        },
+
         /**
          * 给别的扩展/卡脚本用：把一段文本渲染成分镜 HTML（纯函数，不碰 DOM）
          */
         render(text, colors) {
             const s = splitSections(text);
-            return renderMessage(s.body, colors || {}, cfg());
+            return renderMessage(s.body, colors || {}, effectiveConfig());
         },
         stats() {
             const cc = CC();
@@ -640,6 +711,212 @@ function runSlashCommand(sub) {
     }
 }
 
+// ---------------------------------------------------------------- L5/L6/L7/L8 工具
+
+function chatArr() {
+    try {
+        const ctx = getContext();
+        return (ctx && Array.isArray(ctx.chat)) ? ctx.chat : [];
+    } catch (_) { return []; }
+}
+
+/** 当前角色卡的身份键（文件名），用于逐卡配置 */
+function cardKey() {
+    try {
+        const ctx = getContext();
+        const c = ctx.characters && ctx.characters[ctx.characterId];
+        return (c && c.avatar) ? String(c.avatar) : '';
+    } catch (_) { return ''; }
+}
+
+/** 当前生效配置 = 全局配置 + 本卡覆盖 */
+function effectiveConfig() {
+    const base = cfg();
+    const key = cardKey();
+    if (!key || !base.perCard || !base.perCard[key]) return base;
+    return { ...base, ...base.perCard[key] };
+}
+
+/* 已见过的角色名（颜色管理用）：来自颜色表 + 各楼正文 */
+function knownNames() {
+    const set = new Set();
+    for (const k of Object.keys(colorMap)) {
+        for (const n of Object.keys(colorMap[k] || {})) set.add(n);
+    }
+    const c = effectiveConfig();
+    for (const n of Object.keys(c.charColors || {})) set.add(n);
+    for (const mes of chatArr()) {
+        const raw = mes && mes.mes;
+        if (typeof raw !== 'string' || !hasOurLines(raw, allLayers(c))) continue;
+        const sec = splitSections(raw);
+        const pb = parseBlocks(sec.body, allLayers(c));
+        for (const n of collectNames(pb.groups)) set.add(n);
+    }
+    return [...set];
+}
+
+/** 扫描格式错的行（按需计算，不维护状态 —— 不会和渲染脱节） */
+function scanFormatErrors(limit = 30) {
+    const c = effectiveConfig();
+    const layers = allLayers(c);
+    const out = [];
+    const chat = chatArr();
+    for (let i = 0; i < chat.length && out.length < limit; i++) {
+        const raw = chat[i] && chat[i].mes;
+        if (typeof raw !== 'string' || !hasOurLines(raw, layers)) continue;
+        const pb = parseBlocks(splitSections(raw).body, layers);
+        if (!pb.errs) continue;
+        for (const g of pb.groups) {
+            for (const r of g) {
+                if (r.kind === 'other') out.push({ mesId: i, raw: r.raw });
+                if (out.length >= limit) break;
+            }
+            if (out.length >= limit) break;
+        }
+    }
+    return out;
+}
+
+/** 浏览器下载（L7：导出走 Blob，不需要服务端、不需要动本体） */
+function download(filename, text, mime) {
+    try {
+        const blob = new Blob([text], { type: mime || 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        return true;
+    } catch (e) {
+        notify('下载失败：' + (e && e.message ? e.message : String(e)), 'error');
+        return false;
+    }
+}
+
+/** 复制到剪贴板（含 execCommand 兜底） */
+function copyText(text) {
+    const s = String(text == null ? '' : text);
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(s).then(() => notify('已复制：' + s.slice(0, 30) + (s.length > 30 ? '…' : ''), 'success'),
+                () => fallbackCopy(s));
+            return;
+        }
+    } catch (_) { /* 落到兜底 */ }
+    fallbackCopy(s);
+}
+
+function fallbackCopy(s) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = s;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        notify('已复制', 'success');
+    } catch (e) {
+        notify('复制失败：' + (e && e.message ? e.message : String(e)), 'error');
+    }
+}
+
+/** 把整段聊天导出成 Markdown（L7） */
+function buildStoryMarkdown() {
+    const c = effectiveConfig();
+    const layers = allLayers(c);
+    const lines = ['# 分镜对话导出', '', '> 由 cine-dialogue v' + VERSION + ' 导出 · ' + new Date().toLocaleString(), ''];
+    let n = 0;
+    for (const mes of chatArr()) {
+        const raw = mes && mes.mes;
+        if (typeof raw !== 'string' || !hasOurLines(raw, layers)) continue;
+        const title = messageTitle(parseBlocks(splitSections(raw).body, layers).groups);
+        lines.push('## #' + (n++) + (title ? ' — ' + title : ''));
+        lines.push('');
+        const pb = parseBlocks(splitSections(raw).body, layers);
+        for (const g of pb.groups) {
+            for (const r of g) {
+                if (r.kind === 'row') lines.push('**' + r.name + '**〔' + r.layer + '〕' + r.text);
+                else if (r.kind === 'narr') lines.push('*旁白* ' + r.body);
+                else lines.push('> ⚠ 格式错误：' + r.raw);
+            }
+            lines.push('');
+        }
+    }
+    return lines.join('\n');
+}
+
+/* ---------------------------------------------------------------- L2 交互 */
+
+/** 搜索高亮：DOM 后处理，不重渲染（改一个词不该重算全部楼层） */
+function applyHighlight(root) {
+    const q = String(effectiveConfig().highlight || '').trim();
+    const scope = root || document;
+    scope.querySelectorAll('#chat .cd-root').forEach(r => {
+        r.querySelectorAll('mark.cd-hit').forEach(m => {
+            m.replaceWith(document.createTextNode(m.textContent || ''));
+        });
+        r.normalize();
+        if (!q) return;
+        r.querySelectorAll('.cd-who, .cd-body').forEach(el => {
+            const parts = highlightPlan(el.textContent || '', q);
+            if (!parts.some(p => p.hit)) return;
+            el.textContent = '';
+            for (const p of parts) {
+                if (!p.hit) { el.appendChild(document.createTextNode(p.t)); continue; }
+                const m = document.createElement('mark');
+                m.className = 'cd-hit';
+                m.textContent = p.t;
+                el.appendChild(m);
+            }
+        });
+    });
+}
+
+/** 跳到上一/下一「有分镜」的楼层（Alt+↑ / Alt+↓） */
+function jumpScene(dir) {
+    const mesEls = Array.from(document.querySelectorAll('#chat .mes'));
+    const withCd = mesEls.filter(m => m.querySelector('.cd-root'));
+    if (!withCd.length) return;
+    const top = window.innerHeight * 0.35;
+    let cur = -1;
+    withCd.forEach((m, i) => { if (m.getBoundingClientRect().top <= top) cur = i; });
+    const next = Math.min(withCd.length - 1, Math.max(0, cur + (dir > 0 ? 1 : -1)));
+    withCd[next].scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** 逐行复制（双击）+ Alt+↑/↓ 跳场景。事件委托：只绑一次，重建 DOM 也不用重绑 */
+let interactionsBound = false;
+function bindInteractions() {
+    if (interactionsBound) return;
+    interactionsBound = true;
+
+    /* 为什么用双击而不是 hover 复制按钮：
+       按钮若放进 .cd-body，会污染 textContent —— 复制到的文本、搜索高亮重建的文本都会带上它。
+       双击没有这个副作用，且不用往每行塞元素。提示放在 .cd-body 的 title 上。 */
+    document.addEventListener('dblclick', (ev) => {
+        if (!effectiveConfig().copyOnClick) return;
+        const body = ev.target && ev.target.closest ? ev.target.closest('.cd-body') : null;
+        if (!body) return;
+        const row = body.closest('.cd-row');
+        const who = row ? (row.querySelector('.cd-who') || {}).textContent : '';
+        const w = String(who || '').trim();
+        copyText((w ? w + '：' : '') + (body.textContent || ''));
+    });
+
+    document.addEventListener('keydown', (ev) => {
+        if (!ev.altKey || ev.ctrlKey || ev.metaKey) return;
+        const tag = (ev.target && ev.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (ev.target && ev.target.isContentEditable)) return;
+        if (ev.key === 'ArrowUp') { ev.preventDefault(); jumpScene(-1); }
+        if (ev.key === 'ArrowDown') { ev.preventDefault(); jumpScene(1); }
+    });
+}
+
 // ---------------------------------------------------------------- 设置面板
 
 /* 为什么必须有这个抽屉：
@@ -677,6 +954,88 @@ function fieldHTML(f, c) {
         + '<span class="cd-note">' + esc(unit) + esc(when) + '</span></div>';
 }
 
+const MARK_LABEL = { none: '无标记', solid: '实线', dotted: '点线', double: '双线', dashed: '虚线' };
+
+/** 重建面板里的动态区块：配色 / 层样式 / 自定义层 / 角色下拉 / 本卡状态 */
+function rebuildDynamic() {
+    const c = cfg();
+    const names = knownNames();
+
+    /* 配色：见过的角色 → 取色器。改一下就**钉死**（写进 charColors），
+       重置按钮清空后又回到「按出现顺序分配」。 */
+    const colorsBox = document.getElementById('cd-colors');
+    if (colorsBox) {
+        if (!names.length) {
+            colorsBox.innerHTML = '<div class="cd-note">还没有见过的角色名 —— 先生成一楼再回来。</div>';
+        } else {
+            const cm = {};
+            for (const k of Object.keys(colorMap)) Object.assign(cm, colorMap[k] || {});
+            colorsBox.innerHTML = names.map(n => {
+                const fixed = (c.charColors && c.charColors[n]) || '';
+                const val = fixed || resolveColors([n], c, cm)[n];
+                return '<div class="cd-line"><span class="cd-lab">' + esc(n) + '</span>'
+                    + '<input type="color" data-cd-color="' + esc(n) + '" value="' + esc(val) + '">'
+                    + (fixed ? '<span class="cd-note">已钉死</span>' : '<span class="cd-note">自动</span>')
+                    + '</div>';
+            }).join('');
+        }
+    }
+
+    /* 层样式：内置 + 自定义层，逐层选左侧标记 + 斜体 */
+    const layersBox = document.getElementById('cd-layers');
+    if (layersBox) {
+        layersBox.innerHTML = allLayers(c).map(l => {
+            const st = { ...(DEFAULT_LAYER_STYLES[l] || DEFAULT_LAYER_STYLES['旁白']), ...((c.layerStyles || {})[l] || {}) };
+            const opts = MARK_OPTIONS.map(m =>
+                '<option value="' + m + '"' + (st.mark === m ? ' selected' : '') + '>' + (MARK_LABEL[m] || m) + '</option>').join('');
+            return '<div class="cd-line"><span class="cd-lab">' + esc(l) + '</span>'
+                + '<select data-cd-layermark="' + esc(l) + '">' + opts + '</select>'
+                + '<label class="cd-line-bool"><input type="checkbox" data-cd-layeritalic="' + esc(l) + '"' + (st.italic ? ' checked' : '') + '>'
+                + '<span class="cd-note">斜体</span></label></div>';
+        }).join('');
+    }
+
+    /* 自定义层清单 */
+    const clBox = document.getElementById('cd-customlayers');
+    if (clBox) {
+        const list = Array.isArray(c.customLayers) ? c.customLayers : [];
+        clBox.innerHTML = list.length
+            ? list.map(l => '<div class="cd-line"><span class="cd-lab">' + esc(l.name) + '</span>'
+                + '<span class="cd-note">' + esc(MARK_LABEL[l.mark] || l.mark || '虚线') + (l.italic ? ' · 斜体' : '') + '</span>'
+                + '<button type="button" class="menu_button" data-cd-dellayer="' + esc(l.name) + '">删除</button></div>').join('')
+            : '<div class="cd-note">内置五层：' + LAYERS.join(' / ') + '　（自定义层加进来后，模型就能用「名字·新层 内容」）</div>';
+    }
+
+    /* 只看某角色 */
+    const sel = document.getElementById('cd-onlychar');
+    if (sel) {
+        const cur = String(c.onlyChar || '');
+        sel.innerHTML = '<option value="">全部角色</option>'
+            + names.map(n => '<option value="' + esc(n) + '"' + (cur === n ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+    }
+
+    /* 本卡配置状态 */
+    const stEl = document.getElementById('cd-cardstate');
+    if (stEl) {
+        const k = cardKey();
+        const has = !!(k && c.perCard && c.perCard[k]);
+        stEl.textContent = k
+            ? ('当前卡：' + k + (has ? ' —— 已有专属配置（覆盖全局）' : ' —— 没有专属配置，用全局设置'))
+            : '没有加载角色卡 → 逐卡配置不可用';
+    }
+}
+
+/** 格式错误列表（点按钮才算，不维护状态） */
+function refreshErrorList() {
+    const box = document.getElementById('cd-errlist');
+    if (!box) return;
+    const errs = scanFormatErrors(30);
+    if (!errs.length) { box.innerHTML = '<div class="cd-note">没有格式错误 ✓</div>'; return; }
+    box.innerHTML = errs.map(e =>
+        '<div class="cd-errrow"><button type="button" class="menu_button" data-cd-jump="' + e.mesId + '">#' + e.mesId + '</button>'
+        + '<span class="cd-errtext">' + esc(String(e.raw).slice(0, 80)) + '</span></div>').join('');
+}
+
 function wirePanel() {
     const panel = document.getElementById('cd-panel');
     if (!panel) return;
@@ -685,9 +1044,12 @@ function wirePanel() {
         el.addEventListener('change', () => {
             const key = el.getAttribute('data-cd-key');
             if (!key || !(key in DEFAULT_CONFIG)) return;
+            const def = DEFAULT_CONFIG[key];
             const type = el.getAttribute('type');
+            /* 数值型的 select（如注入位置）必须转成数字 —— 否则存进去是字符串，
+               parseConfig 的类型校验会把它当脏数据丢掉 */
             const v = (type === 'checkbox') ? el.checked
-                : (el.tagName === 'SELECT') ? el.value
+                : (el.tagName === 'SELECT') ? (typeof def === 'number' ? Number(el.value) : el.value)
                     : Number(el.value);
             cfg()[key] = v;
             saveSettingsDebounced();
@@ -721,6 +1083,151 @@ function wirePanel() {
             }
         });
     }
+
+    /* 动态区块的 change：配色取色器 / 层标记 / 层斜体 */
+    panel.addEventListener('change', (ev) => {
+        const t = ev.target;
+        if (!t || !t.getAttribute) return;
+
+        const colorName = t.getAttribute('data-cd-color');
+        if (colorName) {
+            cfg().charColors = { ...(cfg().charColors || {}), [colorName]: t.value };
+            saveSettingsDebounced(); rebuildDynamic(); schedule(true);
+            return;
+        }
+        const markLayer = t.getAttribute('data-cd-layermark');
+        if (markLayer) {
+            const ls = { ...(cfg().layerStyles || {}) };
+            ls[markLayer] = { ...(ls[markLayer] || {}), mark: t.value };
+            cfg().layerStyles = ls;
+            saveSettingsDebounced(); schedule(true);
+            return;
+        }
+        const italLayer = t.getAttribute('data-cd-layeritalic');
+        if (italLayer) {
+            const ls = { ...(cfg().layerStyles || {}) };
+            ls[italLayer] = { ...(ls[italLayer] || {}), italic: !!t.checked };
+            cfg().layerStyles = ls;
+            saveSettingsDebounced(); schedule(true);
+        }
+    });
+
+    /* 动态区块的 click：删除层 / 跳到出错楼层 / 各按钮 */
+    panel.addEventListener('click', (ev) => {
+        const t = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+        if (!t) return;
+
+        const del = t.getAttribute('data-cd-dellayer');
+        if (del) {
+            cfg().customLayers = (cfg().customLayers || []).filter(l => l.name !== del);
+            saveSettingsDebounced(); rebuildDynamic(); schedule(true);
+            return;
+        }
+        const jump = t.getAttribute('data-cd-jump');
+        if (jump !== null && jump !== undefined && jump !== '') {
+            const el = document.querySelector('#chat .mes[mesid="' + Number(jump) + '"]');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+
+        switch (t.id) {
+            case 'cd-colors-reset':
+                cfg().charColors = {};
+                saveSettingsDebounced(); rebuildDynamic(); schedule(true);
+                return;
+            case 'cd-addlayer': {
+                const inp = document.getElementById('cd-newlayer');
+                const v = validateLayerName(inp ? inp.value : '', allLayers(cfg()));
+                if (!v.ok) { notify(v.error, 'error'); return; }
+                cfg().customLayers = (cfg().customLayers || []).concat([{ name: v.name, mark: 'dashed', italic: false }]);
+                if (inp) inp.value = '';
+                saveSettingsDebounced(); rebuildDynamic();
+                notify('已添加层「' + v.name + '」—— 再去「层样式」调它，并让模型开始输出这一层', 'success');
+                return;
+            }
+            case 'cd-card-save': {
+                const k = cardKey();
+                if (!k) { notify('没有加载角色卡 → 逐卡配置不可用', 'error'); return; }
+                const c = cfg();
+                const pick = {};
+                for (const key of ['nameColMode', 'nameColWidth', 'rowGap', 'leadIndent', 'indentOnlyWrapped',
+                    'markErrors', 'onlyChar', 'layerStyles', 'charColors', 'customLayers', 'palette']) {
+                    if (c[key] !== undefined) pick[key] = c[key];
+                }
+                c.perCard = { ...(c.perCard || {}), [k]: pick };
+                saveSettingsDebounced(); rebuildDynamic();
+                notify('已存为这张卡的专属配置（覆盖全局）', 'success');
+                return;
+            }
+            case 'cd-card-clear': {
+                const k = cardKey();
+                if (!k) { notify('没有加载角色卡', 'error'); return; }
+                const pc = { ...(cfg().perCard || {}) };
+                delete pc[k];
+                cfg().perCard = pc;
+                saveSettingsDebounced(); rebuildDynamic();
+                notify('已清除这张卡的专属配置', 'success');
+                return;
+            }
+            case 'cd-export':
+                if (download('cine-dialogue-config.json', serializeConfig(cfg()))) notify('已导出配置', 'success');
+                return;
+            case 'cd-import': {
+                const f = document.getElementById('cd-file');
+                if (f) f.click();
+                return;
+            }
+            case 'cd-story': {
+                const md = buildStoryMarkdown();
+                if (download('cine-dialogue-story.md', md, 'text/markdown;charset=utf-8')) {
+                    notify('已导出分镜 Markdown（' + md.length + ' 字）', 'success');
+                }
+                return;
+            }
+            case 'cd-errs':
+                refreshErrorList();
+                return;
+            default:
+                return;
+        }
+    });
+
+    /* 只看某角色 */
+    const only = panel.querySelector('#cd-onlychar');
+    if (only) {
+        only.addEventListener('change', () => {
+            cfg().onlyChar = only.value;
+            saveSettingsDebounced(); schedule(true);
+        });
+    }
+
+    /* 搜索高亮：DOM 后处理，不重渲染 */
+    const search = panel.querySelector('#cd-search');
+    if (search) {
+        search.value = String(cfg().highlight || '');
+        search.addEventListener('input', () => { cfg().highlight = search.value; saveSettingsDebounced(); applyHighlight(); });
+    }
+
+    /* 导入配置 */
+    const file = panel.querySelector('#cd-file');
+    if (file) {
+        file.addEventListener('change', () => {
+            const f = file.files && file.files[0];
+            if (!f) return;
+            const rd = new FileReader();
+            rd.onload = () => {
+                const r = parseConfig(String(rd.result || ''));
+                if (!r.ok) { notify('导入失败：' + r.error, 'error'); return; }
+                Object.assign(cfg(), r.config);
+                saveSettingsDebounced(); rebuildDynamic(); applyPromptInjection(); schedule(true);
+                notify('已导入配置'
+                    + (r.dropped && r.dropped.length ? '（丢弃不认识的键：' + r.dropped.join(', ') + '）' : ''), 'success');
+            };
+            rd.onerror = () => notify('读取文件失败', 'error');
+            rd.readAsText(f);
+            file.value = '';
+        });
+    }
 }
 
 function buildSettingsPanel() {
@@ -752,12 +1259,59 @@ function buildSettingsPanel() {
         '        <button type="button" class="menu_button" id="cd-diag">诊断信息</button>',
         '      </div>',
         '      <pre id="cd-hb" class="cd-heartbeat">点「诊断信息」看核内钩子接线状态 / 渲染计数</pre>',
+
+        /* ---- 配色（L6）---- */
+        '      <div class="cd-sec"><div class="cd-sec-h">配色 —— 颜色 = 角色</div>',
+        '        <div id="cd-colors"></div>',
+        '        <div class="cd-btn-row"><button type="button" class="menu_button" id="cd-colors-reset">重置角色配色</button></div>',
+        '      </div>',
+
+        /* ---- 层样式（L6）---- */
+        '      <div class="cd-sec"><div class="cd-sec-h">层样式 —— 样式 = 层</div>',
+        '        <div id="cd-layers"></div>',
+        '      </div>',
+
+        /* ---- 自定义层（L8）---- */
+        '      <div class="cd-sec"><div class="cd-sec-h">自定义层</div>',
+        '        <div class="cd-btn-row">',
+        '          <input type="text" id="cd-newlayer" placeholder="层名（≤6 字，不含空格与 ·）">',
+        '          <button type="button" class="menu_button" id="cd-addlayer">添加层</button>',
+        '        </div>',
+        '        <div id="cd-customlayers"></div>',
+        '      </div>',
+
+        /* ---- 交互（L2）---- */
+        '      <div class="cd-sec"><div class="cd-sec-h">交互</div>',
+        '        <div class="cd-line"><span class="cd-lab">只看某角色</span><select id="cd-onlychar"></select></div>',
+        '        <div class="cd-line"><span class="cd-lab">搜索高亮</span><input type="text" id="cd-search" placeholder="输入关键词，回车高亮"></div>',
+        '        <div class="cd-note">双击任意行复制该行 · Alt+↑ / Alt+↓ 跳到上一/下一有分镜的楼层</div>',
+        '      </div>',
+
+        /* ---- 逐卡 + 数据（L5）---- */
+        '      <div class="cd-sec"><div class="cd-sec-h">这张卡 / 数据</div>',
+        '        <div class="cd-btn-row">',
+        '          <button type="button" class="menu_button" id="cd-card-save">存为这张卡的专属配置</button>',
+        '          <button type="button" class="menu_button" id="cd-card-clear">清除这张卡的配置</button>',
+        '          <button type="button" class="menu_button" id="cd-export">导出配置</button>',
+        '          <button type="button" class="menu_button" id="cd-import">导入配置</button>',
+        '          <button type="button" class="menu_button" id="cd-story">导出全部分镜 (Markdown)</button>',
+        '        </div>',
+        '        <input type="file" id="cd-file" accept=".json,application/json" class="cd-hidden">',
+        '        <div id="cd-cardstate" class="cd-note"></div>',
+        '      </div>',
+
+        /* ---- 格式错误面板（L6）---- */
+        '      <div class="cd-sec"><div class="cd-sec-h">格式错误（模型写漏了「层名后的空格」之类）</div>',
+        '        <div class="cd-btn-row"><button type="button" class="menu_button" id="cd-errs">刷新错误列表</button></div>',
+        '        <div id="cd-errlist" class="cd-errlist"></div>',
+        '      </div>',
         '    </div>',
         '  </div>',
         '</div>',
     ].join('\n'));
 
     wirePanel();
+    rebuildDynamic();
     console.log('[' + EXT_ID + '] 设置抽屉已挂到 #' + host.id);
 }
 
@@ -767,12 +1321,15 @@ function start() {
     cfg();
     bind();
     exposeApi();
+    bindInteractions();
     buildSettingsPanel();
     applyPromptInjection();
     registerSlashCommand();
     console.log('[' + EXT_ID + '] v' + VERSION + ' loaded'
         + '  TavernHelper=' + (TH() ? 'yes' : 'no')
-        + '  Mvu=' + (MVU() ? 'yes' : 'no'));
+        + '  Mvu=' + (MVU() ? 'yes' : 'no')
+        + '  CardCompat=' + (CC() ? 'yes' : 'no')
+        + '  PlotPilot=' + (PP() ? 'yes' : 'no'));
     schedule(true);
 }
 
