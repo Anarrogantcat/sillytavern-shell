@@ -65,7 +65,7 @@ import {
 
     layerClass,
     PANEL_GROUPS,
-} from './logic.js';
+parseLine, } from './logic.js';
 
 // ---------------------------------------------------------------- 配置
 
@@ -233,7 +233,7 @@ function formatHook(mes, ctx) {
         const wrapThinking = (mode === 'always')
             || (mode === 'auto' && (d === undefined || d > (Number(c.thinkingDepth) || 0)));
 
-        const res = renderMessageHTML(mes, { ...(c.charColors || {}), ...(colorMap[mid] || {}) }, c, { wrapThinking });
+        const res = renderMessageHTML(mes, { ...chatWideColors(), ...(colorMap[mid] || {}) }, c, { wrapThinking });
         if (!res || !res.html) return mes;
 
         if (mid >= 0) colorMap[mid] = res.colors;                 // 本楼缓存
@@ -317,7 +317,7 @@ function transformMessage(mesEl, mesId) {
     if (!hasOurLines(raw)) return { ok: false, reason: 'no-our-lines' };
 
     const sections = splitSections(raw);
-    const res = renderMessage(sections.body, colorMap[mesId] = { ...(effectiveConfig().charColors || {}), ...(colorMap[mesId] || {}) }, c);
+    const res = renderMessage(sections.body, colorMap[mesId] = { ...chatWideColors(), ...(colorMap[mesId] || {}) }, c);
     if (!res.html) return { ok: false, reason: 'empty' };
 
     // 颜色表回写（同角色同色，跨消息保持）
@@ -955,6 +955,55 @@ function chatArr() {
 }
 
 /** 当前角色卡的身份键（文件名），用于逐卡配置 */
+
+/**
+ * ★★ 聊天级确定性配色（用户要求「强制替换」，不要「已钉死」那种半成品）
+ * 扫整个聊天，按角色**首次出场顺序**分配调色板 ⇒ 主角/最早出场者 = 第 1 色（青）；
+ * 每楼结果一致（与"哪楼先渲染"无关）✓ 不读也不写 settings.charColors ✗
+ */
+let chatColorCache = { key: "", map: {} };
+function chatColorKey() {
+    try {
+        const ctx = getContext();
+        const card = (ctx.characters && ctx.characters[ctx.characterId] && ctx.characters[ctx.characterId].avatar) || "";
+        return card + "|" + ((ctx.chat && ctx.chat.length) || 0);
+    } catch (_) { return ""; }
+}
+function chatWideColors() {
+    const key = chatColorKey();
+    if (chatColorCache.key === key) return chatColorCache.map;
+    const c = effectiveConfig();
+    const layers = allLayers(c);
+    const names = [];
+    const seen = new Set();
+    try {
+        const chat = getContext().chat || [];
+        for (const msg of chat) {
+            if (!msg || msg.is_user) continue;
+            for (const raw of String(msg.mes || "").split("\n")) {
+                const t = raw.trim();
+                if (!t) continue;
+                const p = parseLine(t, layers, !!c.lenientLayers);
+                if (p.kind === "row" && p.name && !seen.has(p.name)) { seen.add(p.name); names.push(p.name); }
+            }
+        }
+    } catch (_) { }
+    const map = resolveColors(names, c, {});
+    chatColorCache = { key, map };
+    return map;
+}
+
+/** 一次性迁移：清掉 0.8.13~0.8.19 期间我自动写进 charColors 的错误颜色 */
+function migrateColorStamp() {
+    try {
+        const c = cfg();
+        if (c.colorStamp === 'v2') return;
+        c.charColors = {};
+        c.colorStamp = 'v2';
+        saveSettingsDebounced();
+        console.info('[' + EXT_ID + '] 已清空历史自动写入的角色配色（改为按聊天自动计算）');
+    } catch (e) { console.warn('[' + EXT_ID + '] 配色迁移失败（不影响渲染）', e); }
+}
 
 function cardKey() {
     try {
@@ -2190,6 +2239,7 @@ function buildSettingsPanel() {
 // ---------------------------------------------------------------- 启动
 
 function start() {
+    try { migrateColorStamp(); } catch (_) { }
     /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
        这个坑踩过两次：
          · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行
