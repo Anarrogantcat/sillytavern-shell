@@ -383,3 +383,38 @@
 .cd-log-li { padding-left: .8em; }
 .cd-log-gap { height: .5em; }
 .cd-log-doc code { padding: .1em .3em; border-radius: .2em; background: rgba(128, 140, 160, .16); }
+/* ---------------------------------------------------------------- 图例
+   面板里真渲染一份（用消息区同一套 .custom-cd-* 类），不是图片 ——
+   改了消息区的样式，面板里的图例也跟着变，永远不会对不上。 */
+
+#cd-panel .cd-legend { margin: .5em 0 .3em; }
+
+#cd-panel .cd-legend-t { font-size: .85em; opacity: .7; margin-bottom: .35em; }
+
+#cd-panel .cd-legend .custom-cd-root {
+    padding: .45em .6em;
+    border-radius: .3em;
+    background: rgba(128, 140, 160, .10);
+    font-size: .92em;
+}
+/* 「怎么看」折叠块（默认折叠；查阅型内容不占面板空间） */
+#cd-panel .cd-howto { margin: 4px 0 6px; }
+
+#cd-panel .cd-howto-toggle {
+    cursor: pointer;
+    user-select: none;
+    opacity: .7;
+    font-size: .9em;
+    padding: 4px 2px;
+}
+
+#cd-panel .cd-howto-toggle:hover { opacity: 1; }
+#cd-panel .cd-howto-toggle[aria-expanded="true"] { opacity: .9; }
+
+#cd-panel .cd-howto-body {
+    border: 1px solid rgba(128, 140, 160, .24);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-top: 4px;
+    background: rgba(128, 140, 160, .06);
+}

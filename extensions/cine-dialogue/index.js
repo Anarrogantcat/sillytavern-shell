@@ -1388,6 +1388,27 @@ function wirePanel() {
     if (dryBtn) dryBtn.addEventListener('click', () => runPresetRecipe(false));
 
     /* ★ 扩展信息卡：折叠状态 + 查看日志 */
+    /* ★「怎么看」折叠块（默认折叠，状态记 localStorage） */
+    const howtoTg = panel.querySelector('#cd-howto-toggle');
+    if (howtoTg) {
+        howtoTg.addEventListener('click', () => {
+            const body = document.getElementById('cd-howto-body');
+            const open = !(body && body.style.display !== 'none');
+            if (body) body.style.display = open ? '' : 'none';
+            howtoTg.setAttribute('aria-expanded', open ? 'true' : 'false');
+            howtoTg.textContent = (open ? '▾ ' : 'ⓘ ') + '怎么看（颜色 / 层样式 / 记号）';
+            try { localStorage.setItem('cd-howto-open', open ? '1' : '0'); } catch (_) { /* 存不了只影响本次 */ }
+        });
+        try {
+            if (localStorage.getItem('cd-howto-open') === '1') {
+                const body = document.getElementById('cd-howto-body');
+                if (body) body.style.display = '';
+                howtoTg.setAttribute('aria-expanded', 'true');
+                howtoTg.textContent = '▾ 怎么看（颜色 / 层样式 / 记号）';
+            }
+        } catch (_) { /* 读不到保持折叠 */ }
+    }
+
     const infoTg = panel.querySelector('#cd-info-toggle');
     if (infoTg) {
         infoTg.addEventListener('click', () => {
@@ -1562,6 +1583,68 @@ function wirePanel() {
 /* ★ 专属预设（在用户本机生成）
    为什么不在插件里附带预设：原预设许可写着「可以二改，**禁止二传**」。
    所以插件只带**配方**（applyPresetRecipe），预设本体由用户自己那份原预设现场派生。 */
+/* ── 图例：把「颜色 = 角色、样式 = 层」讲清楚 ──
+   为什么必须给图例：面板原来只有一句「颜色 = 角色」，用户看到聊天里一排颜色，
+   无法知道哪个颜色是谁、竖线又代表什么。这里放的是**真渲染**（用消息区同一套类），不是图片。
+   层别约定从 DEFAULT_LAYER_STYLES 生成 —— 改了默认值，说明文字自动跟着变，不会对不上。 */
+/**
+ * 「怎么看」折叠块 —— 把 图例 / 层别约定 / 配色规则 / 记号说明 收成一处。
+ * ★ 默认折叠：这些是**查阅型**内容，不折叠会把面板撑得很长，反而挡住常用开关。
+ *   折叠状态记 localStorage（与扩展信息卡同一套做法）。
+ */
+function howtoSecHTML() {
+    const conv = ['台词', '动作', '感官', '心理', '旁白'].map(L => {
+        const st = DEFAULT_LAYER_STYLES[L] || {};
+        const mk = (st.mark && st.mark !== 'none') ? (MARK_LABEL[st.mark] || st.mark) : '无竖线';
+        return L + ' = ' + mk + (st.italic ? ' + 斜体' : '');
+    }).join('　｜　');
+    return [
+        '      <div id="cd-howto" class="cd-howto">',
+        '        <div id="cd-howto-toggle" class="cd-howto-toggle" role="button" tabindex="0" aria-expanded="false">ⓘ 怎么看（颜色 / 层样式 / 记号）</div>',
+        '        <div id="cd-howto-body" class="cd-howto-body" style="display:none">',
+        '          <div class="cd-note"><b>颜色 = 角色</b>：同一个角色在整段对话里颜色一致；没钉过的按<b>出场顺序</b>依次拿 8 色调色板（用完按色相环自动生成）。</div>',
+        '          <div class="cd-note"><b>左侧竖线 = 层</b>：' + esc(conv) + '</div>',
+        legendHTML(),
+        '          <div class="cd-sec-h">记号说明（会看到这几种特殊标记）</div>',
+        '          <div class="cd-note">· <b>名字格下面有虚线</b> —— 这一行的名字（或层名）是<b>插件补的</b>：模型漏写、插件按依据补上，鼠标悬停有说明</div>',
+        '          <div class="cd-note">· <b>左侧是虚线竖线</b> —— <b>自定义层</b>（你在下面「自定义层」里自己加的那种）</div>',
+        '          <div class="cd-note">· <b>整行淡红 + 写着「格式错误」</b> —— 层名后漏了空格之类；到最下面「格式错误」区点 #号 能跳过去修</div>',
+        '          <div class="cd-note">· <b>灰色的整段文字</b> —— 不是分镜行（思考块、散文、状态块…），插件<b>原样放过</b>，一个字不改</div>',
+        '        </div>',
+        '      </div>',
+    ].join('');
+}
+function legendHTML() {
+    const rows = [
+        { who: '林野', layer: '动作', color: '#00F5EF', text: '我按住她的手腕。' },
+        { who: '林婉婷', layer: '台词', color: '#D982EF', text: '「不脱。」' },
+        { who: '林野', layer: '感官', color: '#00F5EF', text: '她的皮肤凉得发紧。' },
+        { who: '林婉婷', layer: '心理', color: '#D982EF', text: '我在想，要不要说。' },
+        { who: '', layer: '旁白', color: '', text: '灯灭了。' },
+    ];
+    const grid = rows.map(r => {
+        if (r.layer === '旁白') {
+            return '<div class="custom-cd-row custom-cd-L-narr" style="' + esc(layerVars('旁白', DEFAULT_CONFIG)) + '">'
+                + '<span class="custom-cd-who"></span>'
+                + '<span class="custom-cd-body">' + esc(r.text) + '</span></div>';
+        }
+        return '<div class="custom-cd-row ' + layerClass(r.layer) + '" style="--c:' + esc(r.color) + ';'
+            + esc(layerVars(r.layer, DEFAULT_CONFIG)) + '">'
+            + '<span class="custom-cd-who">' + esc(r.who) + '</span>'
+            + '<span class="custom-cd-body">' + esc(r.text) + '</span></div>';
+    }).join('');
+    const conv = ['台词', '动作', '感官', '心理', '旁白'].map(L => {
+        const st = DEFAULT_LAYER_STYLES[L] || {};
+        const mk = (st.mark && st.mark !== 'none') ? (MARK_LABEL[st.mark] || st.mark) : '无竖线';
+        return L + ' = ' + mk + (st.italic ? ' + 斜体' : '');
+    }).join('　｜　');
+    return '<div class="cd-legend">'
+        + '<div class="cd-legend-t">图例 —— 聊天里实际长这样（下面是真渲染，不是图片）</div>'
+        + '<div class="custom-cd-root"><div class="custom-cd-grid">' + grid + '</div></div>'
+        + '<div class="cd-note">' + esc(conv) + '</div>'
+        + '<div class="cd-note">左边一列 = 名字（颜色就是它的身份色）　·　名字右边那条竖线 = 层</div>'
+        + '</div>';
+}
 function presetSecHTML() {
     return [
         '      <div class="cd-sec"><div class="cd-sec-h">专属预设（在你本机生成 · 插件不分发预设内容）</div>',
@@ -1673,6 +1756,8 @@ function buildSettingsPanel() {
         '    <div id="cd-panel">',
         '      <div class="cd-hint">把「<code>名字·层 内容</code>」渲染成分镜式对话：'
         + '<b>颜色 = 角色</b>、<b>样式 = 层</b>、标签永不出现。</div>',
+        howtoSecHTML(),
+
         rows,
         '      <div class="cd-btn-row">',
         '        <button type="button" class="menu_button" id="cd-refresh-all">立即重渲染全部</button>',
@@ -1684,6 +1769,7 @@ function buildSettingsPanel() {
 
         /* ---- 配色（L6）---- */
         '      <div class="cd-sec"><div class="cd-sec-h">配色 —— 颜色 = 角色</div>',
+        '<div class="cd-note">颜色 = 角色（分配规则与图例见最上方「ⓘ 怎么看」）。点取色器 = 钉死这个角色的颜色，钉死一个不会改变别人。</div>',
         '        <div id="cd-colors"></div>',
         '        <div class="cd-btn-row"><button type="button" class="menu_button" id="cd-colors-reset">重置角色配色</button></div>',
         '      </div>',

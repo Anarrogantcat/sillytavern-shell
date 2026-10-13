@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.1');
+eq('version 与 manifest 一致', VERSION, '0.7.2');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -849,6 +849,74 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
             p.indexOf('扩展信息') >= 0 && p.indexOf('AGPL-3.0') >= 0
             && p.indexOf('github.com/Anarrogantcat/sillytavern-shell') >= 0);
     }
+}
+
+/* ============================================================================
+   ★ 图例与说明：把「颜色 = 角色、样式 = 层」讲清楚
+   原来面板只有一句「颜色 = 角色」，用户看到聊天里一排颜色无法知道哪个是谁、竖线代表什么。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    ok('★ 有图例函数，且真的插进了面板', /function legendHTML\(\)/.test(src) && /legendHTML\(\),/.test(src));
+    ok('★ 图例用的是**消息区同一套类**（真渲染，不是图片）',
+        /custom-cd-row/.test(src) && /custom-cd-grid/.test(src) && /custom-cd-who/.test(src));
+    ok('★ 层别约定**从 DEFAULT_LAYER_STYLES 生成**（改默认值不会和文字脱节）',
+        /DEFAULT_LAYER_STYLES\[L\]/.test(src));
+    ok('★ 图例里五种层都出现',
+        src.indexOf("layer: '动作'") >= 0 && src.indexOf("layer: '台词'") >= 0
+        && src.indexOf("layer: '感官'") >= 0 && src.indexOf("layer: '心理'") >= 0
+        && src.indexOf("layer: '旁白'") >= 0);
+
+    ok('★ 说了分配规则：按出场顺序', src.indexOf('出场顺序') >= 0 && src.indexOf('颜色 = 角色') >= 0);
+    ok('★ 说了「钉死一个不会改变别人」', src.indexOf('钉死一个不会改变别人') >= 0);
+
+    ok('★ 记号说明已并入「怎么看」块（旧函数已删，不留死代码）',
+        src.indexOf('记号说明') >= 0 && !/function marksSecHTML/.test(src));
+    ok('★ 记号说明覆盖四类痕迹（补的名字 / 自定义层 / 格式错误 / 灰段）',
+        src.indexOf('名字格下面有虚线') >= 0 && src.indexOf('虚线竖线') >= 0
+        && src.indexOf('格式错误') >= 0 && src.indexOf('原样放过') >= 0);
+
+    ok('★ CSS 有图例规则（#cd-panel .cd-legend）', cssText.indexOf('#cd-panel .cd-legend') >= 0);
+
+    /* ★ 把五层默认样式钉住：谁改了 DEFAULT_LAYER_STYLES，这条会提醒他同步检查面板文字 */
+    const conv = ['台词', '动作', '感官', '心理', '旁白'].map(L => {
+        const st = DEFAULT_LAYER_STYLES[L] || {};
+        const mk = (st.mark && st.mark !== 'none') ? st.mark : 'none';
+        return L + '=' + mk + (st.italic ? '+i' : '');
+    }).join(',');
+    eq('★★ 五层默认样式的权威值（面板文字即由它生成）', conv,
+        '台词=none,动作=solid,感官=dotted,心理=double+i,旁白=none');
+}
+
+/* ============================================================================
+   ★「怎么看」折叠块 —— 图例与说明收进一处、**默认折叠**
+   查阅型内容不折叠会把面板撑长，反而挡住常用开关。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    ok('★ 有折叠块，且真的插进了面板',
+        /function howtoSecHTML\(\)/.test(src) && /howtoSecHTML\(\),/.test(src));
+    ok('★ 折叠块插在**顶部**（配置字段 rows 之前）',
+        src.indexOf('howtoSecHTML(),') < src.indexOf('        rows,'));
+    ok('★★ 默认折叠（body 初始 display:none）',
+        /id="cd-howto-body"[^>]*style="display:none"/.test(src));
+    ok('★ 折叠状态记忆（localStorage）',
+        /localStorage\.setItem\('cd-howto-open'/.test(src));
+    ok('★ 有可点击的折叠开关 + aria-expanded', /id="cd-howto-toggle"/.test(src) && /aria-expanded/.test(src));
+
+    ok('★ 图例在折叠块**内部**（不是散在外面）',
+        /function howtoSecHTML[\s\S]{0,2200}legendHTML\(\),/.test(src));
+    ok('★ 折叠块里同时有：配色规则 + 层别约定 + 图例 + 记号说明',
+        src.indexOf('颜色 = 角色') >= 0 && src.indexOf('左侧竖线 = 层') >= 0
+        && src.indexOf('DEFAULT_LAYER_STYLES[L]') >= 0 && src.indexOf('记号说明') >= 0);
+    ok('★ CSS 有 .cd-howto 与 .cd-howto-body 规则',
+        cssText.indexOf('#cd-panel .cd-howto') >= 0 && cssText.indexOf('#cd-panel .cd-howto-body') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
