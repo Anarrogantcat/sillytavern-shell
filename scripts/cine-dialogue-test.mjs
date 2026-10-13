@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.48');
+eq('version 与 manifest 一致', VERSION, '0.8.49');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -786,7 +786,7 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 新增并启用格式说明条目',
         r.preset.prompts.some(x => x.name === PRESET_RECIPE.promptName)
         && r.preset.prompt_order[0].order.some(o => o.identifier === 'cine-dialogue-format' && o.enabled === true));
-    eq('★ 人称-第三人称 开', r.preset.prompt_order[0].order.find(o => o.identifier === 'b').enabled, true);
+eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[0].order.find(o => o.identifier === 'b').enabled, false);
     eq('★ 人称-User第一人称 关', r.preset.prompt_order[0].order.find(o => o.identifier === 'c').enabled, false);
     eq('★ 文风-顺眼舒服 关', r.preset.prompt_order[0].order.find(o => o.identifier === 'd').enabled, false);
     eq('★ 思维链深度 2 → 20', r.preset.extensions.regex_scripts[0].maxDepth, 20);
@@ -1940,6 +1940,24 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const off = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: false }).html);
     ok('★★ 开着时组间有 cd-sep', on.indexOf('cd-sep') >= 0);
     ok('★ 关掉时没有 cd-sep', off.indexOf('cd-sep') < 0);
+}
+
+/* ★★ 人称四条全部关掉（用户：「预设里的这些感觉用不上」）—— 旁白视角由格式说明负责 */
+{
+    const tg = PRESET_RECIPE.toggles;
+    const person = ['👤人称-第三人称', '👤人称-第二人称', '👤人称-User第一人称', '👤人称-Char第一人称'];
+    ok('★★ 四条人称开关都在配方里', person.every((k) => tg.some(([n]) => n === k)));
+    ok('★★ 四条人称全部要求关闭', person.every((k) => tg.some(([n, v]) => n === k && v === false)));
+    ok('★★ 不再强制「第三人称」开', !tg.some(([n, v]) => n === '👤人称-第三人称' && v === true));
+    /* 真跑一遍：把第三人称打开 ⇒ 配方应关掉它 */
+    const base = {
+        prompts: [{ identifier: 'p1', name: '👤人称-第三人称', content: 'x', marker: false, forbid_overrides: false }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'p1', enabled: true }] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
+    eq('★★ 打开着的「第三人称」被关掉', (r.preset.prompt_order[0].order.find((x) => x.identifier === 'p1') || {}).enabled, false);
+    ok('★ 格式说明仍然规定旁白为第三人称（换个地方管）', FORMAT_SPEC.indexOf('第三人称的外部描写') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
