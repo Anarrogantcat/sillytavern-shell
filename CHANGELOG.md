@@ -1,5 +1,33 @@
 # SillyTavern Desktop Shell 更新日志
 
+## v2.3.1 (2026-10-13) — 2.3.0 发版失败后重发（CI 自愈路径把整次发版打掉了）
+
+> 套壳版本 2.3.0 → **2.3.1**。**代码无变化**，只修发版链路的失败原因并重打 tag（沿用本仓库惯例：`v2.2.21` 失败 → `v2.2.22` 重发，不重写已推的 tag）。
+
+### 根因（可观测事实反推，非推测）
+- `release.yml` 的触发条件是 `on: push: tags: 'v*'` → 推 `v2.3.0` 确实触发了 CI（run 38420778948），**但 conclusion=failure**，所以**没有 Release** → 套壳更新面板看到的最新 Release 仍是 `v2.2.24`（2026-09-25）
+- 失败步骤 = **step 6「扩展清单自愈」**；step 5 `ui:check`、step 4 `npm ci` 都 success
+- step 6 里有 4 个 `Write-Error; exit 1` 点。**排除法**：
+  - `重建失败` / `清单提交失败` —— 本地文件操作，不太可能
+  - `回提交后远端 main 不是本次提交` —— 需要 push **成功**才会走到
+  - ⇒ 命中 **`回提交失败（检查仓库 secret GH_TOKEN 是否有 contents:write）`**
+- **独立佐证**：`origin/main` 历史是 `e7c593f → d76aace → 65fa4c0`（我的两次推送都是 fast-forward）。**若 CI 的自愈提交真的推回了 main，我后续推送必被拒** —— 但它成功了 ⇒ CI 那次回提交确实没成功 ⇒ 与上面的推断一致
+
+### 我自己的错（不是外部原因）
+- tag `v2.3.0` 打在 **`e7c593f`**，而那个提交的 `extensions/index.json` **是陈旧的**（我在重建清单之后又改了 `extensions/cine-dialogue/CHANGELOG.md`）
+- 这个错我**上一轮自检已经审出来并在 `65fa4c0` 修好了**，但**忘了 tag 还指在旧提交上** ⇒ 触发 CI 的"自愈"路径，而那条路径是坏的
+- 教训：**`ext-index.mjs` 必须是所有内容编辑之后的最后一步；tag 必须打在一个 `--check` exit 0 的提交上**
+
+### 本次处置
+- `package.json` 2.3.0 → **2.3.1**（版本一致性硬校验要求 tag == package.json 的 version）
+- 新 tag 打在 **`65fa4c0` 之后的干净提交**上 —— 该提交 `node scripts/ext-index.mjs --check` **exit 0**，CI step 6 会走 `清单已是最新; exit 0` 早退，**不再进自愈路径**
+
+### 遗留（待你决定，我没动）
+- **`release.yml` step 6 的脆弱点**：「把重建后的清单推回 main」是**便利**动作，失败却会**整次发版打掉**（Release 没了）。可选修法：
+  - ① 拆开两件事：`--check` 在 tag 树上必须通过（硬），回提交 main 失败只告警（软）
+  - ② 保留硬失败，但把 `--check` 前置成 push 前的本地钩子/夹具，从源头杜绝陈旧 tag
+- 我没擅自改发布流水线（属 AGENTS §2 第 4 类"结构性改套壳本体"的邻域，且涉及你的 CI secret）
+
 ## 未发版（2026-10-13）— 自检审查：cine-dialogue 0.2.1 修 3 个缺陷（含 1 个静默丢正文）
 
 ### 修 ①（严重，静默数据丢失）：钩子路径会把**正文整段丢掉**
