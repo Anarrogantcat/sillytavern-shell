@@ -24,7 +24,7 @@ import { applyPresetRecipe, PRESET_UPSTREAM } from '../extensions/cine-dialogue/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DIR = 'D:/AI/SillyTavern/Data/default-user/OpenAI Settings';
 const DEFAULT_SRC = path.join(DEFAULT_DIR, 'Izumi 0828.tailfree.json');
-const DEFAULT_OUT = path.join(DEFAULT_DIR, 'Izumi 0828.tailfree + 分镜.json');
+const DEFAULT_OUT = path.join(DEFAULT_DIR, 'Izumi 0828 + 分镜对话（专属适配）.json');
 
 const args = process.argv.slice(2);
 const val = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };

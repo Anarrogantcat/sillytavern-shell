@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.28';
+export const VERSION = '0.8.29';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -169,6 +169,7 @@ export const DEFAULT_CONFIG = {
 export const FORMAT_SPEC = [
     '【正文行格式 · 必须严格遵守】',
     '正文每一个自然段都是一行「名字·层 内容」，一行只写一个信息：',
+    '  ★ 思考阶段就按这个格式规划：先想好每一行是「谁 · 哪一层」，再落笔 —— 别先写散文再转格式。',
     '  名字·台词 「说的话」        ← 台词要短，一般不超过 20 字',
     '  名字·动作 我做的具体动作     ← 200–400 字，写细节、写过程',
     '  名字·感官 我身体的感受       ← 200–400 字，写触感 / 温度 / 气味 / 声音',
@@ -1352,7 +1353,11 @@ export const PRESET_UPSTREAM = {
 export const PRESET_RECIPE = {
     promptName: '【分镜】正文行格式',
     noteName: '📋分镜派生说明（勿启用）',
-    orderAt: 143,
+    /* ★ 适配（用户要求「专属预设对插件进行适配」）：
+       格式说明插到 prompt_order 的**最末尾** —— 越贴近输出，模型遵循率越高 ✓
+       （原来插在第 143 位，被前后一堆条目夹着，权重被稀释 ✗）
+       -1 = 追加到末尾 */
+    orderAt: -1,
     thinkingDepth: 20,
     thinkingRe: /思维链/,
     toggles: [['👤人称-第三人称', true], ['👤人称-User第一人称', false], ['🚢文风-顺眼舒服', false]],
@@ -1446,13 +1451,34 @@ export function applyPresetRecipe(srcObj, opts = {}) {
     let entry = order.find(o => String(o.identifier) === String(p.identifier));
     if (!entry) {
         entry = { identifier: p.identifier, enabled: true };
-        order.splice(Math.min(R.orderAt, order.length), 0, entry);
-        changes.push('插进 prompt_order[' + Math.min(R.orderAt, order.length) + '] 并启用');
+        const at = (Number(R.orderAt) < 0) ? order.length : Math.min(Number(R.orderAt), order.length);
+    order.splice(at, 0, entry);
+        changes.push('插进 prompt_order 第 ' + at + ' 位（末尾）并启用');
     } else if (entry.enabled !== true) {
         entry.enabled = true;
         changes.push('prompt_order 里改为启用');
     } else {
         changes.push('prompt_order 已启用');
+    }
+
+    /* ★★ 适配（用户要求「专属预设对插件进行适配」）：
+       orderAt < 0 时，把我们那条挪到**所有启用项之后**（最贴近输出 ⇒ 模型遵循率最高）。
+       已存在的条目也要挪 —— 否则老预设永远停在原来的位置 ✗ */
+    if (Number(R.orderAt) < 0) {
+        const i = order.findIndex(o => String(o.identifier) === String(p.identifier));
+        /* 已经紧跟在「其它启用项」之后 ⇒ 不用再挪（保证幂等：第二次跑不重复报告 ✗） */
+        let lastOther = -1;
+        for (let k = order.length - 1; k >= 0; k--) {
+            if (order[k].enabled && String(order[k].identifier) !== String(p.identifier)) { lastOther = k; break; }
+        }
+        if (i >= 0 && i !== lastOther + 1) {
+            const moved = order.splice(i, 1)[0];
+            moved.enabled = true;
+            let lastOn = order.length - 1;
+            for (let k = order.length - 1; k >= 0; k--) { if (order[k].enabled) { lastOn = k; break; } }
+            order.splice(lastOn + 1, 0, moved);
+            changes.push('把「' + R.promptName + '」挪到所有启用项之后（最贴近输出）');
+        }
     }
 
     // ②③ 两处开关

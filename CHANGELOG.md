@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 0.8.29：专属预设适配 + 改名
+
+格式说明挪到 prompt_order 末尾（最贴近输出 ⇒ 遵循率最高）、已存在条目也会挪位且幂等；
+FORMAT_SPEC 增加「思考阶段就按此格式规划」。派生预设改名为「Izumi 0828 + 分镜对话（专属适配）.json」
+（需在酒馆里重新选一次预设）。夹具 548/0。
 ## 未发版（2026-10-14）— cine-dialogue 0.8.28：只有选项的楼不再跳过
 
 用户报「选择状态栏消失了」。根因：renderMessageHTML 在"没有我们的行"时直接 return null，

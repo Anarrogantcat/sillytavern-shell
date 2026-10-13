@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.28');
+eq('version 与 manifest 一致', VERSION, '0.8.29');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1712,6 +1712,27 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const r2 = renderMessageHTML('染·动作 我按住她的手腕。' + N2 + '<options>' + N2 + '>选项一：甲' + N2 + '</options>', {}, DEFAULT_CONFIG);
     eq('★ 有行又有选项时不重复渲染（仍 1 个按钮）', ((String(r2.html).match(/class=\"cd-opt\"/g)) || []).length, 1);
     ok('★ 纯散文（无选项）仍不接手（原行为不变）', renderMessageHTML('染推开门，走廊很安静。', {}, DEFAULT_CONFIG) === null);
+}
+
+/* ★★ 专属预设适配：格式说明插到 prompt_order 末尾（越贴近输出权重越高） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+    eq('★★ orderAt 是末尾哨兵 -1', PRESET_RECIPE.orderAt, -1);
+    ok('★★ splice 支持末尾插入', /order\.splice\(at, 0, entry\);/.test(src));
+    ok('★★ FORMAT_SPEC 要求思考阶段也按格式规划', FORMAT_SPEC.indexOf('思考阶段就按这个格式规划') >= 0);
+    /* 真跑一遍 applyPresetRecipe：条目必须排在最后 */
+    const base = {
+        prompts: [{ identifier: 'x1', name: '甲', content: 'a' }, { identifier: 'x2', name: '乙', content: 'b' }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'x1', enabled: true }, { identifier: 'x2', enabled: true }] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
+    const od = r.preset.prompt_order[0].order;
+    /* ★ 注意：派生说明（停用）会被追加在它后面 ⇒ 判据看「最后一条**启用**的」 */
+    const lastOn = od.filter((x) => x.enabled).slice(-1)[0];
+    eq('★★ 我们是最后一条**启用**的（最贴近输出）', String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name), PRESET_RECIPE.promptName);
+    eq('★ order 里共 4 条（原有 2 + 格式说明 + 停用的派生说明）', od.length, 4);
+    ok('★ 原有的两条仍启用（没被挤掉）', od[0].enabled === true && od[1].enabled === true);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
