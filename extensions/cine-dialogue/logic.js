@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.6';
+export const VERSION = '0.8.7';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -361,8 +361,6 @@ export function esc(s) {
 
 // ---------------------------------------------------------------- 正则
 
-/** 名字·层 内容 —— 层后**强制一个空格**，写漏了就走 other 分支 */
-export const RE_ROW = /^([^\s·・:：]{1,12})\s*[·・:：]\s*(台词|动作|感官|心理)\s+(.+)$/;
 
 /** 旁白·内容 —— 没有名字字段 */
 export const RE_NARR = /^旁白\s*[·・:：]\s*(.+)$/;

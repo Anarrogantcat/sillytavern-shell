@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.6');
+eq('version 与 manifest 一致', VERSION, '0.8.7');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1397,6 +1397,29 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     /* 只有一张表的少量列时不该被 nowrap 影响：判据是"溢出"，不是"有没有表" */
     ok('★ 判据是溢出而不是"有没有表格"（所以窄表不受影响）',
         src.indexOf('scrollWidth <= avail') >= 0 && src.indexOf(':scope > table') >= 0);
+}
+
+/* ============================================================================
+   ★ 机械自检脚本必须留在仓库里（本会话的几类错靠"再看一眼"发现不了）
+   ============================================================================ */
+{
+    const audit = new URL('../scripts/cine-dialogue-audit.mjs', import.meta.url);
+    ok('★ 自检脚本在（scripts/cine-dialogue-audit.mjs）', fs.existsSync(audit));
+    const a = fs.readFileSync(audit, 'utf8');
+    ok('★ 覆盖这几类：语法 / 配置键三向核对 / CSS 白名单 / 兜底 CSS 同步 / 版本+CHANGELOG / 死代码 / 已装目录',
+        ['A. 语法', 'B. 配置键', 'C. CSS 选择器白名单', 'D. 内置兜底', 'E. 版本与 CHANGELOG', 'F. 死代码', 'G. 仓库与已装目录']
+            .every(t => a.indexOf(t) >= 0));
+    ok('★ 死代码判据是"全仓库零使用"（不能只看 index.js/夹具 —— 初版就是这样误报的）',
+        a.indexOf('不能用只看') >= 0 || a.indexOf('不能只看 index.js') >= 0 || a.indexOf('全仓库') >= 0);
+    ok('★ 手写 UI 的键有名单（否则会误报"用户改不到"）',
+        a.indexOf("HAND_UI = ['onlyChar', 'highlight']") >= 0);
+    ok('★ 已注册 npm 脚本（package.json 里有 ext:audit）',
+        fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8').indexOf('"ext:audit"') >= 0);
+
+    /* ★ 死代码清理的回归：RE_ROW 已删（它被别名正则架空了，留着会误导） */
+    const lg = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+    ok('★ 死代码 RE_ROW 已删（0.6.2 加别名后它就不再代表解析器行为）',
+        !/export const RE_ROW/.test(lg));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
