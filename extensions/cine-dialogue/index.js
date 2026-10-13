@@ -1746,6 +1746,10 @@ function howtoSecHTML() {
         '      <div id="cd-howto" class="cd-howto">',
         '        <div id="cd-howto-toggle" class="cd-howto-toggle" role="button" tabindex="0" aria-expanded="false">ⓘ 怎么看（颜色 / 层样式 / 记号）</div>',
         '        <div id="cd-howto-body" class="cd-howto-body" style="display:none">',
+        /* ★ 原来挂在面板顶部的常驻提示移到这里：下面已经有完整说明与图例，
+           常驻两行只是重复占位（用户反馈：「这个是不是应该移到怎么看里」）。 */
+        '          <div class="cd-hint">把「<code>名字·层 内容</code>」渲染成分镜式对话：'
+        + '<b>颜色 = 角色</b>、<b>样式 = 层</b>、标签永不出现。</div>',
         '          <div class="cd-note"><b>颜色 = 角色</b>：同一个角色在整段对话里颜色一致；没钉过的按<b>出场顺序</b>依次拿 8 色调色板（用完按色相环自动生成）。</div>',
         '          <div class="cd-note"><b>左侧竖线 = 层</b>：' + esc(conv) + '</div>',
         legendHTML(),
@@ -2017,8 +2021,6 @@ function buildSettingsPanel() {
         '  </div>',
         '  <div class="inline-drawer-content">',
         '    <div id="cd-panel">',
-        '      <div class="cd-hint">把「<code>名字·层 内容</code>」渲染成分镜式对话：'
-        + '<b>颜色 = 角色</b>、<b>样式 = 层</b>、标签永不出现。</div>',
         howtoSecHTML(),
 
         masterHTML(c),

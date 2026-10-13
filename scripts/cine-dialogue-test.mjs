@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.1');
+eq('version 与 manifest 一致', VERSION, '0.8.2');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1204,6 +1204,31 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         ['已安装 ', '装了 ', '未安装', '读不到列表', '需要酒馆助手'].every(t => src.indexOf(t) >= 0));
     ok('★ 安装成功后写入指纹、移除后清掉',
         /localStorage\.setItem\('cd-regex-stamp'/.test(src) && /localStorage\.removeItem\('cd-regex-stamp'/.test(src));
+}
+
+/* ============================================================================
+   ★ 常驻 hint 移进「ⓘ 怎么看」
+   下面已经有完整说明 + 图例，面板顶部再挂两行只是重复占位。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+
+    const panelStart = src.indexOf('host.insertAdjacentHTML');
+    const panelEnd = src.indexOf("].join('\\n'));", panelStart);
+    const panelBlock = src.slice(panelStart, panelEnd);
+
+    ok('★★ 面板顶部不再有常驻 hint（重复占位）', !/cd-hint/.test(panelBlock), panelBlock.slice(0, 80));
+    ok('★ hint 已移进「ⓘ 怎么看」当第一行',
+        /id="cd-howto-body"[\s\S]{0,500}cd-hint/.test(src));
+    ok('★★ 核心承诺「标签永不出现」没丢（只是换了位置）',
+        src.indexOf('标签永不出现') >= 0);
+    ok('★ 面板顶部顺序：怎么看 → 总开关 → 分组字段',
+        src.indexOf('howtoSecHTML(),') > 0
+        && src.indexOf('howtoSecHTML(),') < src.indexOf('masterHTML(c),')
+        && src.indexOf('masterHTML(c),') < src.indexOf('\n        rows,'));
+    ok('★ cd-hint 的样式仍被复用（没白留一条死 CSS）',
+        fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+            .indexOf('#cd-panel .cd-hint') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
