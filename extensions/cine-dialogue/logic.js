@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.49';
+export const VERSION = '0.8.51';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -753,6 +753,24 @@ function rowHTML(r, colorMap, config) {
  *  ★ 必须放 root 内部：主题变量（--cd-btn-bg / --cd-btn-line / --cd-sub …）定义在 .cd-root 上，
  *    拼在 root 外面就继承不到 → var() 失效 → 选项按钮回落成浏览器默认的白底按钮（真机踩过）。
  */
+/**
+ * ★★ 分隔线画在【回合边界】（真机踩到：模型每行一个空行块 ⇒ 旧规则一楼画 50 条 ✗）
+ * 回合起点 = 一行「动作」（配方：一个回合 = ①动作 ②感官 ③④台词 ⑤心理）
+ * 规则：遇到 动作 行、且本回合已有内容 ⇒ 先画一条线，再写这一行 ✓
+ * 同一回合里的 感官 / 台词 / 心理 不再画线 ✓
+ */
+export function rowsHTMLFrom(groups, colorMap = {}, cfg = DEFAULT_CONFIG) {
+    let seenAction = false;
+    return groups.map((g) =>
+        g.map((r) => {
+            const isAct = (r.kind === 'row' && String(r.layer || '') === '动作');
+            const sep = (cfg.showSeparators && isAct && seenAction) ? '<div class="cd-sep"></div>' : '';
+            if (isAct) seenAction = true;
+            return sep + rowHTML(r, colorMap, cfg);
+        }).join('')
+    ).join('');
+}
+
 export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG, extrasHTML = '') {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const style = '--cd-gap:' + Number(cfg.rowGap) + 'em;'
@@ -761,9 +779,7 @@ export function renderGrid(groups, colorMap = {}, config = DEFAULT_CONFIG, extra
     const mode = cfg.nameColMode === 'fixed' ? 'fixed' : 'auto';
     const fixed = mode === 'fixed' ? ' style="--cd-namew:' + Number(cfg.nameColWidth) + 'px"' : '';
 
-    const rowsHTML = groups.map((g, gi) =>
-        ((gi > 0 && cfg.showSeparators) ? '<div class="cd-sep"></div>' : '') + g.map(r => rowHTML(r, colorMap, cfg)).join('')
-    ).join('');
+    const rowsHTML = rowsHTMLFrom(groups, colorMap, cfg);
 
     return '<div class="cd-root' + (mode === 'fixed' ? ' cd-fixed' : '') + '"'
         + fixed + ' style="' + style + '">'
