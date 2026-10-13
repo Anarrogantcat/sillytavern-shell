@@ -1,5 +1,48 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.5.7：修 ST 的 class 前缀（「HTML 在、样式没」真凶）
+
+### 证据链（`diagnose()` 一次收紧到唯一可能）
+- `css.source: "file"` / `hostLinkLoaded: true` → 样式表**加载正常**
+- `hook: true` → 核内钩子**接线正常**
+- 但 `counts.roots: 0`、`classes: []`；画面却是 `染我并没有…` —— **标签被剥、名字与正文黏成一行**
+
+### 根因（`public/scripts/chats.js:1922-1933`）
+```js
+case 'class': {
+    data.attrValue = data.attrValue.split(' ').map((v) => {
+        if (v.startsWith('fa-') || v.startsWith('note-') || v === 'monospace') return v;
+        return 'custom-' + v;      // ← 无条件加前缀
+    }).join(' ');
+}
+```
+**消息 HTML 里每个 class 都被加 `custom-` 前缀** ⇒ `class="cd-root"` → DOM 里是 `custom-cd-root`
+⇒ **CSS 的 `.cd-root` 一个选择器都匹配不上** ⇒ 没有网格 / 颜色 / 竖线，只剩文字黏在一起 ✓ 全部现象一次解释清
+
+### 修法
+- `style.css`：**消息区选择器全部改 `.custom-cd-*`**（34 个规则块）；**设置面板区保持 `.cd-*`**（面板不经消毒器）
+  - ⚠️ 修完发现重命名脚本**越界改了 4 条面板规则**（前面紧跟注释，逃过了作用域守卫）→ 已复原
+- `logic.js` 新增 **`stClassPrefix()`**：复刻 ST 规则，供 **DOM 降级路径**补前缀（钩子路径由 ST 自己加）
+- `index.js`：消息区 DOM 查询 + JS 后期加的类统一用 `custom-cd-*`；内置兜底 CSS 同步加前缀
+
+### 夹具：**178 → 186 条**
+- 6 条 `stClassPrefix` 断言（含「不是幂等的」）
+- ★★★ **最强的一条**：**渲染器发出的每个 class，CSS 里必须有对应 `.custom-` 规则** —— 直接挡住这类 bug
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **186/186** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
+
+## 未发版（2026-10-13）— cine-dialogue 0.5.6：自己注入样式 + `diagnose()` 探针（补记）
+
+> 本条为**补记**：当时只写了扩展 CHANGELOG，漏了根 CHANGELOG（AGENTS §1.3 第 4 步）。
+
+- **现象**：`染我并没有…` —— 名字与正文紧挨、`染`(1字) 与 `沙良`(2字) **左边缘对齐** ⇒ 样式表没生效
+- **根因**：ST 加载扩展是 `Promise.all([addExtensionScript, addExtensionStyle])` —— 脚本先跑完（抽屉就是那时画出来的），
+  `<link>` 失败只会在之后 reject ⇒ 表现成「扩展加载了、抽屉也出来了，但一点样式都没有」，且不报可见错误
+- **修法**：`injectStyles()` 自己 fetch `./style.css` 塞进 `<style id="cd-style">`，**fetch 失败还有内置兜底 CSS**
+- **新增 `diagnose()` 探针**：一次区分「HTML 被改写 / inline style 被剥 / 样式表没生效」，面板「诊断信息」按钮输出它
+
 ## 未发版（2026-10-13）— cine-dialogue 0.5.5：设置页按钮竖排
 
 ### 现象 / 根因

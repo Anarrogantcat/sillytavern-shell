@@ -58,6 +58,7 @@ import {
     renderOptions,
     resolveColors,
     serializeConfig,
+    stClassPrefix,
     splitSections,
     validateLayerName,
 } from './logic.js';
@@ -102,7 +103,7 @@ function PP() {
  * 没有它就直接填 #send_textarea（两条路都不自己实现发送）。
  */
 function wireOptions(root) {
-    root.querySelectorAll('.cd-opt').forEach(btn => {
+    root.querySelectorAll('.custom-cd-opt').forEach(btn => {
         if (btn.dataset.cdBound) return;
         btn.dataset.cdBound = '1';
         btn.addEventListener('click', () => {
@@ -214,7 +215,7 @@ function nodeText(node) {
 /** 这个节点是不是「100% 由我们的分镜行组成」 */
 function isOursNode(node) {
     if (!node || node.nodeType !== 1) return false;
-    if (node.classList && node.classList.contains('cd-root')) return true; // 我们上次的输出 → 重建
+    if (node.classList && node.classList.contains('custom-cd-root')) return true; // 我们上次的输出 → 重建
 
     const lines = nodeText(node).split('\n').map(s => s.trim()).filter(Boolean);
     if (!lines.length) return false;                       // 空节点 / 纯 iframe → 别人的
@@ -287,11 +288,11 @@ function transformMessage(mesEl, mesId) {
     }
 
     // 2) 插新网格
-    const root = htmlToElement(res.html);
+    const root = htmlToElement(stClassPrefix(res.html));
     root.setAttribute('data-cd-version', VERSION);
-    if (isLightTheme()) root.classList.add('cd-light');
+    if (isLightTheme()) root.classList.add('custom-cd-light');
 
-    const grid = root.querySelector('.cd-grid');
+    const grid = root.querySelector('.custom-cd-grid');
     if (grid) {
         // 选项按钮挂在网格后面（不进网格，避免影响列宽）
     }
@@ -311,12 +312,12 @@ function transformMessage(mesEl, mesId) {
 
 /** 同一楼里可能有多个我们的块；把名字列宽统一成整楼最大 */
 function unifyNameColumn(mesEl) {
-    const roots = mesEl.querySelectorAll('.cd-root');
+    const roots = mesEl.querySelectorAll('.custom-cd-root');
     if (roots.length < 2) return;                      // 只有一个块时 max-content 已经够
 
     let max = 0;
     roots.forEach(r => {
-        r.querySelectorAll('.cd-who').forEach(w => {
+        r.querySelectorAll('.custom-cd-who').forEach(w => {
             const t = (w.textContent || '').trim();
             if (!t) return;
             const wd = w.getBoundingClientRect().width;
@@ -326,7 +327,7 @@ function unifyNameColumn(mesEl) {
     if (!max) return;
 
     roots.forEach(r => {
-        r.classList.add('cd-fixed');
+        r.classList.add('custom-cd-fixed');
         r.style.setProperty('--cd-namew', Math.ceil(max + 2) + 'px');
     });
 }
@@ -334,14 +335,14 @@ function unifyNameColumn(mesEl) {
 /** 首行缩进：只给「真的换行」的段落；台词永不缩进 */
 function applyIndent(mesEl) {
     const c = effectiveConfig();
-    mesEl.querySelectorAll('.cd-body').forEach(b => {
-        b.classList.remove('cd-wrap');
+    mesEl.querySelectorAll('.custom-cd-body').forEach(b => {
+        b.classList.remove('custom-cd-wrap');
         const row = b.parentElement;
-        if (!row || row.classList.contains('cd-L-speech')) return;   // 台词不缩进
-        if (!c.indentOnlyWrapped) { b.classList.add('cd-wrap'); return; }
+        if (!row || row.classList.contains('custom-cd-L-speech')) return;   // 台词不缩进
+        if (!c.indentOnlyWrapped) { b.classList.add('custom-cd-wrap'); return; }
         const lh = parseFloat(getComputedStyle(b).lineHeight);
         if (!lh) return;
-        if (b.getBoundingClientRect().height > lh * 1.5) b.classList.add('cd-wrap');
+        if (b.getBoundingClientRect().height > lh * 1.5) b.classList.add('custom-cd-wrap');
     });
 }
 
@@ -870,20 +871,20 @@ function buildStoryMarkdown() {
 function applyHighlight(root) {
     const q = String(effectiveConfig().highlight || '').trim();
     const scope = root || document;
-    scope.querySelectorAll('#chat .cd-root').forEach(r => {
-        r.querySelectorAll('mark.cd-hit').forEach(m => {
+    scope.querySelectorAll('#chat .custom-cd-root').forEach(r => {
+        r.querySelectorAll('mark.custom-cd-hit').forEach(m => {
             m.replaceWith(document.createTextNode(m.textContent || ''));
         });
         r.normalize();
         if (!q) return;
-        r.querySelectorAll('.cd-who, .cd-body').forEach(el => {
+        r.querySelectorAll('.custom-cd-who, .custom-cd-body').forEach(el => {
             const parts = highlightPlan(el.textContent || '', q);
             if (!parts.some(p => p.hit)) return;
             el.textContent = '';
             for (const p of parts) {
                 if (!p.hit) { el.appendChild(document.createTextNode(p.t)); continue; }
                 const m = document.createElement('mark');
-                m.className = 'cd-hit';
+                m.className = 'custom-cd-hit';
                 m.textContent = p.t;
                 el.appendChild(m);
             }
@@ -894,7 +895,7 @@ function applyHighlight(root) {
 /** 跳到上一/下一「有分镜」的楼层（Alt+↑ / Alt+↓） */
 function jumpScene(dir) {
     const mesEls = Array.from(document.querySelectorAll('#chat .mes'));
-    const withCd = mesEls.filter(m => m.querySelector('.cd-root'));
+    const withCd = mesEls.filter(m => m.querySelector('.custom-cd-root'));
     if (!withCd.length) return;
     const top = window.innerHeight * 0.35;
     let cur = -1;
@@ -914,10 +915,10 @@ function bindInteractions() {
        双击没有这个副作用，且不用往每行塞元素。提示放在 .cd-body 的 title 上。 */
     document.addEventListener('dblclick', (ev) => {
         if (!effectiveConfig().copyOnClick) return;
-        const body = ev.target && ev.target.closest ? ev.target.closest('.cd-body') : null;
+        const body = ev.target && ev.target.closest ? ev.target.closest('.custom-cd-body') : null;
         if (!body) return;
-        const row = body.closest('.cd-row');
-        const who = row ? (row.querySelector('.cd-who') || {}).textContent : '';
+        const row = body.closest('.custom-cd-row');
+        const who = row ? (row.querySelector('.custom-cd-who') || {}).textContent : '';
         const w = String(who || '').trim();
         copyText((w ? w + '：' : '') + (body.textContent || ''));
     });
@@ -943,26 +944,26 @@ function bindInteractions() {
    任何情况下都不会「没有样式」。 */
 
 const FALLBACK_CSS = [
-    '.cd-root{--cd-sub:#9aa8bf;--cd-mark-w:3px;line-height:1.9;word-break:break-word}',
-    '.cd-grid{display:grid;grid-template-columns:max-content 1fr;row-gap:var(--cd-gap,.8em)}',
-    '.cd-row{display:contents;color:var(--c,inherit)}',
-    '.cd-who{font-weight:600;font-size:.95em;opacity:.85;text-align:right;padding-right:.6em;white-space:nowrap}',
-    '.cd-body{min-width:0;border-left:3px var(--cd-mark,solid) var(--cd-mark-color,transparent);',
+    '.custom-cd-root{--cd-sub:#9aa8bf;--cd-mark-w:3px;line-height:1.9;word-break:break-word}',
+    '.custom-cd-grid{display:grid;grid-template-columns:max-content 1fr;row-gap:var(--cd-gap,.8em)}',
+    '.custom-cd-row{display:contents;color:var(--c,inherit)}',
+    '.custom-cd-who{font-weight:600;font-size:.95em;opacity:.85;text-align:right;padding-right:.6em;white-space:nowrap}',
+    '.custom-cd-body{min-width:0;border-left:3px var(--cd-mark,solid) var(--cd-mark-color,transparent);',
     'font-style:var(--cd-italic,normal);padding-left:.7em}',
-    '.cd-body.cd-wrap{text-indent:var(--cd-indent,2em)}',
-    '.cd-L-speech{--cd-mark:solid;--cd-mark-color:transparent;--cd-italic:normal}',
-    '.cd-L-act{--cd-mark:solid;--cd-mark-color:currentColor;--cd-italic:normal}',
-    '.cd-L-sense{--cd-mark:dotted;--cd-mark-color:currentColor;--cd-italic:normal;opacity:.94}',
-    '.cd-L-mind{--cd-mark:double;--cd-mark-color:currentColor;--cd-italic:italic}',
-    '.cd-L-narr{--cd-mark:solid;--cd-mark-color:transparent;--cd-italic:normal}',
-    '.cd-L-custom{--cd-mark:dashed;--cd-mark-color:currentColor;--cd-italic:normal}',
-    '.cd-L-narr .cd-body{color:var(--cd-sub);opacity:.92}',
-    '.cd-sep{grid-column:1/-1;height:0;border-top:1px solid var(--cd-sep,rgba(128,140,160,.28));margin:.45em 0}',
-    '.cd-line{grid-column:1/-1;min-width:0;color:var(--cd-sub);opacity:.88;white-space:pre-wrap;word-break:break-word}',
-    '.cd-row.cd-dim{opacity:.32}',
-    '.cd-hit{background:rgba(255,214,0,.30);border-radius:.15em}',
-    '.cd-options{display:flex;flex-direction:column;gap:.35em;margin-top:.9em}',
-    '.cd-opt{display:flex;align-items:baseline;gap:.7em;width:100%;text-align:left;cursor:pointer;',
+    '.custom-cd-body.custom-cd-wrap{text-indent:var(--cd-indent,2em)}',
+    '.custom-cd-L-speech{--cd-mark:solid;--cd-mark-color:transparent;--cd-italic:normal}',
+    '.custom-cd-L-act{--cd-mark:solid;--cd-mark-color:currentColor;--cd-italic:normal}',
+    '.custom-cd-L-sense{--cd-mark:dotted;--cd-mark-color:currentColor;--cd-italic:normal;opacity:.94}',
+    '.custom-cd-L-mind{--cd-mark:double;--cd-mark-color:currentColor;--cd-italic:italic}',
+    '.custom-cd-L-narr{--cd-mark:solid;--cd-mark-color:transparent;--cd-italic:normal}',
+    '.custom-cd-L-custom{--cd-mark:dashed;--cd-mark-color:currentColor;--cd-italic:normal}',
+    '.custom-cd-L-narr .custom-cd-body{color:var(--cd-sub);opacity:.92}',
+    '.custom-cd-sep{grid-column:1/-1;height:0;border-top:1px solid var(--cd-sep,rgba(128,140,160,.28));margin:.45em 0}',
+    '.custom-cd-line{grid-column:1/-1;min-width:0;color:var(--cd-sub);opacity:.88;white-space:pre-wrap;word-break:break-word}',
+    '.custom-cd-row.custom-cd-dim{opacity:.32}',
+    '.custom-cd-hit{background:rgba(255,214,0,.30);border-radius:.15em}',
+    '.custom-cd-options{display:flex;flex-direction:column;gap:.35em;margin-top:.9em}',
+    '.custom-cd-opt{display:flex;align-items:baseline;gap:.7em;width:100%;text-align:left;cursor:pointer;',
     'font:inherit;font-size:.9em;padding:.5em .8em;border-radius:.3em;',
     'border:1px solid rgba(128,140,160,.32);background:rgba(255,255,255,.04);color:inherit}',
 ].join('');
@@ -998,12 +999,12 @@ async function injectStyles() {
 /** 一次性把「样式到底有没有生效」问清 —— 不用开 DevTools 逐层看 */
 function diagnose() {
     const q = (s) => document.querySelector('#chat ' + s);
-    const grid = q('.cd-grid'), row = q('.cd-row'), body = q('.cd-body');
+    const grid = q('.custom-cd-grid'), row = q('.custom-cd-row'), body = q('.custom-cd-body');
     const link = document.querySelector('link[id*="cine-dialogue"], link[href*="cine-dialogue"]');
     const g = grid ? getComputedStyle(grid) : null;
     const r = row ? getComputedStyle(row) : null;
     const b = body ? getComputedStyle(body) : null;
-    const who = q('.cd-who');
+    const who = q('.custom-cd-who');
     const w = who ? getComputedStyle(who) : null;
     return {
         version: VERSION,
@@ -1023,8 +1024,8 @@ function diagnose() {
         } : '(没有 .cd-body)',
         who: w ? { textAlign: w.textAlign, paddingRight: w.paddingRight } : '(没有 .cd-who)',
         counts: {
-            roots: document.querySelectorAll('#chat .cd-root').length,
-            rows: document.querySelectorAll('#chat .cd-row').length,
+            roots: document.querySelectorAll('#chat .custom-cd-root').length,
+            rows: document.querySelectorAll('#chat .custom-cd-row').length,
         },
         /* ★ DOM 实况：一次区分三种可能
            ① 我们的类还在、inline style 计数为 0  → 宿主/别的插件剥了 style（DOMPurify）
@@ -1038,11 +1039,11 @@ function diagnose() {
                 String(el.className || '').split(/\s+/).forEach(c => { if (c) cls.add(c); });
             });
             return {
-                hasCdRoot: !!t.querySelector('.cd-root'),
-                hasCdGrid: !!t.querySelector('.cd-grid'),
-                hasCdRow: !!t.querySelector('.cd-row'),
-                hasCdWho: !!t.querySelector('.cd-who'),
-                hasCdBody: !!t.querySelector('.cd-body'),
+                hasCdRoot: !!t.querySelector('.custom-cd-root'),
+                hasCdGrid: !!t.querySelector('.custom-cd-grid'),
+                hasCdRow: !!t.querySelector('.custom-cd-row'),
+                hasCdWho: !!t.querySelector('.custom-cd-who'),
+                hasCdBody: !!t.querySelector('.custom-cd-body'),
                 inlineStyleAttrs: (t.innerHTML.match(/style="/g) || []).length,
                 classes: [...cls].slice(0, 40),
             };

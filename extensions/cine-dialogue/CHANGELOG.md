@@ -1,5 +1,45 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.5.7 (2026-10-13) — 真凶：ST 给消息里每个 class 加 `custom-` 前缀
+
+### 证据链（一次收紧到唯一可能）
+`diagnose()` 输出：
+- `css.source: "file"` / `hostLinkLoaded: true` → **样式表加载正常**
+- `hook: true` → **核内钩子接线正常**
+- 但 `counts.roots: 0`、`domProbe.classes: []` → DOM 里没有我们的元素
+- 画面上却是 `染我并没有…` —— **标签被剥、名字与正文黏成一行**
+
+### 根因（`public/scripts/chats.js:1922-1933`）
+```js
+case 'class': {
+    data.attrValue = data.attrValue.split(' ').map((v) => {
+        if (v.startsWith('fa-') || v.startsWith('note-') || v === 'monospace') return v;
+        return 'custom-' + v;      // ← 无条件加前缀
+    }).join(' ');
+}
+```
+**消息 HTML 里每一个 class 都会被加上 `custom-` 前缀** ⇒ 我们输出的 `class="cd-root"`
+到 DOM 变成 `custom-cd-root` ⇒ **CSS 里的 `.cd-root` 一个选择器都匹配不上**
+⇒ 没有网格 / 没有颜色 / 没有层竖线，只剩文字黏在一起 —— **全部现象一次解释清**。
+
+### 修法
+- `style.css`：**消息区选择器全部改成 `.custom-cd-*`**（34 个规则块）
+  - **设置面板区保持 `.cd-*` 不变** —— 面板在抽屉里，不经过消息消毒器
+  - ⚠️ 修完发现我的重命名脚本**越界改了 4 条面板规则**（它们前面紧跟注释，逃过了作用域守卫）→ 已全部复原
+- `logic.js` 新增 **`stClassPrefix()`**：**复刻 ST 的规则**，供 **DOM 降级路径**使用
+  （钩子路径由 ST 自己加前缀；降级路径直接写 DOM、不经消毒器，必须自己补，两条路径最终 class 才一致）
+- `index.js`：**所有消息区 DOM 查询 + JS 后期加的类**统一用 `custom-cd-*`
+  （`applyIndent` / `unifyNameColumn` / `applyHighlight` / `wireOptions` / 双击复制 / `diagnose`）
+- 内置兜底 CSS 同步加前缀
+
+### 夹具：178 → **186 条**
+- 新增 6 条 `stClassPrefix` 断言，含「**不是幂等的**」—— 说明两条路径只能各自加一次
+- ★★★ **新增最强的一条**：**渲染器发出的每一个 class，CSS 里都必须有对应的 `.custom-` 规则**
+  —— 直接挡住「HTML 在、样式没」这类 bug；另加「样本确实取到了 class（不是空跑）」
+
+### 说明
+- 只改扩展 + 夹具 → 不升套壳版本号、不打 tag、不发包（AGENTS §1.1）
+
 ## v0.5.6 (2026-10-13) — 自己注入样式 + `diagnose()` 探针
 
 ### 现象（真机截图）

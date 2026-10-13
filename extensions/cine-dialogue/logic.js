@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.6';
+export const VERSION = '0.5.7';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -450,6 +450,29 @@ export function assignColors(names, seed = {}, palette = PALETTE) {
 /** 层 → CSS 类；自定义层回落到 cd-L-custom（样式靠行内变量） */
 export function layerClass(layer) {
     return LAYER_CLS[layer] || 'cd-L-custom';
+}
+
+/**
+ * ★★ 复刻 ST 的消息消毒器对 class 的处理
+ *
+ * 实测（`public/scripts/chats.js:1922-1933`）：消息 HTML 里**每一个** class 都会被加上
+ * `custom-` 前缀，只放过 `fa-*` / `note-*` / `monospace`：
+ *
+ *     return 'custom-' + v;
+ *
+ * ⇒ CSS 必须写 `.custom-cd-root`，写 `.cd-root` **一个选择器都匹配不上**
+ *   （真机现象：功能"看起来生效了"——标签被剥、名字和正文黏成一行——但样式全无）。
+ *
+ * 钩子路径由 ST 自己加前缀；**DOM 降级路径直接写 DOM、不经过消毒器**，所以要用这个函数补上，
+ * 两条路径的最终 class 才会一致。
+ */
+export function stClassPrefix(html) {
+    return String(html == null ? '' : html).replace(/class="([^"]*)"/g, (_m, val) => {
+        const out = String(val).split(/\s+/).filter(Boolean).map(v =>
+            (v.indexOf('fa-') === 0 || v.indexOf('note-') === 0 || v === 'monospace') ? v : ('custom-' + v)
+        ).join(' ');
+        return 'class="' + out + '"';
+    });
 }
 
 function rowHTML(r, colorMap, config) {

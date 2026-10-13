@@ -10,7 +10,7 @@ import {
     MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
     allLayers, layerVars, resolveColors, validateLayerName, rowDimmed,
     highlightPlan, sceneTitle, messageTitle, rowRegexFor,
-    serializeConfig, parseConfig,
+    serializeConfig, parseConfig, stClassPrefix,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML,
     hasOurLines, stats,
@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.6');
+eq('version 与 manifest 一致', VERSION, '0.5.7');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -470,6 +470,39 @@ if (!fs.existsSync(ST_PUBLIC)) {
     const btnSeg = btnAt >= 0 ? css.slice(btnAt, btnAt + 300) : '';
     ok('★ 按钮锁了 white-space: nowrap', /white-space\s*:\s*nowrap/.test(btnSeg), btnSeg.slice(0, 100));
     ok('★ 按钮禁了收缩（flex: 0 0 auto）', /flex\s*:\s*0\s+0\s+auto/.test(btnSeg), btnSeg.slice(0, 100));
+}
+
+/* ★★ 复刻 ST 消息消毒器的 class 前缀规则（public/scripts/chats.js:1922-1933）
+   消息 HTML 里每个 class 都被无条件加 custom- 前缀，只放过 fa-* / note- / monospace。
+   这正是「功能生效了但样式全无」的根因：HTML 在，CSS 的 .cd-* 一个都匹配不上。 */
+eq('stClassPrefix：普通 class 加 custom- 前缀',
+    stClassPrefix('<div class="cd-root">x</div>'), '<div class="custom-cd-root">x</div>');
+eq('stClassPrefix：多 class 逐个加',
+    stClassPrefix('<div class="cd-row cd-L-act cd-dim">'), '<div class="custom-cd-row custom-cd-L-act custom-cd-dim">');
+eq('stClassPrefix：放过 fa- / note- / monospace',
+    stClassPrefix('<i class="fa-solid fa-x note-y monospace">'), '<i class="fa-solid fa-x note-y monospace">');
+eq('stClassPrefix：混合时只加该加的',
+    stClassPrefix('<i class="fa-solid cd-row">'), '<i class="fa-solid custom-cd-row">');
+eq('stClassPrefix：没有 class 就原样', stClassPrefix('<span>纯文本</span>'), '<span>纯文本</span>');
+ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以两条路径只能各自加一次）',
+    stClassPrefix(stClassPrefix('<b class="cd-x">')).indexOf('custom-custom-cd-x') >= 0);
+
+/* ★★★ 最强的一条：渲染器发出的**每一个** class，CSS 里都必须有对应的 .custom- 规则。
+   这一条直接挡住「HTML 在、样式没」—— 也就是刚刚让插件看起来完全没生效的那个 bug。 */
+{
+    const sampleHtml = renderMessageHTML(
+        '林野·动作 我按住她。\n苏晴·台词 「别。」\n\n旁白·灯灭了。\n<options>\n1. 吻她\n</options>',
+        {}, DEFAULT_CONFIG).html;
+    const emitted = new Set();
+    for (const m of sampleHtml.matchAll(/class="([^"]*)"/g)) {
+        String(m[1]).split(/\s+/).forEach(c => { if (c) emitted.add(c); });
+    }
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    const missingCss = [...emitted].filter(c => !cssText.includes('.custom-' + c));
+    ok('★★★ 渲染器发出的每个 class，CSS 里都有 .custom- 规则（挡住「HTML 在、样式没」）',
+        missingCss.length === 0, { emitted: [...emitted], missingCss });
+    ok('★★★ 样本确实取到了 class（不是空跑）', emitted.size >= 6, { size: emitted.size });
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
