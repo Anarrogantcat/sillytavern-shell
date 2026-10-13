@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.36');
+eq('version 与 manifest 一致', VERSION, '0.8.37');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1807,17 +1807,20 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
 
 /* ★★ 多人场景：台词行数随在场人数变（用户 2026-10-14：「遇到多人怎么办呢？」） */
 {
-    ok('★★ LENGTH_SPEC 写了台词行数随在场人数变', LENGTH_SPEC.indexOf('台词行数随') >= 0);
-    ok('★★ 三人及以上：每个开口的人至少一句', LENGTH_SPEC.indexOf('每个开口的人至少一句') >= 0);
-    ok('★ 没开口的人不给台词行', LENGTH_SPEC.indexOf('没开口的人不要给台词行') >= 0);
-    ok('★ 多人场景组数相应减少（总量不变）', LENGTH_SPEC.indexOf('组数相应减少') >= 0);
+    ok('★★ 一组 = 一个回合（不再绑死 5 行）', LENGTH_SPEC.indexOf('一个回合 = 一组') >= 0);
+    ok('★★ 台词句数 = 在场开口的人数（2/3/5 人举例）', LENGTH_SPEC.indexOf('2 人 ⇒ 2 句') >= 0 && LENGTH_SPEC.indexOf('5 人 ⇒ 5 句') >= 0);
+    ok('★★ 组数随人数下调（10 / 8 / 6–7）', LENGTH_SPEC.indexOf('2 人 ⇒ 10 组') >= 0 && LENGTH_SPEC.indexOf('5 人以上 ⇒ 6–7 组') >= 0);
+    ok('★★ 台词行数 = 在场开口的人数', LENGTH_SPEC.indexOf('台词行数 = 在场') >= 0);
+    ok('★★ 重要角色可以多说一句', LENGTH_SPEC.indexOf('重要角色可以多说一句') >= 0);
+    ok('★ 没开口的人不给台词行', LENGTH_SPEC.indexOf('不给台词行') >= 0);
+    ok('★ 组数随人数下调（总量不变）', LENGTH_SPEC.indexOf('组数随人数下调') >= 0);
     const mk3 = (content) => ({
         prompts: [{ identifier: 'cine-dialogue-length', name: PRESET_RECIPE.lengthName, content }],
         prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-length', enabled: true }] }],
         extensions: {},
     });
     const rv3 = applyPresetRecipe(mk3('旧 v3：按需要来回波动'), { srcName: 't', srcHash: 'h' });
-    ok('★★ v3 也认（会被更新成含多人规则的新版）', String(rv3.preset.prompts[0].content).indexOf('每个开口的人至少一句') >= 0);
+    ok('★★ v3 也认（会被更新成新版）', String(rv3.preset.prompts[0].content).indexOf('台词行数 = 在场') >= 0);
 }
 
 /* ★★ 字段形态必须和原生条目一致（真机踩到：缺 marker ⇒ 列表里不显示 ✗） */
