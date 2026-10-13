@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.25');
+eq('version 与 manifest 一致', VERSION, '0.8.26');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1671,6 +1671,17 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★ 空输入不炸', guessGenderFromText('', ''), '');
     ok('★ 窗口只看名字附近（远处的性别词不算）',
         guessGenderFromText('甲', '乙是男性。' + 'x'.repeat(200) + '甲出现了。') === '');
+}
+
+/* ★★ 只给「用户角色」绑色（用户纠正：其他角色的颜色不该被改） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 只种用户角色那一个名字（userSeed 形式）', /resolveColors\(names, cf, userName \? \{ \[userName\]: userColor \} : \{\}\)/.test(src));
+    ok('★★ 不再批量把判定结果并入蓝/紫名单', src.indexOf('autoRoleLists') < 0);
+    eq('★ guessGenderFromText 仍可用（只用于 user）', guessGenderFromText('染', '染是一名男性。'), 'male');
+    const r = resolveColors(['甲', '乙'], { ...DEFAULT_CONFIG, rolePurpleNames: '乙' }, {});
+    eq('★ 面板手填名单仍生效（乙=紫）', r['乙'], DEFAULT_CONFIG.rolePurpleColor);
+    ok('★ 名单外的人仍是自动配色（甲 ≠ 紫）', r['甲'] !== DEFAULT_CONFIG.rolePurpleColor);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

@@ -988,42 +988,39 @@ function chatWideColors() {
             }
         }
     } catch (_) { }
-    /* ★ 用户角色（{{user}} 的人格名）自动并入蓝名单 —— 用户要求的「用户角色绑定蓝色」 */
-    let userName = "";
-    try { userName = String(getContext().name1 || "").trim(); } catch (_) { }
-    const cfgForColors = userName
-        ? { ...c, roleBlueNames: String(c.roleBlueNames || "") + ", " + userName }
-        : c;
-    /* ★ 自动判定性别（用户提示：人格/卡描述里就写着性别）⇒ 自动归蓝/紫；
-       用户在面板填的名单**优先** ✓ */
-    const autoRoleLists = () => {
-        let text = "";
-        try {
-            const ctx = getContext();
-            const me = ctx.characters && ctx.characters[ctx.characterId];
-            if (me) {
-                text += "\n" + String(me.description || "") + "\n" + String(me.personality || "") + "\n" + String(me.first_mes || "");
-                const bk = me.character_book && me.character_book.entries;
-                if (bk) { for (const e of (Array.isArray(bk) ? bk : Object.values(bk))) text += "\n" + String((e && e.content) || ""); }
-            }
-            const pu = ctx.powerUser || {};
-            if (pu.personas) { for (const k of Object.keys(pu.personas)) text += "\n" + String(k) + " " + String(pu.personas[k] || ""); }
-        } catch (_) { }
-        const b = [], p = [];
-        for (const n of names) {
-            const g = guessGenderFromText(n, text);
-            if (g === 'male') b.push(n);
-            else if (g === 'female' || g === 'futa') p.push(n);
-        }
-        return { b, p };
-    };
-    const auto = autoRoleLists();
-    const cf = {
-        ...cfgForColors,
-        roleBlueNames: [String(cfgForColors.roleBlueNames || ''), auto.b.join(',')].join(','),
-        rolePurpleNames: [String(cfgForColors.rolePurpleNames || ''), auto.p.join(',')].join(','),
-    };
-    const map = resolveColors(names, cf, {});
+      /* ★ 只给**用户角色**绑色（用户要求）：
+         · user 是男性 ⇒ 蓝；user 是女性 / 扶她 ⇒ 紫
+         · **其他角色完全不套用**（保持各自按出场顺序的自动配色）
+           —— 上一版把所有人都按性别绑了，那是错的 ✗
+         · 面板的蓝/紫名单仍可用（你手工指定某人时才生效）✓ */
+      let userName = "";
+      let userColor = String(c.roleBlueColor || "#3B82F6");
+      try {
+          const ctx = getContext();
+          userName = String(ctx.name1 || "").trim();
+          if (userName) {
+              let personaText = userName;
+              try {
+                  const pu = ctx.powerUser || {};
+                  const pmap = pu.personas || {};
+                  for (const k of Object.keys(pmap)) {
+                      if (String(k) === userName || String(pmap[k] || "").indexOf(userName) >= 0) {
+                          personaText += " " + String(k) + " " + String(pmap[k] || "");
+                      }
+                  }
+              } catch (_) { }
+              try {
+                  const me = ctx.characters && ctx.characters[ctx.characterId];
+                  if (me) personaText += " " + String(me.description || "");
+              } catch (_) { }
+              const g = guessGenderFromText(userName, personaText);
+              userColor = String((g === "female" || g === "futa")
+                  ? (c.rolePurpleColor || "#A855F7")
+                  : (c.roleBlueColor || "#3B82F6"));
+          }
+      } catch (_) { }
+      const cf = c;
+      const map = resolveColors(names, cf, userName ? { [userName]: userColor } : {});
     chatColorCache = { key, map };
     return map;
 }
