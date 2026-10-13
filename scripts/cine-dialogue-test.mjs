@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.3');
+eq('version 与 manifest 一致', VERSION, '0.7.4');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -938,6 +938,63 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★ 与「导入配置」同一套做法（cd-hidden + 按钮触发）',
         /id="cd-file"[^>]*class="cd-hidden"/.test(src) && /f\.click\(\)/.test(src));
     ok('★ 占位文案引导先点按钮', src.indexOf('先点上面的「选择预设文件…」') >= 0);
+}
+
+/* ============================================================================
+   ★★ 回归守卫：index.js 用到、但没从 logic.js 导入的名字
+   这类遗漏在调用点抛 ReferenceError。如果发生在 buildSettingsPanel 之前/之中，
+   表现就是「扩展程序列表里根本没有这个抽屉」—— 这个坑踩过两次：
+     · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行
+     · 0.7.2 —— 图例里用了没导入的 layerClass → buildSettingsPanel 抛错 → 抽屉消失
+   两次都是一模一样的症状，不看 F12 完全不知道哪错了。
+   ============================================================================ */
+{
+    const idx = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const log = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+
+    const exported = new Set();
+    for (const m of log.matchAll(/export\s+(?:async\s+)?(?:function|const|let|class)\s+([A-Za-z_$][\w$]*)/g)) exported.add(m[1]);
+    for (const m of log.matchAll(/export\s*\{([^}]*)\}/g)) {
+        m[1].split(',').forEach(x => { const t = x.trim().split(/\s+as\s+/).pop().trim(); if (t) exported.add(t); });
+    }
+
+    /* ★ 必须用 [^{}]* —— 用 [\s\S]*? 会从文件**第一个** import { 起匹配，
+       把 script.js 的导入名也算进来（我自己就踩了：补丁把 layerClass 塞进了 script.js）。 */
+    const imp = idx.match(/import\s*\{([^{}]*)\}\s*from\s*'\.\/logic\.js'/);
+    ok('★ 找得到 index.js 里 logic.js 的 import', !!imp);
+    const imported = new Set(imp[1].split(',').map(s => s.trim()).filter(Boolean));
+    const body = idx.slice(0, imp.index) + idx.slice(imp.index + imp[0].length);
+
+    // 排除两类误报：index.js 自己声明的名字、对象字面量里的方法简写（stats() {）
+    const localDecl = new Set();
+    for (const m of idx.matchAll(/(?:function|const|let|class)\s*([A-Za-z_$][\w$]*)/g)) localDecl.add(m[1]);
+
+    const missing = [];
+    for (const name of exported) {
+        if (imported.has(name) || localDecl.has(name)) continue;
+        const re = new RegExp('(?<![\\w$.])' + name.replace(/\$/g, '\\$') + '(?![\\w$])');
+        if (!re.test(body)) continue;
+        if (new RegExp('[},]\\s*' + name + '\\s*\\(').test(body)) continue;      // 方法简写
+        missing.push(name);
+    }
+    ok('★★ index.js 用到的 logic.js 导出**全都导入**了（漏一个就会让抽屉消失）',
+        missing.length === 0, missing);
+
+    ok('★ 导入了 layerClass（0.7.2 就是漏了它）', imported.has('layerClass'));
+    ok('★ 导入了 layerVars', imported.has('layerVars'));
+}
+
+/* ★ start() 每步单独兜错 —— 单点失败不该让整个扩展哑掉 */
+{
+    const idx = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★ start() 有逐步兜错的 step() 包装', /const step = \(name, fn\)/.test(idx));
+    ok('★ 失败步骤会记进 failedSteps', /const failedSteps = \[\]/.test(idx));
+    ok('★ 失败时会**通知用户**（而不是静默）',
+        /notify\('分镜对话：' \+ failedSteps\.length/.test(idx));
+    ok('★ 失败步骤暴露到 diagnose() 与 stats()',
+        (idx.match(/failedSteps: failedSteps\.slice\(\)/g) || []).length >= 2);
+    ok('★ 建设置面板也是被 step() 包住的（不会再整个哑掉）',
+        /step\('建设置面板'/.test(idx));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

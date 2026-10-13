@@ -63,6 +63,7 @@ import {
     validateLayerName,
     applyPresetRecipe,
     PRESET_UPSTREAM,
+    layerClass,
 } from './logic.js';
 
 // ---------------------------------------------------------------- 配置
@@ -642,6 +643,7 @@ function exposeApi() {
                 light: isLightTheme(),
                 /** 核内补丁 #001 接线状态 + 它处理了多少条 */
                 hook: { active: hookActive(), formatted: hookStats.formatted, lastMid: hookStats.lastMid },
+                failedSteps: failedSteps.slice(),
             };
         },
     };
@@ -756,6 +758,9 @@ function notify(msg, type) {
 }
 
 let slashRegistered = false;
+
+/** 启动时失败的步骤（每一步单独兜错，见 start()）—— 面板/控制台/对外 API 都能看到 */
+const failedSteps = [];
 
 /**
  * 注册 /cine（别名 /cd、/storyboard）。
@@ -1170,6 +1175,7 @@ function diagnose() {
             };
         })(),
         hook: hookActive(),
+        failedSteps: failedSteps.slice(),
     };
 }
 
@@ -1857,20 +1863,42 @@ function buildSettingsPanel() {
 // ---------------------------------------------------------------- 启动
 
 function start() {
-    cfg();
-    bind();
-    exposeApi();
-    bindInteractions();
-    injectStyles();
-    buildSettingsPanel();
-    applyPromptInjection();
-    registerSlashCommand();
+    /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
+       这个坑踩过两次：
+         · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行
+         · 0.7.2 —— 图例里用了没导入的 layerClass → buildSettingsPanel 抛错 → 抽屉消失
+       两次的表现一模一样：**「扩展程序」列表里根本没有这个抽屉**，不看 F12 完全不知道哪错了。
+       现在：失败的那一步记进 failedSteps，其余步骤照常跑，并在控制台 + 通知里说清是哪一步。 */
+    const step = (name, fn) => {
+        try { fn(); }
+        catch (e) {
+            const msg = name + '：' + ((e && e.message) ? e.message : String(e));
+            failedSteps.push(msg);
+            console.error('[' + EXT_ID + '] 启动步骤「' + name + '」失败（其余步骤继续）：', e);
+        }
+    };
+
+    step('读配置', () => cfg());
+    step('挂事件', () => bind());
+    step('对外 API', () => exposeApi());
+    step('交互（选项按钮/双击复制/跳场景）', () => bindInteractions());
+    step('注入样式', () => { injectStyles(); });
+    step('建设置面板', () => buildSettingsPanel());
+    step('提示词注入', () => applyPromptInjection());
+    step('斜杠命令', () => registerSlashCommand());
+
+    if (failedSteps.length) {
+        console.error('[' + EXT_ID + '] 有 ' + failedSteps.length + ' 个启动步骤失败：\n  ' + failedSteps.join('\n  '));
+        try { notify('分镜对话：' + failedSteps.length + ' 个启动步骤失败（按 F12 看控制台）', 'error'); } catch (_) { /* 没有 toastr 就只打控制台 */ }
+    }
+
     console.log('[' + EXT_ID + '] v' + VERSION + ' loaded'
         + '  TavernHelper=' + (TH() ? 'yes' : 'no')
         + '  Mvu=' + (MVU() ? 'yes' : 'no')
         + '  CardCompat=' + (CC() ? 'yes' : 'no')
-        + '  PlotPilot=' + (PP() ? 'yes' : 'no'));
-    schedule(true);
+        + '  PlotPilot=' + (PP() ? 'yes' : 'no')
+        + (failedSteps.length ? ('  ⚠ 失败步骤=' + failedSteps.length) : ''));
+    try { schedule(true); } catch (e) { console.error('[' + EXT_ID + '] 首次渲染调度失败：', e); }
 }
 
 // ST 启动时扩展可能早于聊天加载完 → 两个时机都试
