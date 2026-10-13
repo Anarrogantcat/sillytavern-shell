@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
+LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.32');
+eq('version 与 manifest 一致', VERSION, '0.8.33');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1782,6 +1782,23 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const lp2 = r2.preset.prompts.find((p) => String(p.name || '') === PRESET_RECIPE.lengthName);
     eq('★★ 不覆盖用户改动', lp2.content, '我自己改过的内容：每次 6 组');
     ok('★ 报告里写明不覆盖', r2.changes.some((x) => x.indexOf('不覆盖') >= 0));
+}
+
+/* ★★ 台词 10–20 字波动（用户 2026-10-14）；预设条目只在我们写的版本上更新 */
+{
+    ok('★★ LENGTH_SPEC 里台词是 10–20 字', LENGTH_SPEC.indexOf('10–20 字') >= 0);
+    ok('★ LENGTH_SPEC 不再写 ~10 字', LENGTH_SPEC.indexOf('~10 字') < 0);
+    ok('★★ FORMAT_SPEC 里台词也是 10–20 字', FORMAT_SPEC.indexOf('10–20 字') >= 0);
+    /* v1 内容（还是我们写的）⇒ 会被更新 */
+    const mk = (content) => ({
+        prompts: [{ identifier: 'cine-dialogue-length', name: PRESET_RECIPE.lengthName, content }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-length', enabled: true }] }],
+        extensions: {},
+    });
+    const r1 = applyPresetRecipe(mk('旧版内容 ~10 字'), { srcName: 't', srcHash: 'h' });
+    ok('★★ 我们写的 v1 会被更新成 10–20 字', String(r1.preset.prompts[0].content).indexOf('10–20 字') >= 0);
+    const r2 = applyPresetRecipe(mk('我自己改的：每次 6 组，台词随意'), { srcName: 't', srcHash: 'h' });
+    eq('★★ 你改过的内容一个字不动', r2.preset.prompts[0].content, '我自己改的：每次 6 组，台词随意');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
