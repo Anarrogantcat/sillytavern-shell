@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.16';
+export const VERSION = '0.8.17';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -76,6 +76,8 @@ export const DEFAULT_CONFIG = {
     nameColWidth: 96,
     /** 行间距（em） */
     rowGap: 0.5,
+    /** 收紧段间距：折叠文本段里的连续空行（用户报「间距有点大」，嫌挤可关） */
+    tightParagraphs: true,
     /**
      * 宽表格防挤压（只影响**消息里 markdown 渲染出来的表格**）。
      * 为什么需要：showdown 渲染出的宽表格（十几列）在窄容器里，每列会被压到 min-content，
@@ -294,6 +296,8 @@ export const PANEL_FIELDS = [
     { key: 'nameColWidth', group: '排版', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
     { key: 'rowGap', group: '排版', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
     { key: 'lineHeight', group: '排版', kind: 'number', label: '行高', unit: '倍', min: 1.2, max: 2.6, step: 0.05 },
+    { key: 'tightParagraphs', group: '排版', kind: 'bool', label: '收紧段间距',
+      note: '把段落里的连续空行折叠掉 ⇒ 段与段之间不再多出一整行空白；嫌挤可以关掉' },
     { key: 'wrapWideTables', group: '排版', kind: 'bool', label: '宽表格防挤压',
       note: '只对**真的溢出**的消息表格生效（十几列的宽表变成可横向拖，字不再竖排）；小表格与卡的状态栏不碰' },
     { key: 'showSeparators', group: '排版', kind: 'bool', label: '空行分组之间画分隔线',
@@ -828,6 +832,17 @@ export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG, extr
  * 安全：只认 `http(s)://` 与 `data:image/…;base64,…` —— 其它一律**原样不动**（不转换）✓
  * 属性值走 esc() 转义 ✓；最终还有 ST 自己的 DOMPurify 兜一道 ✓
  */
+/**
+ * 折叠文本段里的**连续空行**（2 个以上换行 → 1 个）。
+ * 用户报「间距有点大」且指出「以前是没问题的」⇒ 是我 0.8.12 改解析造成的：
+ * 一批原本被当成分镜行的行变成了普通段落（这本身是对的），但段落里的空行被原样保留，
+ * 而 ST 消息区是 white-space: pre-wrap ⇒ **空行真的变成一整行空白** ⇒ 间距变大。
+ * 折叠后段落仍各自成行（pre-wrap 下单换行就换行），但不再多出一整行空白。
+ */
+export function tightenBlanks(text) {
+    return String(text == null ? '' : text).replace(/\n{2,}/g, '\n');
+}
+
 export function renderInlineImages(text) {
     const RE = /!\[([^\]]{0,120})\]\(\s*(https?:\/\/[^\s)]{1,2000}|data:image\/[a-z+.\-]{1,20};base64,[A-Za-z0-9+/=]{1,500000})\s*\)/g;
     return String(text == null ? '' : text).replace(RE, (m0, alt, url) =>
@@ -932,7 +947,7 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
         if (s.kind === 'text') {
             const raw = s.lines.join('\n');                                  // 原样，一个字不改
             const body = opts.wrapThinking ? wrapThinkingBlock(raw, cfg) : raw;   // ← 预设覆盖不到时由我们折叠
-            return PLAIN_ANCHOR + '\n' + renderInlineImages(body);   // 锚点：供 decorate() 对齐；顺带把 markdown 图片变成 <img>
+            return PLAIN_ANCHOR + '\n' + renderInlineImages(cfg.tightParagraphs ? tightenBlanks(body) : body);   // 锚点：供 decorate() 对齐；顺带把 markdown 图片变成 <img>
         }
         return renderGrid(s.groups, seg.colors, cfg, i === lastOurs ? optHTML : '');
     });
