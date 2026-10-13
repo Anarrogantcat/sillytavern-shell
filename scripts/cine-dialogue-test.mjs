@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.3');
+eq('version 与 manifest 一致', VERSION, '0.5.4');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -148,10 +148,24 @@ const thinkingLike = [
     '</konatan_planning~>',
 ].join('\n');
 const rThinking = renderMessage(thinkingLike, {}, DEFAULT_CONFIG);
-eq('思考块占多数 → 返回 null（整条不改）', rThinking.html, null);
+eq('DOM 降级路径：思考块占多数 → null（那条路径没有分段能力，保守跳过）', rThinking.html, null);
 eq('门槛原因标为 ratio', rThinking.skipped, 'ratio');
 ok('门槛统计：占比确实不到 50%', rThinking.ratio < 0.5, rThinking);
-eq('renderMessageHTML 同样被门槛拦住', renderMessageHTML(thinkingLike), null);
+
+/* ★★ 钩子路径改用**分段渲染** —— 不再整条跳过：
+   我们的行 → 网格；其它行 → **原样文本**（思考块照常显示，一个字不改）。
+   这是「没有美化」的真因修复：思考块与正文同处一个 mes 时，旧门槛把正文一起跳过了。 */
+const rSeg = renderMessageHTML(thinkingLike, {}, DEFAULT_CONFIG);
+ok('分段渲染：不再整条跳过（返回非 null）', rSeg !== null);
+ok('分段渲染：有 ours 段', !!rSeg && rSeg.segments.some(s => s.kind === 'ours'));
+ok('分段渲染：有 text 段（思考块原样通过）', !!rSeg && rSeg.segments.some(s => s.kind === 'text'));
+ok('分段渲染：思考块内容原样保留', !!rSeg && rSeg.html.includes('肌肉的震颤'));
+ok('分段渲染：正文进了网格', !!rSeg && rSeg.html.includes('cd-grid'));
+ok('分段渲染：正文拿到了颜色', !!rSeg && /--c:#/.test(rSeg.html));
+ok('分段渲染：标签零泄漏（去标签后不该出现 ·动作 / 旁白·）',
+    !!rSeg && !/·动作|·感官|·台词|·心理|旁白·/.test(rSeg.html.replace(/<[^>]*>/g, '')));
+eq('分段渲染：段落顺序 text → ours → text',
+    rSeg.segments.map(s => s.kind).join(','), 'text,ours,text');
 
 /* XSS：内容里的标签必须被转义 */
 const rXss = renderMessage('林野·动作 <img src=x onerror=alert(1)>\n苏晴·台词 「嗯。」', {}, DEFAULT_CONFIG);

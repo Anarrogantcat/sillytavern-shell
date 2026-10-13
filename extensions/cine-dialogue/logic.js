@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.3';
+export const VERSION = '0.5.4';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -568,6 +568,59 @@ export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG, extr
 }
 
 /**
+ * ★★ 分段渲染（渲染漏斗钩子专用）—— 解决「思考块 + 正文同处一个 mes」
+ *
+ * 为什么需要它：消息级门槛（占比 < 50% 就整条不碰）在真机上**太狠** ——
+ * 模型把几百行思考块和几行正文写在同一个 `mes` 里，占比只有百分之几，
+ * 整条被跳过 → 用户看到的还是裸标签、没美化。
+ *
+ * 正确做法：**按行切成连续段** ——
+ *   · 我们的行 → 合成 `<div class="cd-root">` 网格（上色 / 对齐 / 层样式）
+ *   · 其它行   → **原样返回文本**，交给 showdown / ST 正常渲染（思考块、散文完全不受影响）
+ */
+export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
+    const cfg = { ...DEFAULT_CONFIG, ...config };
+    const layers = allLayers(cfg);
+    const parsed = parseBlocks(body, layers);
+    const names = collectNames(parsed.groups);
+    const map = resolveColors(names, cfg, colorMap);
+
+    const segments = [];
+    let cur = null;
+    let curSrcGroup = null;
+
+    const flush = () => {
+        if (cur) {
+            const n = (cur.kind === 'ours') ? cur.groups.length : cur.lines.length;
+            if (n) segments.push(cur);
+        }
+        cur = null;
+        curSrcGroup = null;
+    };
+
+    for (const g of parsed.groups) {
+        for (const r of g) {
+            const ours = (r.kind === 'row' || r.kind === 'narr');
+            if (ours) {
+                if (!cur || cur.kind !== 'ours') { flush(); cur = { kind: 'ours', groups: [] }; }
+                // 源文里换了一个空行块 → 开新组（网格里画分隔线）
+                if (curSrcGroup !== g) { cur.groups.push([]); curSrcGroup = g; }
+                cur.groups[cur.groups.length - 1].push(r);
+            } else {
+                if (!cur || cur.kind !== 'text') { flush(); cur = { kind: 'text', lines: [] }; }
+                cur.lines.push(String(r.raw));
+            }
+        }
+    }
+    flush();
+
+    return {
+        segments, names, colors: map, errs: parsed.errs,
+        hasOurs: segments.some(s => s.kind === 'ours' && s.groups.length),
+    };
+}
+
+/**
  * ★ 渲染漏斗钩子路径的入口 —— 返回**整条消息**的 HTML
  *
  * 与 renderMessage 的区别：钩子跑在 messageFormatting 开头，返回的字符串后面还要过
@@ -587,16 +640,24 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
        → 若继续拼 `'' + 前端 + 选项`，就会返回一个非空字符串，**正文整段丢失**。 */
     if (!hasOurLines(sections.body, allLayers(cfg))) return null;
 
-    /* 选项按钮要放进 .cd-root **里面**（否则拿不到主题变量 → 白底默认按钮） */
+    /* ★★ 分段渲染：我们的行 → 网格；其它行 → **原样返回文本**（交给 showdown/ST 正常渲染）。
+       取代了「占比 < 50% 就整条不碰」那条粗暴门槛 —— 真机上它把正文一起跳过了。 */
+    const seg = renderSegments(sections.body, colorMap, cfg);
+    if (!seg.hasOurs) return null;
+
+    /* 选项按钮放进**最后一个** ours 段的 .cd-root 内部（否则拿不到主题变量 → 白底默认按钮） */
     const optHTML = sections.options.length ? renderOptions(sections.options, cfg) : '';
-    const res = renderMessage(sections.body, colorMap, cfg, optHTML);
-    if (!res.html) return null;                     // 双保险：宁可整条不改，也不能只输出外壳
+    const lastOurs = seg.segments.map(s => s.kind).lastIndexOf('ours');
 
-    let html = res.html;
+    const parts = seg.segments.map((s, i) => {
+        if (s.kind === 'text') return s.lines.join('\n');                    // 原样，一个字不改
+        return renderGrid(s.groups, seg.colors, cfg, i === lastOurs ? optHTML : '');
+    });
+
+    let html = parts.join('\n\n');
     for (const f of sections.frontend) html += '\n' + f;          // 前端区：原样，一个字不动
-    // 选项已经在 res.html 的 .cd-root 内部了，这里不再拼
 
-    return { html, names: res.names, errs: res.errs, colors: res.colors, sections };
+    return { html, names: seg.names, errs: seg.errs, colors: seg.colors, sections, segments: seg.segments };
 }
 
 /** 一条消息里有没有「我们的行」（用来决定碰不碰它） */
