@@ -407,10 +407,44 @@ function schedule(scope) {
  *   ① 整楼名字列宽统一（出现多个 .cd-root 时才需要）
  *   ② 首行缩进只给「真的换行」的段落
  *  ★ 这两件**两条路径下都要跑** —— 自检发现：钩子路径曾因 run() 一退到底而整片丢失。 */
+/** 宽表格处理计数（给 diagnose 看，不做黑箱） */
+let wrappedTables = 0;
+let tableCandidates = 0;
+
+/**
+ * 宽表格防挤压。★ 三道限制缺一不可：
+ *   ① **只挑 .mes_text 的直接子级 table** —— markdown(showdown) 渲染出的表格是顶层子元素；
+ *      卡脚本/状态栏生成的表格一定在某个容器 div 里 ⇒ 不是直接子级 ⇒ **天然不碰** ✓
+ *   ② **只在真的溢出时**才包（scrollWidth > 容器宽）⇒ 本来能自适应换行的小表格不受影响 ✓
+ *   ③ 容器不可见（宽度 0）时跳过 —— 隐藏元素的 scrollWidth 不可靠 ✓
+ * 只加一个自有前缀 wrapper（.cd-tw），不写内联样式、不改表格本身 ✓（AGENTS §0.3.2）
+ */
+function wrapWideTables(mesEl) {
+    try {
+        if (!effectiveConfig().wrapWideTables) return;
+        const textEl = mesEl.querySelector('.mes_text');
+        if (!textEl) return;
+        const avail = textEl.clientWidth;
+        if (!avail) return;                              // ③ 不可见 → 不判
+        textEl.querySelectorAll(':scope > table').forEach(t => {
+            if (t.parentElement && t.parentElement.classList.contains('cd-tw')) return;   // 已包过
+            tableCandidates++;
+            if (t.scrollWidth <= avail + 1) return;      // ② 没溢出 → 不碰
+            const box = document.createElement('div');
+            box.className = 'cd-tw';
+            box.setAttribute('data-cd-tw', '1');
+            t.parentNode.insertBefore(box, t);
+            box.appendChild(t);
+            wrappedTables++;
+        });
+    } catch (e) { console.warn('[' + EXT_ID + '] 宽表格处理失败（不影响其它功能）', e); }
+}
+
 function decorate(mesEl) {
     try { unifyNameColumn(mesEl); } catch (_) { /* 装饰失败不影响渲染 */ }
     try { alignPlains(mesEl); } catch (_) { /* 对齐失败不影响渲染 */ }
     try { applyIndent(mesEl); } catch (_) { /* 同上 */ }
+    try { wrapWideTables(mesEl); } catch (_) { /* 表格处理失败不影响渲染 */ }
 }
 
 /**
@@ -1158,6 +1192,8 @@ const FALLBACK_CSS = [
     '.custom-cd-line{grid-column:1/-1;min-width:0;color:var(--cd-sub);opacity:.88;white-space:pre-wrap;word-break:break-word}',
     '.custom-cd-row.custom-cd-dim{opacity:.32}',
     '.custom-cd-hit{background:rgba(255,214,0,.30);border-radius:.15em}',
+'.custom-cd-anchor{display:none}',
+'.cd-tw{overflow-x:auto;max-width:100%}','.cd-tw>table{white-space:nowrap}',
     '.custom-cd-options{display:flex;flex-direction:column;gap:.35em;margin-top:.9em}',
     '.custom-cd-opt{display:flex;align-items:baseline;gap:.7em;width:100%;text-align:left;cursor:pointer;',
     'font:inherit;font-size:.9em;padding:.5em .8em;border-radius:.3em;',
@@ -1269,6 +1305,8 @@ function diagnose() {
             };
         })(),
         hook: hookActive(),
+        /* 宽表格处理情况 —— 让用户看得到「它动了什么」，不是黑箱 */
+        tables: { wrapped: wrappedTables, candidates: tableCandidates, on: !!effectiveConfig().wrapWideTables },
         failedSteps: failedSteps.slice(),
     };
 }

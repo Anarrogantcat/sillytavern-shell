@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.5';
+export const VERSION = '0.8.6';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -76,6 +76,16 @@ export const DEFAULT_CONFIG = {
     nameColWidth: 96,
     /** 行间距（em） */
     rowGap: 0.5,
+    /**
+     * 宽表格防挤压（只影响**消息里 markdown 渲染出来的表格**）。
+     * 为什么需要：showdown 渲染出的宽表格（十几列）在窄容器里，每列会被压到 min-content，
+     * 而**中文的 min-content = 一个字宽** ⇒ 一列字竖着排（真机：状态栏表格挤成一列字）。
+     * ★ 三道限制把影响面压到最小：
+     *   ① **只在真的溢出时**才动手（scrollWidth > 容器宽）⇒ 小表格一个字都不碰
+     *   ② **只处理 .mes_text 的直接子级 <table>**（markdown 渲染的）⇒ 卡脚本/状态栏的表格不碰
+     *   ③ 面板里可关（关掉即刻恢复原样）
+     */
+    wrapWideTables: true,
     /**
      * 是否在「空行分组」之间画分隔线。
      * ★ 默认 **false**：模型经常**每行之间都空一行** → 每行各自成一个分组 →
@@ -284,6 +294,8 @@ export const PANEL_FIELDS = [
     { key: 'nameColWidth', group: '排版', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
     { key: 'rowGap', group: '排版', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
     { key: 'lineHeight', group: '排版', kind: 'number', label: '行高', unit: '倍', min: 1.2, max: 2.6, step: 0.05 },
+    { key: 'wrapWideTables', group: '排版', kind: 'bool', label: '宽表格防挤压',
+      note: '只对**真的溢出**的消息表格生效（十几列的宽表变成可横向拖，字不再竖排）；小表格与卡的状态栏不碰' },
     { key: 'showSeparators', group: '排版', kind: 'bool', label: '空行分组之间画分隔线',
       note: '默认关：模型常每行都空一行 → 分隔线会与行间距叠加，整屏被撑散' },
     { key: 'leadIndent', group: '排版', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },

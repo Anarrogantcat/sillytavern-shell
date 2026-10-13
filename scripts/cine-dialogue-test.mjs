@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.5');
+eq('version 与 manifest 一致', VERSION, '0.8.6');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1355,6 +1355,48 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★ 未知层词 + 长正文 → 渲染成行', g.kind, 'row');
     eq('★ 层词原样留在 layer（供自定义层样式用）', g.layer, '外貌');
     eq('★ 标记为 unknown-layer', g.repaired, 'unknown-layer');
+}
+
+/* ============================================================================
+   ★★ 宽表格防挤压（0.8.6）
+   真机：模型输出的 markdown 宽表格（14 列）在窄容器里每列被压到 min-content，
+   中文的 min-content = **一个字宽** ⇒ 一列字竖排。
+   ★ 关键是**三道限制**必须在代码里真的成立 —— 否则会伤到别的卡。
+   ============================================================================ */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    ok('★ 默认开启', DEFAULT_CONFIG.wrapWideTables === true);
+    eq('★ 面板字段归「排版」组（不是漏标组）', PANEL_FIELDS.find(f => f.key === 'wrapWideTables').group, '排版');
+    ok('★ 关掉即刻恢复原样（开关为假时直接返回）',
+        /if \(!effectiveConfig\(\)\.wrapWideTables\) return;/.test(src));
+
+    ok('★★ 限制②：只挑 .mes_text 的**直接子级** table（卡脚本/状态栏的表格在容器里 → 天然不碰）',
+        /querySelectorAll\(':scope > table'\)/.test(src));
+    ok('★★ 限制①：只在**真的溢出**时才包（小表格一个字不碰）',
+        /if \(t\.scrollWidth <= avail \+ 1\) return;/.test(src));
+    ok('★★ 限制③：容器不可见（宽度 0）时跳过 —— 隐藏元素的 scrollWidth 不可靠',
+        /if \(!avail\) return;/.test(src));
+    ok('★ 幂等：已包过的不再包（不会套娃）', /classList\.contains\('cd-tw'\)/.test(src));
+
+    ok('★ 接进 decorate()（**渲染之后**才做，所以不影响 markdown 解析）',
+        /try \{ wrapWideTables\(mesEl\); \}/.test(src)
+        && src.indexOf('function decorate') < src.indexOf('wrapWideTables(mesEl);'));
+    ok('★ 诊断里能看到处理计数（不做黑箱）',
+        /tables: \{ wrapped: wrappedTables, candidates: tableCandidates/.test(src));
+
+    ok('★★ 我们的 CSS 只用自有前缀 .cd-tw，**绝不写 .mes_text table**',
+        cssText.indexOf('.cd-tw') >= 0 && cssText.indexOf('.mes_text table') < 0);
+    ok('★ 内置兜底 CSS 同步（否则取不到 style.css 时失效）',
+        /'\.cd-tw\{overflow-x:auto/.test(src));
+    ok('★ 顺带补上兜底里之前漏掉的 .custom-cd-anchor',
+        /'\.custom-cd-anchor\{display:none\}'/.test(src));
+
+    /* 只有一张表的少量列时不该被 nowrap 影响：判据是"溢出"，不是"有没有表" */
+    ok('★ 判据是溢出而不是"有没有表格"（所以窄表不受影响）',
+        src.indexOf('scrollWidth <= avail') >= 0 && src.indexOf(':scope > table') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

@@ -458,3 +458,15 @@
 /* 手写段折叠化之后：标题就是折叠开关（.cd-sec-h 拿到 .cd-grp-toggle 的样式） */
 #cd-panel .cd-sec-h.cd-grp-toggle { margin-bottom: 2px; }
 #cd-panel .cd-sec[data-cd-collapsed="1"] { margin: 6px 0 4px; }
+
+/* ---------------------------------------------------------------- 宽表格防挤压
+   ★ 选择器全部是**自有前缀**（.cd-tw）—— 不去写 .mes_text table（AGENTS §0.3.2）。 */
+.cd-tw {
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 2px;      /* 给横向滚动条留一点位置 */
+}
+
+.cd-tw > table {
+    white-space: nowrap;      /* 单元格不换行 → 列保持自然宽度，由外层滚动 */
+}

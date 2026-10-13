@@ -1,5 +1,23 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.8.6：宽表格防挤压
+
+### 起因
+被挤成一列字的那张表 —— 实测 `markdown表=true` / `<table>=false` ⇒ **是模型输出的 markdown**，
+由 **showdown 原生渲染**；**不是数据库画的、也不是我们三个插件画的**。
+挤的原因：14 列 + 容器窄 ⇒ 每列被压到 **min-content** ⇒ **中文 = 一个字宽** ⇒ 竖排（与 0.7.6 按钮竖排同源）。
+
+### 做了什么
+`wrapWideTables()`（在 `decorate()` 里、**渲染之后**跑，不影响 markdown 解析）——
+**只在真的溢出时**给 `.mes_text` 的**直接子级** `<table>` 包一层自有前缀的 `.cd-tw`（`overflow-x:auto`）。
+★ **三道限制**（挡住"影响别的卡"）：① 只在溢出时 · ② 只直接子级（卡的脚本/状态栏表格在容器里 ⇒ 不碰）· ③ 不可见时跳过
++ 幂等 · 面板可关（默认开）· `diagnose()` 报 `tables{wrapped,candidates}` · 顺带补上兜底 CSS 漏掉的 `.custom-cd-anchor`
+
+### 夹具：**435 → 448 条**（三道限制各自有断言 + 「绝不写 .mes_text table」）
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **448/448** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
 ## 未发版（2026-10-13）— cine-dialogue 0.8.5：修两个标签外露的真机 case
 
 ### 现象（用户换卡后仍复现 ⇒「就是插件问题」——判断正确）
