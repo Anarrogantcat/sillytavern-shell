@@ -988,7 +988,13 @@ function chatWideColors() {
             }
         }
     } catch (_) { }
-    const map = resolveColors(names, c, {});
+    /* ★ 用户角色（{{user}} 的人格名）自动并入蓝名单 —— 用户要求的「用户角色绑定蓝色」 */
+    let userName = "";
+    try { userName = String(getContext().name1 || "").trim(); } catch (_) { }
+    const cfgForColors = userName
+        ? { ...c, roleBlueNames: String(c.roleBlueNames || "") + ", " + userName }
+        : c;
+    const map = resolveColors(names, cfgForColors, {});
     chatColorCache = { key, map };
     return map;
 }

@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.23';
+export const VERSION = '0.8.24';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -76,6 +76,17 @@ export const DEFAULT_CONFIG = {
     nameColWidth: 96,
     /** 行间距（em） */
     rowGap: 0.5,
+    /**
+     * 角色类型绑色（用户要求）：
+     *   · 蓝名单 = 用户角色（自动算入）+ 男性角色
+     *   · 紫名单 = 女性 + 扶她角色
+     * 名单里没提到的角色，仍按"首次出场顺序"从调色板拿色 ✓
+     * 名字用逗号 / 顿号 / 空格分隔都认 ✓
+     */
+    roleBlueNames: '',
+    rolePurpleNames: '',
+    roleBlueColor: '#3B82F6',
+    rolePurpleColor: '#A855F7',
     /**
      * 宽表格防挤压（只影响**消息里 markdown 渲染出来的表格**）。
      * 为什么需要：showdown 渲染出的宽表格（十几列）在窄容器里，每列会被压到 min-content，
@@ -286,6 +297,12 @@ export const PANEL_FIELDS = [
        并把**已经渲染过的楼层恢复成 ST 原生渲染**。 */
     { key: 'enabled', group: null, kind: 'bool', label: '总开关（整个插件）',
       note: '关掉后完全停用：不渲染 / 不注入提示词 / 不介入思考块 / 不接管双击与跳场景；已渲染的楼层会恢复原样' },
+    { key: 'roleBlueNames', group: '基本', kind: 'text', label: '蓝名单（用户/男性角色）',
+      note: '逗号分隔；你的用户角色会自动算在内。例：染, 老王' },
+    { key: 'rolePurpleNames', group: '基本', kind: 'text', label: '紫名单（女性/扶她角色）',
+      note: '逗号分隔。例：沙良, 久美, 沈鹿笙' },
+    { key: 'roleBlueColor', group: '基本', kind: 'text', label: '蓝名单用的颜色', note: '十六进制色号，例 #3B82F6' },
+    { key: 'rolePurpleColor', group: '基本', kind: 'text', label: '紫名单用的颜色', note: '十六进制色号，例 #A855F7' },
     { key: 'transformUserMessages', group: '基本', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
     { key: 'indentOnlyWrapped', group: '排版', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },
     { key: 'markErrors', group: '基本', kind: 'bool', label: '格式错的行标红', note: '关掉 = 不显示（不推荐，会静默吞掉格式错误）' },
@@ -999,10 +1016,26 @@ export function layerVars(layer, config = {}) {
 /**
  * 颜色解析：**用户点名的颜色优先**，其余按出现顺序分配（纯函数）
  */
+/** 把「甲,乙、丙 丁」这种名单拆成数组（逗号 / 顿号 / 空格 / 分号都认） */
+export function parseNameList(text) {
+    return String(text == null ? '' : text).split(/[,，、;；\s]+/).map((x) => x.trim()).filter(Boolean);
+}
+
 export function resolveColors(names, config = {}, seed = {}) {
     const fixed = config.charColors || {};
     const palette = (config.palette && config.palette.length) ? config.palette : PALETTE;
     const map = { ...seed };
+
+    // 0) ★ 角色类型绑色（用户要求）：蓝名单 = 用户+男性；紫名单 = 女性+扶她
+    const blueList = parseNameList(config.roleBlueNames);
+    const purpleList = parseNameList(config.rolePurpleNames);
+    const cBlue = config.roleBlueColor || '#3B82F6';
+    const cPurple = config.rolePurpleColor || '#A855F7';
+    for (const n of names) {
+        if (map[n]) continue;
+        if (blueList.indexOf(n) >= 0) map[n] = cBlue;
+        else if (purpleList.indexOf(n) >= 0) map[n] = cPurple;
+    }
 
     // 1) 用户点名的先钉死
     for (const n of names) {

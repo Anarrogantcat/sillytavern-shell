@@ -13,7 +13,7 @@ import {
     serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock, PLAIN_ANCHOR, repairLines, layerClass,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
-    hasOurLines, stats, renderInlineImages,
+    hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
 } from '../extensions/cine-dialogue/logic.js';
 
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.23');
+eq('version 与 manifest 一致', VERSION, '0.8.24');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1646,6 +1646,20 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
     ok('★ 内置兜底同步', src.indexOf('.custom-cd-body q,.custom-cd-body em') >= 0);
     ok('★ 只作用于自有前缀（没有写 .mes_text）', !/\.mes_text\s*[^{]*\{/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
+}
+
+/* ★★ 角色类型绑色（用户要求）：蓝名单=用户+男性；紫名单=女性+扶她 */
+{
+    const cfg = { ...DEFAULT_CONFIG, roleBlueNames: '染, 老王', rolePurpleNames: '沙良、久美 沈鹿笙' };
+    const r = resolveColors(['染', '老王', '沙良', '久美', '沈鹿笙', '路人甲'], cfg, {});
+    eq('★★ 蓝名单（用户/男性）= 蓝', r['染'], cfg.roleBlueColor);
+    eq('★ 蓝名单第二人也是蓝', r['老王'], cfg.roleBlueColor);
+    eq('★★ 紫名单（女性/扶她）= 紫', r['沙良'], cfg.rolePurpleColor);
+    eq('★ 紫名单里的顿号/空格都认（久美）', r['久美'], cfg.rolePurpleColor);
+    eq('★ 紫名单第二个（沈鹿笙）', r['沈鹿笙'], cfg.rolePurpleColor);
+    ok('★ 名单外的角色仍按调色板拿色（不被绑死）',
+        r['路人甲'] !== cfg.roleBlueColor && r['路人甲'] !== cfg.rolePurpleColor);
+    eq('★ 名单解析：逗号/顿号/空格都拆得开', parseNameList('甲,乙、丙 丁').join('|'), '甲|乙|丙|丁');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
