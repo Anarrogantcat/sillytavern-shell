@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.11');
+eq('version 与 manifest 一致', VERSION, '0.8.12');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1536,6 +1536,43 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     const cssImg = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8');
     ok('★ CSS 用自有前缀 .custom-cd-img 且限宽',
         cssImg.indexOf('.custom-cd-img') >= 0 && cssImg.indexOf('max-width: 100%') >= 0);
+}
+
+/* ============================================================================
+   ★★ 英文元数据行不能被吃成分镜行（0.8.12，真机踩到）
+   真机：`- Time passed: from noon (午时) to early afternoon, approximately 1-2 hours …`
+   被解析成 name=`- Time passed` layer=`from` ⇒ 于是 repairLines 把 10 行引号台词
+   全挂到这个根本不存在的"角色"上（产物里真的渲染成了说话人 ✗）。
+   根因：分隔符里含 `:` ⇒ 英文 `Key: value` 被当成分镜行；再加上「未知层 + 长正文」的守卫就吃下了。
+   ============================================================================ */
+{
+    const L = allLayers(DEFAULT_CONFIG);
+    eq('★★ 英文元数据行 \`- Time passed: from noon …\` 不再被解析成 row',
+        parseLine('- Time passed: from noon (午时) to early afternoon, approximately 1-2 hours of activity', L, false).kind, 'text');
+    eq('★ 名字不许以结构符号开头（- * # > [ ] 等）',
+        parseLine('- foo·动作 我按住她的手腕，力道不轻不重。', L, false).kind, 'text');
+
+    /* 正常路径一律不受影响（回归） */
+    eq('★ 林野:动作 … 仍照认（已知层 + 冒号）', parseLine('林野:动作 我按住她的手腕。', L, false).name, '林野');
+    eq('★ 西王 madre·动作 … 仍照认（名字带空格）',
+        parseLine('西王 madre·动作 我在他们退出的瞬间才真正彻底放松了肩膀。', L, false).name, '西王 madre');
+    eq('★ 女娲·眼神 … 仍归一为动作',
+        parseLine('女娲·眼神 从她那双淡金色的眸子里掠过一抹惊愕。', L, false).layer, '动作');
+    eq('★ 某·外貌 … 仍走未知层守卫',
+        parseLine('某·外貌 她穿着一件看不出材质的素袍，贴在身上透出底下修长的轮廓。', L, false).repaired, 'unknown-layer');
+    eq('★★ 外文名 阿尔托莉雅·潘德拉贡 说道 仍不被误判',
+        parseLine('阿尔托莉雅·潘德拉贡 说道', L, false).kind, 'text');
+
+    /* repairLines：假名字不许当说话人；真名字仍要能补（含向后找） */
+    const rep = repairLines([
+        '- Time passed: from noon to early afternoon, approximately 1-2 hours of activity',
+        String.fromCharCode(34) + '染！' + String.fromCharCode(34),
+        '林野·动作 我按住她的手腕。',
+        String.fromCharCode(34) + '别动，听我说完。' + String.fromCharCode(34),
+    ], DEFAULT_CONFIG);
+    ok('★★ 不再把「- Time passed」这种假名字挂到台词上',
+        !rep.some((x) => x.p && x.p.name === '- Time passed'));
+    ok('★ 真角色名仍能补上（向后找也对）', rep[1].p.name === '林野');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

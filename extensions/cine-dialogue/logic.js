@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.11';
+export const VERSION = '0.8.12';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -411,7 +411,7 @@ export function rowRegexFor(layers, lenient = false) {
     if (_layerRe.key !== key || !_layerRe.re) {
         _layerRe = {
             key,
-            re: new RegExp('^([^·・:：\\n]{1,16}?)\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s+(.+)$'),
+            re: new RegExp('^([^\\s·・:：*#>\\[\\]{}()=+~`|,，.。!！?？-][^·・:：\\n]{0,15}?)\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s+(.+)$'),
         };
     }
     return _layerRe.re;
@@ -429,7 +429,7 @@ export function looseRegexFor(layers, lenient = false) {
     if (_looseRe.key !== key || !_looseRe.re) {
         _looseRe = {
             key,
-            re: new RegExp('^([^·・:：\\n]{1,16}?)\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s*(.*)$'),
+            re: new RegExp('^([^\\s·・:：*#>\\[\\]{}()=+~`|,，.。!！?？-][^·・:：\\n]{0,15}?)\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s*(.*)$'),
         };
     }
     return _looseRe.re;
@@ -510,7 +510,7 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
          · 正文**至少 12 个字符** —— 这条用来排除「外文名里的间隔号」：
            `阿尔托莉雅·潘德拉贡 说道` 的正文只有「说道」两字 ⇒ 不满足 ⇒ 不会被误判成行 ✓
        （真机踩过：`女娲·眼神 从她那双淡金色的眸子里…` 整行露着标签。） */
-    const guarded = line.match(new RegExp('^([^·・:：\\n]{1,16}?)\\s*[·・:：]\\s*([^\\s·・:：]{2,6})\\s+([\\s\\S]{12,})$'));
+    const guarded = line.match(new RegExp('^([^\\s·・:：*#>\\[\\]{}()=+~`|,，.。!！?？-][^·・:：\\n]{0,15}?)\\s*[·・]\\s*([^\\s·・:：]{2,6})\\s+([\\s\\S]{12,})$'));
     if (guarded) {
         return {
             kind: 'row', name: guarded[1].trim(), layer: guarded[2], text: guarded[3].trim(),
@@ -1208,16 +1208,29 @@ export function repairLines(lines, cfg = {}) {
     if (mode === 'off') return parsed.map(x => ({ line: x.line, p: x.p, repaired: null }));
 
     const aggressive = (mode === 'aggressive');
-    const reLayerOnly = new RegExp('^(' + layerAlternation(layers) + ')\\s+(.+)$');
+    /* ★★ 候选名字的合法性：**只有像人名的才敢用来补**（2026-10-14 真机踩到）
+   真机：一行英文元数据 `- Time passed: from noon …` 被解析出了名字 `- Time passed`，
+   于是 repairLines 把**10 行引号台词**全挂到了这个根本不存在的"角色"上 ✗
+   （产物里真的渲染成了说话人 ✗）。原则同 §1.4：**不猜** ——
+   拿不到像人名的名字就**不补**，保持原文 ✓ */
+const NAME_LOOKS_OK = (n) => {
+    const v = String(n == null ? '' : n).trim();
+    if (!v || v.length > 12) return false;
+    if (/^[-*#>\[\]{}()=+~`|:：,，.。!！?？]/.test(v)) return false;   // 列表/标题/引用/序号开头
+    if (/[-*#>\[\]{}()=+~`|\\]/.test(v)) return false;               // 含结构性符号
+    if (layers.indexOf(v) >= 0) return false;                            // 名字不可能就是层名
+    return true;
+};
+const reLayerOnly = new RegExp('^(' + layerAlternation(layers) + ')\\s+(.+)$');
     const reQuote = /^[「“"『]/;
 
     /* 找「同一楼里最近一个被正确标注过的角色」——先往前找，找不到再往后找。
        为什么两个方向都找：截图里那段 `心理 …` 前面全是未标注行，
        但**后面**紧跟着 `沙良·动作 …`，往后找才拿得到 沙良。 */
     const before = []; let last = '';
-    for (let i = 0; i < parsed.length; i++) { before[i] = last; if (parsed[i].p.kind === 'row') last = parsed[i].p.name; }
+    for (let i = 0; i < parsed.length; i++) { before[i] = last; if (parsed[i].p.kind === 'row' && NAME_LOOKS_OK(parsed[i].p.name)) last = parsed[i].p.name; }
     const after = []; let next = '';
-    for (let i = parsed.length - 1; i >= 0; i--) { after[i] = next; if (parsed[i].p.kind === 'row') next = parsed[i].p.name; }
+    for (let i = parsed.length - 1; i >= 0; i--) { after[i] = next; if (parsed[i].p.kind === 'row' && NAME_LOOKS_OK(parsed[i].p.name)) next = parsed[i].p.name; }
 
     return parsed.map((x, i) => {
         const p = x.p;
