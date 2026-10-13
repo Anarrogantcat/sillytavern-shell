@@ -1616,6 +1616,24 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★ 默认值确实是 0.5', DEFAULT_CONFIG.rowGap, 0.5);
 }
 
+/* ============================================================================
+   ★ 有意行为（用户 2026-10-14「按你倾向」确认）：
+   `行动: "…"` 这类「层名 + 中文冒号 + 正文」的行，按**动作行（无名字）**渲染：
+   去掉 `行动:` 前缀 ✓、正文对齐正文列 ✓。
+   这不是 bug —— 钉住它，免得以后被误当 bug 改掉。
+   ============================================================================ */
+{
+    const L = allLayers(DEFAULT_CONFIG);
+    const s = '行动: "趴在沙发上，黑丝包裹的双腿交叠着"';
+    const p = parseLine(s, L, false);
+    eq('★ 归为动作行（无名字）', p.kind + '/' + p.layer + '/' + p.name, 'row/动作/');
+    ok('★ 正文完整保留（引号在）', p.text.indexOf('趴在沙发上') >= 0);
+    const html = String(renderMessageHTML('染·动作 我推门进去。' + String.fromCharCode(10) + s, {}, DEFAULT_CONFIG).html);
+    const vis = html.replace(/<[^>]*>/g, '');
+    ok('★★ 可见文字里没有「行动:」这个前缀（被层名吃掉了）', vis.indexOf('行动') < 0);
+    ok('★ 正文仍然可见（实体编码后也算在）', /趴在沙发上/.test(vis));
+}
+
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);
 if (failures.length) {
