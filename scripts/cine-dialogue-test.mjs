@@ -12,7 +12,7 @@ import {
     highlightPlan, sceneTitle, messageTitle, rowRegexFor,
     serializeConfig, parseConfig, stClassPrefix,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
-    assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML,
+    assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats,
 } from '../extensions/cine-dialogue/logic.js';
 
@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.5.9');
+eq('version 与 manifest 一致', VERSION, '0.5.10');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -526,6 +526,21 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         !/function wireOptions/.test(idxSrc));
     ok('★ 发送前有防连点（同一组 1.2 秒内只发一次）', /sendOption\.last/.test(idxSrc));
     ok('★ 点过之后整组禁用（选项是一次性的，避免重复发送）', /querySelectorAll\('button'\)[\s\S]{0,200}disabled = true/.test(idxSrc));
+}
+
+/* ★ text 段必须**逐字节保真**（空行、行首空格、`</konatan_planning~>` 标记）
+   理由：text 段是"原样交给 showdown"的，思考块就在里面，
+   预设那条 `([\s\S]*)</konatan_planning~>` 正则靠它匹配；我们一 trim 就可能改变别人的行为。 */
+{
+    const withBlank = '第一行\n\n  缩进两格的行\n</konatan_planning~>\n\n染·动作 我按住她。\n沙良·台词 「别。」';
+    const seg = renderSegments(withBlank, {}, DEFAULT_CONFIG);
+    const textSeg = seg.segments.find(s => s.kind === 'text');
+    ok('★ text 段存在', !!textSeg);
+    ok('★ 空行被保留（不被吃掉）', textSeg.lines.some(l => l === ''), textSeg.lines);
+    ok('★ 行首空格被保留（不 trim）', textSeg.lines.some(l => l === '  缩进两格的行'), textSeg.lines);
+    ok('★ 思维链结束标记原样保留', textSeg.lines.indexOf('</konatan_planning~>') >= 0);
+    ok('★ text 段拼回去后仍是原来的行', textSeg.lines.join('\n').indexOf('</konatan_planning~>') >= 0);
+    ok('★ 分镜行没有被混进 text 段', textSeg.lines.every(l => l.indexOf('·动作') < 0 && l.indexOf('·台词') < 0));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

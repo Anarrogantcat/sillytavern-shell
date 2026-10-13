@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.5.9';
+export const VERSION = '0.5.10';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -631,13 +631,28 @@ export function renderMessage(body, colorMap = {}, config = DEFAULT_CONFIG, extr
 export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const layers = allLayers(cfg);
-    const parsed = parseBlocks(body, layers);
-    const names = collectNames(parsed.groups);
+    const rawLines = String(body == null ? '' : body).split('\n');
+
+    /* ★ 按**原始行**走一遍，而不是走 parseBlocks 的分组结果 ——
+       分组会吃掉空行、把每行 trim 掉；而 text 段是「原样交给 showdown」的，
+       必须**连空行与行首空格一起保留**（思考块 `{思考内容}…</konatan_planning~>` 就在 text 段里，
+       预设那条思维链正则 `([\s\S]*)</konatan_planning~>` 靠它匹配）。 */
+    const entries = rawLines.map(raw => {
+        const t = raw.trim();
+        if (t === '') return { kind: 'blank', raw };
+        return { p: parseLine(t, layers), raw };
+    });
+
+    const names = [];
+    const seen = new Set();
+    for (const e of entries) {
+        if (e.p && e.p.kind === 'row' && !seen.has(e.p.name)) { seen.add(e.p.name); names.push(e.p.name); }
+    }
     const map = resolveColors(names, cfg, colorMap);
 
     const segments = [];
     let cur = null;
-    let curSrcGroup = null;
+    let errs = 0;
 
     const flush = () => {
         if (cur) {
@@ -645,27 +660,32 @@ export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
             if (n) segments.push(cur);
         }
         cur = null;
-        curSrcGroup = null;
     };
 
-    for (const g of parsed.groups) {
-        for (const r of g) {
-            const ours = (r.kind === 'row' || r.kind === 'narr');
-            if (ours) {
-                if (!cur || cur.kind !== 'ours') { flush(); cur = { kind: 'ours', groups: [] }; }
-                // 源文里换了一个空行块 → 开新组（网格里画分隔线）
-                if (curSrcGroup !== g) { cur.groups.push([]); curSrcGroup = g; }
-                cur.groups[cur.groups.length - 1].push(r);
-            } else {
-                if (!cur || cur.kind !== 'text') { flush(); cur = { kind: 'text', lines: [] }; }
-                cur.lines.push(String(r.raw));
-            }
+    for (const e of entries) {
+        if (e.kind === 'blank') {
+            /* 空行：text 段里**原样保留**；ours 段里只作为分组边界（供 showSeparators 用） */
+            if (cur && cur.kind === 'text') cur.lines.push('');
+            else if (cur && cur.kind === 'ours') cur.pendingBreak = true;
+            continue;
+        }
+
+        const ours = (e.p.kind === 'row' || e.p.kind === 'narr');
+        if (e.p.kind === 'err') errs++;
+
+        if (ours) {
+            if (!cur || cur.kind !== 'ours') { flush(); cur = { kind: 'ours', groups: [] }; }
+            if (!cur.groups.length || cur.pendingBreak) { cur.groups.push([]); cur.pendingBreak = false; }
+            cur.groups[cur.groups.length - 1].push(e.p);
+        } else {
+            if (!cur || cur.kind !== 'text') { flush(); cur = { kind: 'text', lines: [] }; }
+            cur.lines.push(e.raw);          // ★ 原样，不 trim
         }
     }
     flush();
 
     return {
-        segments, names, colors: map, errs: parsed.errs,
+        segments, names, colors: map, errs,
         hasOurs: segments.some(s => s.kind === 'ours' && s.groups.length),
     };
 }
