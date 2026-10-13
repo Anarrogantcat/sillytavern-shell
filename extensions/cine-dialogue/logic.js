@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.7.4';
+export const VERSION = '0.7.5';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -882,12 +882,19 @@ export function configKeys() {
 export function layerVars(layer, config = {}) {
     const merged = { ...(DEFAULT_LAYER_STYLES[layer] || DEFAULT_LAYER_STYLES['旁白']), ...((config.layerStyles || {})[layer] || {}) };
     const hasMark = !!merged.mark && merged.mark !== 'none' && MARK_OPTIONS.indexOf(merged.mark) >= 0;
-    /* ★ 关键：没有任何标记时也必须保持 **3px 宽 + transparent**。
-       若把 border-style 设成 none，浏览器会把 used border-width 归零 → 该行整体左移 3px，
+    /* ★ 关键：没有任何标记时也必须保持**同样的宽度 + transparent**。
+       若把 border-style 设成 none，浏览器会把 used border-width 归零 → 该行整体左移，
        和有线行对不齐（这个坑早先在预览里踩过）。所以样式恒为 solid 兜底，用颜色控制可见性。 */
+    /* ★ 双线必须**加宽**才看得见：`border-style: double` 在 3px 下是 1px 线 + 1px 隙 + 1px 线，
+       抗锯齿之后和实线几乎分不出来（真机反馈：「心理和动作的线区别不大」）。
+       5px = 2px + 1px + 2px 才清楚。加宽会挤走文字，所以同时输出 --cd-pad-comp 把内边距补回来，
+       五层正文的左边缘**必须完全对齐**。 */
+    const isDouble = hasMark && merged.mark === 'double';
     return '--cd-mark:' + (hasMark ? merged.mark : 'solid')
         + ';--cd-mark-color:' + (hasMark ? 'currentColor' : 'transparent')
-        + ';--cd-italic:' + (merged.italic ? 'italic' : 'normal');
+        + ';--cd-italic:' + (merged.italic ? 'italic' : 'normal')
+        + ';--cd-mark-w:' + (isDouble ? 5 : 3) + 'px'
+        + ';--cd-pad-comp:' + (isDouble ? 2 : 0) + 'px';
 }
 
 /**

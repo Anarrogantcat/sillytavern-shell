@@ -53,11 +53,15 @@
     white-space: nowrap;
 }.custom-cd-body{
     min-width: 0;
-    /* ★ 所有行的 border 宽度必须恒为 3px，只用颜色/样式区分 —— 否则有线行被推偏。
-       （没有标记的层：style 兜底 solid + color=transparent，见 logic.js layerVars） */
-    border-left: 3px var(--cd-mark, solid) var(--cd-mark-color, transparent);
+    /* ★ 宽度由 --cd-mark-w 控制（默认 3px）。
+       为什么心理（双线）要用 5px：`border-style: double` 在 **3px 下渲染不出两条线** ——
+       1px 线 + 1px 间隙 + 1px 线，抗锯齿后看着就是一条实线，和「动作」的实线几乎分不出来
+       （真机反馈：「心理和动作的线区别不大」）。5px = 2px + 1px + 2px，两条线清清楚楚。
+       ★ 加宽会让这一行的文字右移，所以用 --cd-pad-comp 把内边距补回来，
+       五层正文的左边缘**必须完全对齐**。 */
+    border-left: var(--cd-mark-w, 3px) var(--cd-mark, solid) var(--cd-mark-color, transparent);
     font-style: var(--cd-italic, normal);
-    padding-left: .7em;
+    padding-left: calc(.7em - var(--cd-pad-comp, 0px));
 }/* 首行缩进：只给「真的换行」的段落（index.js 量高度后加 .custom-cd-wrap） */
 .custom-cd-body.custom-cd-wrap{
     text-indent: var(--cd-indent);

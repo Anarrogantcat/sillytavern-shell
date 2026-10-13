@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.7.4');
+eq('version 与 manifest 一致', VERSION, '0.7.5');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -995,6 +995,55 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         (idx.match(/failedSteps: failedSteps\.slice\(\)/g) || []).length >= 2);
     ok('★ 建设置面板也是被 step() 包住的（不会再整个哑掉）',
         /step\('建设置面板'/.test(idx));
+}
+
+/* ============================================================================
+   ★ 双线（心理）必须加宽才看得见
+   真机反馈：「心理和动作的线区别不大」——`border-style: double` 在 3px 下是
+   1px 线 + 1px 隙 + 1px 线，抗锯齿后和实线几乎一样。
+   改成 5px（2+1+2），并用 --cd-pad-comp 把文字位置补回来，保证五层左边缘对齐。
+   ============================================================================ */
+{
+    const cssText = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    const idxSrc = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+
+    ok('★ 心理（双线）用 5px 宽', layerVars('心理', DEFAULT_CONFIG).indexOf('--cd-mark-w:5px') >= 0);
+    ok('★ 动作（实线）仍是 3px', layerVars('动作', DEFAULT_CONFIG).indexOf('--cd-mark-w:3px') >= 0);
+    ok('★ 双线用 --cd-pad-comp 把文字位置补回来（五层左边缘必须对齐）',
+        layerVars('心理', DEFAULT_CONFIG).indexOf('--cd-pad-comp:2px') >= 0
+        && layerVars('动作', DEFAULT_CONFIG).indexOf('--cd-pad-comp:0px') >= 0);
+
+    /* 用户把任意层改成 double → 宽度与补偿都要跟着走（不是写死在"心理"上） */
+    const asDouble = layerVars('动作', { ...DEFAULT_CONFIG, layerStyles: { '动作': { mark: 'double' } } });
+    ok('★ 把任意层改成 double，宽度与补偿都跟着变',
+        asDouble.indexOf('--cd-mark-w:5px') >= 0 && asDouble.indexOf('--cd-pad-comp:2px') >= 0);
+    /* 关掉标记 → 宽度回到 3px、补偿归零（不能留 5px 空档把文字推偏） */
+    const noMark = layerVars('心理', { ...DEFAULT_CONFIG, layerStyles: { '心理': { mark: 'none' } } });
+    ok('★ 关掉标记时宽度回到 3px、补偿归零（否则会留空档推偏文字）',
+        noMark.indexOf('--cd-mark-w:3px') >= 0 && noMark.indexOf('--cd-pad-comp:0px') >= 0);
+
+    /* ★★ 关键守卫：**带竖线的三层必须两两可区分**（线型 + 宽度组合唯一）
+       —— 挡住「两条线看起来一样」这类"默认值选得不合理"的问题。 */
+    const shown = ['动作', '感官', '心理'].map(L => {
+        const v = layerVars(L, DEFAULT_CONFIG);
+        const mark = (v.match(/--cd-mark:([a-z]+)/) || [])[1];
+        const w = (v.match(/--cd-mark-w:(\d+)px/) || [])[1];
+        return mark + '@' + w;
+    });
+    ok('★★ 动作/感官/心理 的（线型 + 宽度）组合两两不同', new Set(shown).size === 3, shown);
+
+    /* 按设计：只有台词与旁白是「无线」 */
+    const noLine = ['台词', '动作', '感官', '心理', '旁白'].filter(L =>
+        layerVars(L, DEFAULT_CONFIG).indexOf('--cd-mark-color:transparent') >= 0);
+    eq('★ 无竖线的只有 台词 与 旁白（按设计）', noLine.join(','), '台词,旁白');
+
+    ok('★ CSS 用 var(--cd-mark-w) 而不是写死 3px',
+        cssText.indexOf('border-left: var(--cd-mark-w') >= 0);
+    ok('★ CSS 用 --cd-pad-comp 补偿内边距', cssText.indexOf('var(--cd-pad-comp') >= 0);
+    ok('★ 内置兜底 CSS 同步改（否则取不到 style.css 时双线又变回 3px）',
+        idxSrc.indexOf('border-left:var(--cd-mark-w,3px)') >= 0
+        && idxSrc.indexOf('var(--cd-pad-comp,0px)') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
