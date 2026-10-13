@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.46');
+eq('version 与 manifest 一致', VERSION, '0.8.47');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1912,6 +1912,10 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     eq('★★ "接着写下一个回合"只出现一次', LENGTH_SPEC.split('接着写下一个回合').length - 1, 1);
     eq('★★ "写满 10 个回合"在总目标里只出现一次', LENGTH_SPEC.split('这一次生成要写满 10 个回合').length - 1, 1);
     ok('★ 没有连续三个换行（清理干净）', LENGTH_SPEC.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(10)) < 0);
+    /* ★ 近似重复也要盯住：同一条要求换了个说法再出现一次，也是残留 ✗（0.8.46 踩到） */
+    eq('★★ "直到写满"只出现一次', LENGTH_SPEC.split('直到写满').length - 1, 1);
+    eq('★★ "允许提前收尾"只出现一次', LENGTH_SPEC.split('允许提前收尾').length - 1, 1);
+    ok('★ 不再出现旧的"10 组；只有"写法', LENGTH_SPEC.indexOf('10 组；只有') < 0);
     ok('★★ 明确说「不小于 1000」只是最低门槛', LENGTH_SPEC.indexOf('只是最低门槛') >= 0);
     ok('★★ 场景提前结束要接着写下一个回合', LENGTH_SPEC.indexOf('接着写下一个回合') >= 0);
     ok('★★ 长行区间是 150–300', LENGTH_SPEC.indexOf('150–300 字') >= 0 && FORMAT_SPEC.indexOf('150–300 字') >= 0);
