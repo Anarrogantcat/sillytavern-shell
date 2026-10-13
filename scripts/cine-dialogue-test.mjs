@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.45');
+eq('version 与 manifest 一致', VERSION, '0.8.46');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1907,6 +1907,11 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★ 写明一次生成要写满 10 个回合', LENGTH_SPEC.indexOf('写满 10 个回合') >= 0);
     ok('★★ 明说写短也要写满回合数（回合数不能少）', LENGTH_SPEC.indexOf('回合数不能少') >= 0);
     ok('★★ 不再出现 token 数字（免得被当上限）', LENGTH_SPEC.indexOf('token 以内') < 0 && LENGTH_SPEC.indexOf('≈5000') < 0);
+    /* ★ 防重复：同一条要求只许出现一次（0.8.45 踩到过"新旧文案各留一份" ✗） */
+    eq('★★ "只是最低门槛"只出现一次', LENGTH_SPEC.split('只是最低门槛').length - 1, 1);
+    eq('★★ "接着写下一个回合"只出现一次', LENGTH_SPEC.split('接着写下一个回合').length - 1, 1);
+    eq('★★ "写满 10 个回合"在总目标里只出现一次', LENGTH_SPEC.split('这一次生成要写满 10 个回合').length - 1, 1);
+    ok('★ 没有连续三个换行（清理干净）', LENGTH_SPEC.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(10)) < 0);
     ok('★★ 明确说「不小于 1000」只是最低门槛', LENGTH_SPEC.indexOf('只是最低门槛') >= 0);
     ok('★★ 场景提前结束要接着写下一个回合', LENGTH_SPEC.indexOf('接着写下一个回合') >= 0);
     ok('★★ 长行区间是 150–300', LENGTH_SPEC.indexOf('150–300 字') >= 0 && FORMAT_SPEC.indexOf('150–300 字') >= 0);
