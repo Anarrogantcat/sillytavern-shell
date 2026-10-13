@@ -20,6 +20,9 @@ import {
     event_types,
     extension_settings,
     saveSettingsDebounced,
+    setExtensionPrompt,
+    extension_prompt_types,
+    extension_prompt_roles,
 } from '../../../../script.js';
 
 import { getContext } from '../../../extensions.js';
@@ -29,6 +32,9 @@ import {
     VERSION,
     DEFAULT_CONFIG,
     PANEL_FIELDS,
+    FORMAT_SPEC,
+    REGEX_DEFS,
+    SLASH_COMMAND,
     assignColors,
     esc,
     hasOurLines,
@@ -391,7 +397,7 @@ function bind() {
     eventSource.on(event_types.MESSAGE_UPDATED, safe(() => schedule(false)));
     eventSource.on(event_types.MESSAGE_EDITED, safe(() => schedule(false)));
     eventSource.on(event_types.MESSAGE_SWIPED, safe(() => schedule(false)));
-    eventSource.on(event_types.CHAT_CHANGED, safe(() => schedule(true)));
+    eventSource.on(event_types.CHAT_CHANGED, safe(() => { applyPromptInjection(); schedule(true); }));
     eventSource.on(event_types.MORE_MESSAGES_LOADED, safe(() => schedule(true)));
 }
 
@@ -470,6 +476,170 @@ function exposeApi() {
 
 let runs = 0;
 
+// ---------------------------------------------------------------- L3 提示词注入
+
+const PROMPT_KEY = 'CINE_DIALOGUE_FORMAT';
+
+/**
+ * 把格式说明注入提示词。
+ * ★ 默认关：专属预设 `Izumi 0828.tailfree + 分镜` 里已有同样说明，两边同时开会重复占提示词。
+ *   换回原版预设时打开它 —— 这样插件**不再依赖任何一个预设**。
+ */
+function applyPromptInjection() {
+    try {
+        const c = cfg();
+        const use = !!c.injectPrompt;
+        const pos = Number(c.promptPosition) === 1
+            ? extension_prompt_types.IN_CHAT
+            : extension_prompt_types.IN_PROMPT;
+        const depth = Math.max(0, Number(c.promptDepth) || 0);
+        setExtensionPrompt(PROMPT_KEY, use ? FORMAT_SPEC : '', pos, depth, false, extension_prompt_roles.SYSTEM);
+        console.log('[' + EXT_ID + '] 提示词注入：' + (use ? '开（深度 ' + depth + '）' : '关（靠预设自带的说明）'));
+    } catch (e) {
+        console.error('[' + EXT_ID + '] 注入格式说明失败', e);
+    }
+}
+
+// ---------------------------------------------------------------- 专属正则（4 条）
+
+function regexAvailable() {
+    const th = TH();
+    return !!(th && typeof th.updateTavernRegexesWith === 'function');
+}
+
+/** REGEX_DEFS（纯数据）→ 酒馆助手归一化的 TavernRegex 形状 */
+function buildRegexes() {
+    return REGEX_DEFS.map(d => ({
+        id: d.id,
+        script_name: d.script_name,
+        enabled: !!d.enabled,
+        find_regex: d.find_regex,
+        replace_string: d.replace_string,
+        trim_strings: [],
+        source: { user_input: false, ai_output: true, slash_command: false, world_info: false, reasoning: false },
+        destination: { display: true, prompt: false },
+        run_on_edit: d.run_on_edit !== false,
+        min_depth: d.min_depth === undefined ? null : d.min_depth,
+        max_depth: d.max_depth === undefined ? null : d.max_depth,
+    }));
+}
+
+/**
+ * 安装/更新 4 条专属正则。
+ * ★ 必须**一次写完** —— `updateTavernRegexesWith` 会重载整个聊天，分多次写会卡好几轮。
+ * ★ 只写 `destination.display` + `max_depth:3`：不动提示词，只作用最近 3 楼。
+ */
+async function installRegexes(silent) {
+    if (!regexAvailable()) {
+        notify('需要酒馆助手（TavernHelper）才能注册专属正则', 'warning');
+        return false;
+    }
+    try {
+        const want = buildRegexes();
+        const mine = new Set(want.map(r => r.script_name));
+        await TH().updateTavernRegexesWith(list =>
+            (Array.isArray(list) ? list : [])
+                .filter(r => !mine.has(r && r.script_name) && !String((r && r.id) || '').startsWith('cd-r'))
+                .concat(want)
+        , { type: 'global' });
+        if (!silent) notify('【分镜】专属正则已安装/更新（4 条，只作用最近 3 楼）', 'success');
+        console.log('[' + EXT_ID + '] 专属正则已写入（全局，display-only）');
+        return true;
+    } catch (e) {
+        console.error('[' + EXT_ID + '] 安装专属正则失败', e);
+        if (!silent) notify('专属正则安装失败：' + (e && e.message ? e.message : String(e)), 'error');
+        return false;
+    }
+}
+
+/** 卸载我们注册的正则（只删自己的，不碰别人的） */
+async function removeRegexes() {
+    if (!regexAvailable()) { notify('需要酒馆助手才能改正则', 'warning'); return false; }
+    try {
+        const mine = new Set(REGEX_DEFS.map(d => d.script_name));
+        await TH().updateTavernRegexesWith(list =>
+            (Array.isArray(list) ? list : [])
+                .filter(r => !mine.has(r && r.script_name) && !String((r && r.id) || '').startsWith('cd-r'))
+        , { type: 'global' });
+        notify('【分镜】专属正则已移除', 'success');
+        return true;
+    } catch (e) {
+        notify('移除失败：' + (e && e.message ? e.message : String(e)), 'error');
+        return false;
+    }
+}
+
+// ---------------------------------------------------------------- L4 斜杠命令
+
+function notify(msg, type) {
+    try {
+        if (typeof toastr !== 'undefined') {
+            const fn = toastr[type] || toastr.info;
+            fn.call(toastr, String(msg));
+            return;
+        }
+    } catch (_) { /* 没有 toastr 就只打控制台 */ }
+    console.log('[' + EXT_ID + '] ' + msg);
+}
+
+let slashRegistered = false;
+
+/**
+ * 注册 /cine（别名 /cd、/storyboard）。
+ * 形状照已装扩展 RUBY 的范例：ST 通过 getContext() 暴露 SlashCommandParser / SlashCommand。
+ */
+function registerSlashCommand() {
+    if (slashRegistered) return;
+    try {
+        const c = getContext();
+        if (!c || !c.SlashCommandParser || !c.SlashCommand) {
+            console.warn('[' + EXT_ID + '] 斜杠命令 API 不可用 → 跳过注册（不影响渲染）');
+            return;
+        }
+        let unnamed = [];
+        try {
+            if (c.SlashCommandArgument && c.ARGUMENT_TYPE) {
+                unnamed = [c.SlashCommandArgument.fromProps({
+                    description: '子命令：' + SLASH_COMMAND.subcommands.map(s => s.name).join(' / '),
+                    typeList: [c.ARGUMENT_TYPE.STRING],
+                    isRequired: false,
+                })];
+            }
+        } catch (_) { unnamed = []; }
+
+        c.SlashCommandParser.addCommandObject(c.SlashCommand.fromProps({
+            name: SLASH_COMMAND.name,
+            returns: SLASH_COMMAND.returns,
+            unnamedArgumentList: unnamed,
+            helpString: SLASH_COMMAND.helpString,
+            aliases: SLASH_COMMAND.aliases,
+            callback: (_args, value) => runSlashCommand(String(value == null ? '' : value).trim().toLowerCase()),
+        }));
+        slashRegistered = true;
+        console.log('[' + EXT_ID + '] 斜杠命令 /' + SLASH_COMMAND.name + ' 已注册（别名：' + SLASH_COMMAND.aliases.join(', ') + '）');
+    } catch (e) {
+        console.error('[' + EXT_ID + '] 斜杠命令注册失败', e);
+    }
+}
+
+function runSlashCommand(sub) {
+    switch (sub) {
+        case '':
+        case 'refresh':
+            schedule(true);
+            return '已触发全量重渲染';
+        case 'stats':
+            return JSON.stringify(window.CineDialogue ? window.CineDialogue.stats() : {}, null, 2);
+        case 'config':
+            return JSON.stringify(cfg(), null, 2);
+        case 'regex':
+            installRegexes(false);
+            return '正在安装【分镜】专属正则…（会重载聊天，稍等几秒）';
+        default:
+            return '未知子命令：' + sub + '（可用：' + SLASH_COMMAND.subcommands.map(s => s.name).join(' / ') + '）';
+    }
+}
+
 // ---------------------------------------------------------------- 设置面板
 
 /* 为什么必须有这个抽屉：
@@ -521,12 +691,23 @@ function wirePanel() {
                     : Number(el.value);
             cfg()[key] = v;
             saveSettingsDebounced();
+
+            // 提示词相关开关：改完立刻重新注入（不用等下一次生成）
+            if (key === 'injectPrompt' || key === 'promptDepth' || key === 'promptPosition') {
+                applyPromptInjection();
+            }
             schedule(true);                       // 改完立即全量重渲染
         });
     });
 
     const refresh = panel.querySelector('#cd-refresh-all');
     if (refresh) refresh.addEventListener('click', () => schedule(true));
+
+    const regIn = panel.querySelector('#cd-regex-install');
+    if (regIn) regIn.addEventListener('click', () => installRegexes(false));
+
+    const regRm = panel.querySelector('#cd-regex-remove');
+    if (regRm) regRm.addEventListener('click', () => removeRegexes());
 
     const diag = panel.querySelector('#cd-diag');
     if (diag) {
@@ -566,6 +747,8 @@ function buildSettingsPanel() {
         rows,
         '      <div class="cd-btn-row">',
         '        <button type="button" class="menu_button" id="cd-refresh-all">立即重渲染全部</button>',
+        '        <button type="button" class="menu_button" id="cd-regex-install">安装/更新专属正则</button>',
+        '        <button type="button" class="menu_button" id="cd-regex-remove">移除专属正则</button>',
         '        <button type="button" class="menu_button" id="cd-diag">诊断信息</button>',
         '      </div>',
         '      <pre id="cd-hb" class="cd-heartbeat">点「诊断信息」看核内钩子接线状态 / 渲染计数</pre>',
@@ -585,6 +768,8 @@ function start() {
     bind();
     exposeApi();
     buildSettingsPanel();
+    applyPromptInjection();
+    registerSlashCommand();
     console.log('[' + EXT_ID + '] v' + VERSION + ' loaded'
         + '  TavernHelper=' + (TH() ? 'yes' : 'no')
         + '  Mvu=' + (MVU() ? 'yes' : 'no'));

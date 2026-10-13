@@ -3,6 +3,7 @@
 // 只测 logic.js（纯函数层）—— 不碰 DOM、不碰 ST、不联网
 import {
     VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS,
+    FORMAT_SPEC, REGEX_DEFS, SLASH_COMMAND,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML,
     hasOurLines, stats,
@@ -17,7 +18,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.3.0');
+eq('version 与 manifest 一致', VERSION, '0.4.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -184,6 +185,57 @@ ok('默认值都在 number 字段的 min/max 范围内（挡越界默认值）',
         return v >= f.min && v <= f.max;
     }),
     PANEL_FIELDS.filter(f => f.kind === 'number').map(f => [f.key, DEFAULT_CONFIG[f.key], f.min, f.max]));
+
+/* ---------------------------- L3 格式说明 ---------------------------- */
+ok('格式说明非空且够长', typeof FORMAT_SPEC === 'string' && FORMAT_SPEC.length > 200, FORMAT_SPEC && FORMAT_SPEC.length);
+ok('格式说明写明了「层名后必须有一个空格」', FORMAT_SPEC.includes('空格'));
+ok('格式说明含全部五个层名', LAYERS.every(l => FORMAT_SPEC.includes(l)));
+ok('格式说明写明了第一人称「我」', FORMAT_SPEC.includes('第一人称'));
+ok('格式说明禁止自创层名', FORMAT_SPEC.includes('不得自创'));
+ok('格式说明的示例行能被自己的解析器认出来（不然教模型输出我们解析不了的东西）',
+    parseLine('林野·动作 我按住了她。').kind === 'row'
+    && parseLine('旁白·灯灭了。').kind === 'narr');
+
+/* ---------------------------- 专属正则（4 条） ---------------------------- */
+eq('正则 4 条', REGEX_DEFS.length, 4);
+eq('正则 id 唯一', new Set(REGEX_DEFS.map(d => d.id)).size, 4);
+eq('正则名唯一且全部带【分镜】前缀', REGEX_DEFS.filter(d => String(d.script_name).startsWith('【分镜】')).length, 4);
+ok('每条都有 find_regex', REGEX_DEFS.every(d => typeof d.find_regex === 'string' && d.find_regex.length > 0));
+ok('每条 find_regex 都能编译', REGEX_DEFS.every(d => {
+    try { void new RegExp(d.find_regex, d.flags || ''); return true; } catch (_) { return false; }
+}), REGEX_DEFS.filter(d => { try { void new RegExp(d.find_regex, d.flags || ''); return false; } catch (_) { return true; } }).map(d => d.id));
+ok('全部只改 display、不碰 prompt（不得污染提示词）',
+    REGEX_DEFS.every(d => d.destination.display === true && d.destination.prompt === false));
+ok('全部限制 max_depth（只作用最近几楼）', REGEX_DEFS.every(d => Number.isFinite(d.max_depth)));
+ok('R2/R3 默认开（DOM 降级路径必需）',
+    REGEX_DEFS.filter(d => ['cd-r2-frontend', 'cd-r3-options'].includes(d.id)).every(d => d.enabled === true));
+
+const rx = (id) => REGEX_DEFS.find(d => d.id === id);
+ok('R2 真的能匹配 <htmlcontent>…</htmlcontent>',
+    new RegExp(rx('cd-r2-frontend').find_regex, 'g').test('<htmlcontent><div>x</div></htmlcontent>'));
+ok('R3 真的能匹配 <options>…</options>',
+    new RegExp(rx('cd-r3-options').find_regex, 'g').test('<options>\n1. 吻她\n</options>'));
+
+/* ★ 闭环断言：正则跑完之后的文本，解析器必须认得（两条路径不许脱节） */
+const rawPreset = '林野·动作 我按住她。\n<htmlcontent><div>P</div></htmlcontent>\n<options>\n1. 吻她\n</options>';
+const afterRegex = rawPreset
+    .replace(new RegExp(rx('cd-r2-frontend').find_regex, 'g'), rx('cd-r2-frontend').replace_string)
+    .replace(new RegExp(rx('cd-r3-options').find_regex, 'g'), rx('cd-r3-options').replace_string);
+const secAfter = splitSections(afterRegex);
+eq('闭环：跑完 R2 后 splitSections 认得出前端区', secAfter.frontend.length, 1);
+eq('闭环：跑完 R3 后 splitSections 认得出选项', secAfter.options.length, 1);
+eq('闭环：R3 之后选项文本正确', secAfter.options[0].text, '吻她');
+ok('闭环：正文里不再残留原始标签', !secAfter.body.includes('<htmlcontent>') && !secAfter.body.includes('<options>'));
+
+/* ---------------------------- L4 斜杠命令 ---------------------------- */
+ok('斜杠命令有名字', typeof SLASH_COMMAND.name === 'string' && SLASH_COMMAND.name.length > 0);
+ok('斜杠命令有别名', Array.isArray(SLASH_COMMAND.aliases) && SLASH_COMMAND.aliases.length > 0);
+ok('斜杠命令有 helpString', typeof SLASH_COMMAND.helpString === 'string' && SLASH_COMMAND.helpString.length > 0);
+ok('子命令 ≥ 3 个且都有名字与说明',
+    SLASH_COMMAND.subcommands.length >= 3 && SLASH_COMMAND.subcommands.every(s => s.name && s.description));
+eq('子命令名唯一', new Set(SLASH_COMMAND.subcommands.map(s => s.name)).size, SLASH_COMMAND.subcommands.length);
+ok('refresh/stats/config/regex 四个子命令都在',
+    ['refresh', 'stats', 'config', 'regex'].every(n => SLASH_COMMAND.subcommands.some(s => s.name === n)));
 
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);

@@ -1,5 +1,46 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v0.4.0 (2026-10-13) — L3 提示词注入 + L4 斜杠命令 + 专属正则（4 条）
+
+### 新增：L3 提示词层 —— **不再依赖任何一个预设**
+- `FORMAT_SPEC`：格式说明的**唯一权威文本**（放 `logic.js`，不是散落在提示词里）
+- `applyPromptInjection()`：用 `setExtensionPrompt()` 注入（位置 / 深度可调），`CHAT_CHANGED` 时重新注入
+- **默认关**（`injectPrompt: false`）：专属预设 `Izumi 0828.tailfree + 分镜` 里已有同样说明，
+  两边同时开会**重复占提示词**；换回原版预设时打开它 —— 这样插件对预设**零依赖**
+
+### 新增：L4 生成层 —— 斜杠命令
+- `/cine`（别名 `/cd`、`/storyboard`），子命令：`refresh` / `stats` / `config` / `regex`
+- 形状照已装扩展 **RUBY** 的范例：ST 通过 `getContext()` 暴露
+  `SlashCommandParser` / `SlashCommand` / `SlashCommandArgument` / `ARGUMENT_TYPE`
+- API 不可用时**只 console.warn，不影响渲染**（降级，不崩）
+
+### 新增：专属正则 4 条
+- `REGEX_DEFS`（纯数据）：
+  | # | 名称 | 默认 |
+  |---|---|---|
+  | R1 | 去掉 `<content>` 包裹 | 关（可选） |
+  | **R2** | 前端区包成 `[FRONTEND]` | **开** |
+  | **R3** | 选项区包成 `[OPTIONS]` | **开** |
+  | R4 | 压缩连续空行 | 关（可选） |
+- 全部**只改 `destination.display`、不碰 `prompt`**，`max_depth: 3`（只作用最近 3 楼）
+- **一次写完**：`updateTavernRegexesWith` 会重载整个聊天，分多次写会卡好几轮 → 所以合成一次调用
+- 面板按钮「安装/更新专属正则」「移除专属正则」；**只删自己的**（按 `script_name` + `cd-r` id 前缀）
+- ★ 但请注意：**渲染漏斗钩子路径本来就能同时认 `[FRONTEND]`/`<htmlcontent>` 两种外壳**（见 `splitSections`），
+  所以 R2/R3 只在「没打核内补丁、走 DOM 后处理」那条**降级路径**上必需
+
+### 夹具：83 → 109 条
+- **L3**：说明够长 / 含五层名 / 写明「层名后必须有空格」与「第一人称」/ 禁止自创层名 /
+  **说明里的示例行必须能被自己的解析器解析**（不然等于教模型输出我们解析不了的东西）
+- **正则**：4 条 · id 与名字唯一 · 名字都带 `【分镜】` · **每条 `find_regex` 都能编译** ·
+  只改 display · 都有 `max_depth` · R2/R3 默认开 · R2/R3 真能匹配到 `<htmlcontent>`/`<options>`
+- ★ **闭环断言**：把 R2+R3 真跑一遍，之后的文本 `splitSections` **必须**认得出前端区与选项 ——
+  **正则与解析器不许脱节**（这是最容易两边各改一半、谁都不知道的地方）
+- **斜杠命令**：有名字 / 别名 / helpString / 子命令 ≥3 且唯一 / `refresh·stats·config·regex` 齐全
+
+### 说明
+- 只改扩展 + 夹具 → 不升套壳版本号、不打 tag、不发包（AGENTS §1.1）
+- 核内补丁 #001 未改动（仍已应用）
+
 ## v0.3.0 (2026-10-13) — 设置面板抽屉（顺带解开「总览里看不到」）
 
 ### 新增：设置面板（计划的 L6）

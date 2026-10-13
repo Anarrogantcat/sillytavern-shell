@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -55,7 +55,109 @@ export const DEFAULT_CONFIG = {
     palette: [],
     /** 层样式覆盖（留空 = 用 style.css 的默认） */
     layerStyles: {},
+
+    /* ---- L3 提示词层 ---- */
+    /** 自动把格式说明注入提示词。
+     *  ★ 默认 **false**：你已经在用专属预设 `Izumi 0828.tailfree + 分镜`，那份里已有同样的说明；
+     *    两边同时开会**重复占提示词**。只有换回原版预设时才需要打开。 */
+    injectPrompt: false,
+    /** 注入深度（越深越靠近当前对话；4 是常用值） */
+    promptDepth: 4,
+    /** 注入位置：0=系统提示后（in-chat 用 1） */
+    promptPosition: 0,
 };
+
+/**
+ * 格式说明（唯一权威文本）
+ *
+ * ★ 为什么不写在提示词里让用户手抄：离开这段说明模型就不会输出我们的行格式，插件就废了。
+ *   因此它是**插件自带**的，可用 `injectPrompt` 自动注入；
+ *   专属预设 `Izumi 0828.tailfree + 分镜` 里那段**就是这份文本的副本**，两边保持一致。
+ */
+export const FORMAT_SPEC = [
+    '【正文行格式 · 必须严格遵守】',
+    '正文每一个自然段都是一行「名字·层 内容」，四层轮换推进：',
+    '  名字·台词 「说的话」        ← 台词要短，一般不超过 20 字',
+    '  名字·动作 我做的具体动作     ← 200–400 字，写细节、写过程',
+    '  名字·感官 我身体的感受       ← 200–400 字，写触感/温度/气味/声音',
+    '  名字·心理 我心里的想法       ← 200–400 字，写犹豫/欲望/算计',
+    '旁白单独一行：旁白·内容（没有名字字段，用来说明画面/时间/环境）。',
+    '',
+    '硬规则：',
+    '1. 层名后**必须有一个空格**，写漏了会被判为格式错误并标红。',
+    '2. 层名只能是 台词 / 动作 / 感官 / 心理 / 旁白 这五个，不得自创。',
+    '3. 正文里**不得出现**「名字·层」以外的标记、标签、小标题、列表符号。',
+    '4. 台词/动作/感官/心理 一律**第一人称「我」** —— 这里的「我」就是这一行的角色本人。',
+    '5. 一行里的「我」＝该行的名字。提到别人时：**首次出现用真名**，之后如果这一行只涉及另一个人才可以用他/她。',
+    '6. 称呼（妈 / 婉婷姐 / 老师）可以出现在句子里，但**不得**当作名字列的标签。',
+    '7. 只有 动作/感官/心理 三层需要写长；台词与旁白要短。',
+    '8. 不要输出任何解释、前言、后记、分隔线。',
+].join('\n');
+
+/**
+ * 专属正则（4 条，**纯数据**）—— 用 `TavernHelper.updateTavernRegexesWith` 注册
+ *
+ * 形状按酒馆助手归一化后的 TavernRegex（不是 ST 存储形状）。
+ * 全部只改 `destination.display`（不碰提示词），`max_depth: 3`（只作用最近 3 楼）。
+ *
+ * R1/R4 默认 **关**（可选）；R2/R3 默认 **开** —— 但注意：
+ *   **渲染漏斗钩子路径本来就能同时认 `[FRONTEND]` 与 `<htmlcontent>`**（见 splitSections），
+ *   所以 R2/R3 只在「没打核内补丁、走 DOM 后处理」那条降级路径上才必需。
+ */
+export const REGEX_DEFS = [
+    {
+        id: 'cd-r1-strip-content',
+        script_name: '【分镜】R1 去掉 <content> 包裹',
+        enabled: false,
+        find_regex: '<\\/?content>\\n?',
+        replace_string: '',
+        flags: 'g',
+        destination: { display: true, prompt: false },
+        run_on_edit: true,
+        min_depth: null,
+        max_depth: 3,
+        note: '可选。预设用 <content> 包正文时去掉它，避免被当成普通文本显示。',
+    },
+    {
+        id: 'cd-r2-frontend',
+        script_name: '【分镜】R2 前端区包成 [FRONTEND]',
+        enabled: true,
+        find_regex: '(<htmlcontent>[\\s\\S]*?<\\/htmlcontent>)',
+        replace_string: '\n[FRONTEND]\n$1\n[/FRONTEND]\n',
+        flags: 'g',
+        destination: { display: true, prompt: false },
+        run_on_edit: true,
+        min_depth: null,
+        max_depth: 3,
+        note: '必需（DOM 降级路径）。让插件认出前端区并整段跳过，一个字节不碰。',
+    },
+    {
+        id: 'cd-r3-options',
+        script_name: '【分镜】R3 选项区包成 [OPTIONS]',
+        enabled: true,
+        find_regex: '(<options>[\\s\\S]*?<\\/options>)',
+        replace_string: '\n[OPTIONS]\n$1\n[/OPTIONS]\n',
+        flags: 'g',
+        destination: { display: true, prompt: false },
+        run_on_edit: true,
+        min_depth: null,
+        max_depth: 3,
+        note: '必需（DOM 降级路径）。让插件把选项区渲染成按钮。',
+    },
+    {
+        id: 'cd-r4-collapse-blank',
+        script_name: '【分镜】R4 压缩连续空行',
+        enabled: false,
+        find_regex: '\\n{3,}',
+        replace_string: '\n\n',
+        flags: 'g',
+        destination: { display: true, prompt: false },
+        run_on_edit: true,
+        min_depth: null,
+        max_depth: 3,
+        note: '可选。模型偶尔多吐空行，会把段落间距撑开。',
+    },
+];
 
 /**
  * 设置面板的字段表（**纯数据**，由 index.js 拿去生成抽屉）
@@ -73,7 +175,36 @@ export const PANEL_FIELDS = [
     { key: 'nameColWidth', kind: 'number', label: '固定宽度', unit: 'px', min: 40, max: 400, step: 4, when: 'nameColMode=fixed' },
     { key: 'rowGap', kind: 'number', label: '行间距', unit: 'em', min: 0, max: 3, step: 0.1 },
     { key: 'leadIndent', kind: 'number', label: '首行缩进', unit: 'em', min: 0, max: 4, step: 0.5 },
+
+    /* ---- L3 提示词层 ---- */
+    { key: 'injectPrompt', kind: 'bool', label: '自动注入格式说明',
+      note: '默认关：专属预设里已有同样说明，两边同时开会重复占提示词' },
+    { key: 'promptDepth', kind: 'number', label: '注入深度', unit: '层', min: 0, max: 20, step: 1 },
 ];
+
+/**
+ * L4 斜杠命令（**纯数据**：名字 + 子命令 + 说明；注册与执行在 index.js）
+ *
+ * 形状照已装扩展 RUBY 的范例：ST 通过 `getContext()` 暴露
+ * `SlashCommandParser` / `SlashCommand` / `SlashCommandArgument` / `ARGUMENT_TYPE`，
+ * 用 `SlashCommandParser.addCommandObject(SlashCommand.fromProps({...}))` 注册。
+ * 用**单个命令 + 子命令**而不是 4 个命令：斜杠命令面板更干净，也更好记。
+ */
+export const SLASH_COMMAND = {
+    name: 'cine',
+    aliases: ['cd', 'storyboard'],
+    returns: '状态文本',
+    helpString: '分镜对话控制：<code>/cine refresh</code> 立即重渲染 · '
+        + '<code>/cine stats</code> 心跳与适配探测 · <code>/cine config</code> 当前配置 · '
+        + '<code>/cine regex</code> 安装【分镜】专属正则',
+    /** 子命令（第一个无名参数） */
+    subcommands: [
+        { name: 'refresh', description: '立即重渲染全部楼层的分镜' },
+        { name: 'stats', description: '打印心跳：版本 / 核内钩子接线 / 渲染计数 / 各适配探测' },
+        { name: 'config', description: '打印当前配置' },
+        { name: 'regex', description: '安装或更新【分镜】专属正则（4 条）' },
+    ],
+};
 
 // ---------------------------------------------------------------- 基础
 

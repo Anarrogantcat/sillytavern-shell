@@ -1,5 +1,33 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-13）— cine-dialogue 0.4.0：L3 提示词注入 + L4 斜杠命令 + 专属正则
+
+### 新增
+- **cine-dialogue 0.3.0 → 0.4.0**
+- **L3 提示词层（不再依赖任何预设）**：`FORMAT_SPEC` 作为格式说明的**唯一权威文本**（放 `logic.js`）；`applyPromptInjection()` 用 `setExtensionPrompt()` 注入，位置/深度可调，`CHAT_CHANGED` 时重注入
+  - **默认关**：专属预设 `Izumi 0828.tailfree + 分镜` 里已有同样说明，两边同时开会**重复占提示词**；换回原版预设时打开 → 插件对预设**零依赖**
+- **L4 生成层**：`/cine`（别名 `/cd`、`/storyboard`），子命令 `refresh` / `stats` / `config` / `regex`
+  - 形状照已装扩展 **RUBY** 的范例：ST 通过 `getContext()` 暴露 `SlashCommandParser` / `SlashCommand` / `SlashCommandArgument` / `ARGUMENT_TYPE`
+  - API 不可用时只 `console.warn`，**不影响渲染**（降级不崩）
+- **专属正则 4 条（`REGEX_DEFS` 纯数据）**：R1 去 `<content>`（关）· **R2 前端包 `[FRONTEND]`** · **R3 选项包 `[OPTIONS]`** · R4 压缩空行（关）
+  - 全部**只改 `destination.display`、不碰 `prompt`**，`max_depth: 3`
+  - **一次写完**（`updateTavernRegexesWith` 会重载整个聊天，分多次写会卡）
+  - 面板按钮「安装/更新专属正则」「移除专属正则」，**只删自己的**
+  - ★ 钩子路径本就同时认两种外壳形式 → R2/R3 只在 **DOM 降级路径**上必需
+
+### 夹具
+- cine-dialogue **83 → 109 条**
+  - L3：说明够长/含五层/写明空格与第一人称/禁自创层名/**示例行必须能被自己的解析器解析**
+  - 正则：id 与名字唯一 · **每条 `find_regex` 都能编译** · 只改 display · 有 `max_depth` · R2/R3 真能匹配
+  - ★ **闭环断言**：真跑一遍 R2+R3，之后 `splitSections` **必须**认得出前端区与选项 —— **正则与解析器不许脱节**
+  - 斜杠命令：名字/别名/help/子命令 ≥3 且唯一/四个子命令齐全
+- **全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue 109/109 · ext-manage 49/49**
+- `extensions/index.json` 重建（cine-dialogue **0.4.0**），`--check` **exit 0** —— 本轮**先改完所有扩展内文件、最后才重建清单**（前两轮的教训）
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）
+- 套壳维持 **2.3.1**；核内补丁 #001 未改动
+
 ## 未发版（2026-10-13）— cine-dialogue 0.3.0：设置面板抽屉（解开「总览里看不到」）
 
 ### 新增
