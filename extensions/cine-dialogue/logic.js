@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.4';
+export const VERSION = '0.8.5';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -37,7 +37,10 @@ export const LAYERS = ['台词', '动作', '感官', '心理', '旁白'];
  * 这违反了本项目「标签绝不出现在 UI」的铁律，所以必须容错。
  */
 export const LAYER_ALIAS = {
-    '动作': ['动作', '行动', 'act', 'acts', 'action', 'actions', 'move', 'motion', 'do'],
+    /* ★ 外部看得见的行为 / 神态（模型爱自创这种层）→ 统一归「动作」。
+       「动作」在格式说明里的定义就是「身体在做什么，外部看得见的行为」，神态/表情正属于这一类。 */
+    '动作': ['动作', '行动', 'act', 'acts', 'action', 'actions', 'move', 'motion', 'do',
+        '眼神', '目光', '神态', '表情', '神情', '神色', '姿态', '举止', '举动', '行为', '反应'],
     '台词': ['台词', '对白', '说话', 'speech', 'speeches', 'dialogue', 'dialog', 'say', 'says', 'talk', 'line', 'lines', 'voice', 'quote'],
     '感官': ['感官', '感受', '感觉', 'sense', 'senses', 'sensory', 'feeling', 'feel', 'body', 'touch'],
     '心理': ['心理', '内心', '想法', '心声', 'mind', 'thought', 'thoughts', 'inner', 'monologue', 'mono', 'psych', 'psyche'],
@@ -398,7 +401,7 @@ export function rowRegexFor(layers, lenient = false) {
     if (_layerRe.key !== key || !_layerRe.re) {
         _layerRe = {
             key,
-            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s+(.+)$'),
+            re: new RegExp('^([^·・:：\\n]{1,16}?)\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s+(.+)$'),
         };
     }
     return _layerRe.re;
@@ -416,7 +419,7 @@ export function looseRegexFor(layers, lenient = false) {
     if (_looseRe.key !== key || !_looseRe.re) {
         _looseRe = {
             key,
-            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s*(.*)$'),
+            re: new RegExp('^([^·・:：\\n]{1,16}?)\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s*(.*)$'),
         };
     }
     return _looseRe.re;
@@ -473,6 +476,20 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
 
     /* ★ 其余一律当**普通文本原样通过** —— 不再把散文刷成红色。
        （曾经把所有非匹配行都判成「格式错误」，结果模型思考块几百行全红了。） */
+    /* ★★ 守卫式兜底：认不出的层词也要渲染成行 —— **绝不让标签露在界面上**。
+       判据（两条都要满足）：
+         · 层词是 2–6 个非分隔符字符（模型自创的层名，如「眼神」「外貌」）
+         · 正文**至少 12 个字符** —— 这条用来排除「外文名里的间隔号」：
+           `阿尔托莉雅·潘德拉贡 说道` 的正文只有「说道」两字 ⇒ 不满足 ⇒ 不会被误判成行 ✓
+       （真机踩过：`女娲·眼神 从她那双淡金色的眸子里…` 整行露着标签。） */
+    const guarded = line.match(new RegExp('^([^·・:：\\n]{1,16}?)\\s*[·・:：]\\s*([^\\s·・:：]{2,6})\\s+([\\s\\S]{12,})$'));
+    if (guarded) {
+        return {
+            kind: 'row', name: guarded[1].trim(), layer: guarded[2], text: guarded[3].trim(),
+            repaired: 'unknown-layer', rawLayer: guarded[2],
+        };
+    }
+
     return { kind: 'text', raw: line };
 }
 

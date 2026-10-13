@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.4');
+eq('version 与 manifest 一致', VERSION, '0.8.5');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1315,6 +1315,46 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     }, { srcName: 'x', srcHash: 'y' });
     eq('★★ 同名但没有我们的标志串 → 仍一个字不动',
         other.preset.prompts[0].content, '别人自己写的同名条目');
+}
+
+/* ============================================================================
+   ★★ 标签外露的两个真机 case（0.8.5）
+   图1：女娲·眼神   ← 模型自创的层词（不在五层/别名表里）
+   图3：西王 madre·动作 ← 名字里带空格
+   两者原来都掉进 text 直通 ⇒ **标签原样露在界面上** ✗
+   ============================================================================ */
+{
+    const L = allLayers(DEFAULT_CONFIG);
+
+    const a = parseLine('女娲·眼神 从她那双淡金色的眸子里掠过一抹极其细微的惊愕，随即变回了漫不经心的端庄。', L, false);
+    eq('★★ 未知层词「眼神」→ 不再外露，按别名归到「动作」', a.kind + '/' + a.layer, 'row/动作');
+    eq('★ 名字保留', a.name, '女娲');
+    const ra = renderMessageHTML(
+        '女娲·眼神 从她那双淡金色的眸子里掠过一抹极其细微的惊愕，随即变回了端庄。\n女娲·动作 我伸出手掌。',
+        { '女娲': '#00F5EF' }, DEFAULT_CONFIG);
+    ok('★★ 渲染出的**可见文字**里没有「眼神」这层名',
+        String(ra.html).replace(/<[^>]*>/g, '').indexOf('眼神') < 0);
+
+    const b = parseLine('西王 madre·动作 我在他们退出的瞬间才真正彻底放松了肩膀。', L, false);
+    eq('★★ 名字含空格（西王 madre）也能识别', b.kind, 'row');
+    eq('★ 名字完整保留（含空格）', b.name, '西王 madre');
+    eq('★ 层正确', b.layer, '动作');
+    const rb = renderMessageHTML(
+        '西王 madre·动作 我在他们退出的瞬间才真正彻底放松了肩膀，肩膀整个塌了下来。\n女娲·动作 我伸出手掌。',
+        { '西王 madre': '#00F5EF' }, DEFAULT_CONFIG);
+    ok('★★ 渲染出的可见文字里没有「·动作」这个标签',
+        String(rb.html).replace(/<[^>]*>/g, '').indexOf('·动作') < 0);
+
+    /* ★ 守卫不能误伤：外文名里的间隔号 + 短正文（这就是当初把 lenient 默认关掉的原因） */
+    eq('★★ 外文名「阿尔托莉雅·潘德拉贡 说道」不被误判成行（正文太短）',
+        parseLine('阿尔托莉雅·潘德拉贡 说道', L, false).kind, 'text');
+    eq('★ 未知层 + 短正文也不误判', parseLine('某·奇怪 好的', L, false).kind, 'text');
+
+    /* ★ 守卫式兜底：未知层词 + 足够长的正文 → 渲染成行（自定义层），标签一样藏住 */
+    const g = parseLine('某·外貌 她穿着一件看不出材质的素袍，贴在身上透出底下修长的轮廓。', L, false);
+    eq('★ 未知层词 + 长正文 → 渲染成行', g.kind, 'row');
+    eq('★ 层词原样留在 layer（供自定义层样式用）', g.layer, '外貌');
+    eq('★ 标记为 unknown-layer', g.repaired, 'unknown-layer');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
