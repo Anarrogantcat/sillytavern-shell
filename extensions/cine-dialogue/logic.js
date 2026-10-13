@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.6.1';
+export const VERSION = '0.6.2';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -28,6 +28,34 @@ export const LAYERS = ['台词', '动作', '感官', '心理', '旁白'];
     '心理': 'cd-L-mind',
     '旁白': 'cd-L-narr',
 };
+
+/**
+ * ★ 层名别名表：规范中文层名 ← 各种写法（中文变体 + 英文）。
+ *
+ * 为什么需要：模型偶尔把层名写成英文 —— 真机见过 `染·action 我低头凑近她的耳畔…`。
+ * 原来这种行**匹配不上**就掉进 text 直通 → **标签 `染·action` 原样显示在界面上** ✗
+ * 这违反了本项目「标签绝不出现在 UI」的铁律，所以必须容错。
+ */
+export const LAYER_ALIAS = {
+    '动作': ['动作', '行动', 'act', 'acts', 'action', 'actions', 'move', 'motion', 'do'],
+    '台词': ['台词', '对白', '说话', 'speech', 'speeches', 'dialogue', 'dialog', 'say', 'says', 'talk', 'line', 'lines', 'voice', 'quote'],
+    '感官': ['感官', '感受', '感觉', 'sense', 'senses', 'sensory', 'feeling', 'feel', 'body', 'touch'],
+    '心理': ['心理', '内心', '想法', '心声', 'mind', 'thought', 'thoughts', 'inner', 'monologue', 'mono', 'psych', 'psyche'],
+    '旁白': ['旁白', '叙述', '旁述', 'narration', 'narrator', 'narrative', 'narr', 'scene', 'desc', 'description', 'aside'],
+};
+
+const _aliasMap = (() => {
+    const m = new Map();
+    for (const canon of Object.keys(LAYER_ALIAS)) {
+        for (const w of LAYER_ALIAS[canon]) m.set(String(w).toLowerCase(), canon);
+    }
+    return m;
+})();
+
+/** 把任意层名写法归一到规范中文层名；不是已知层就返回 null */
+export function canonLayer(word) {
+    return _aliasMap.get(String(word == null ? '' : word).trim().toLowerCase()) || null;
+}
 
 /** 默认调色板（颜色 = 角色，按出现顺序分配） */
 export const PALETTE = [
@@ -69,6 +97,8 @@ export const DEFAULT_CONFIG = {
     /* ---- 自动修复（模型输出漂移时的有依据补全；默认关）---- */
     /** 'off' 不修 | 'safe' 只修「层名在名字缺」与纯引号行 | 'aggressive' 再把完全没标注的归为旁白 */
     autoRepair: 'safe',
+    /** 宽松层名（**默认关**）：认不出的层词也当自定义层渲染。\n     *  为什么默认关：· 也出现在外文名里（阿尔托莉雅·潘德拉贡 说道），\n     *  放开「任意短词」会把这种正文误判成行、静默改写别人的内容 —— 比偶尔露出标签更糟。\n     *  英文层名已由 LAYER_ALIAS 覆盖，不需要靠这一条。 */
+    lenientLayers: false,
     /** 思考块的识别正则（捕获组 1 = 要展示的正文；留空 = 不做兜底） */
     thinkingPattern: '\\{思考内容\\}([\\s\\S]*?)<\\/konatan_planning~>',
     /** 自定义调色板（空 = 用 PALETTE） */
@@ -224,6 +254,8 @@ export const PANEL_FIELDS = [
     { key: 'thinkingDepth', kind: 'number', label: '预设已覆盖的深度', unit: '层', min: 0, max: 50, step: 1 },
     { key: 'thinkingOpen', kind: 'bool', label: '兜底的思考默认展开', note: '默认关 = 折叠隐藏' },
     { key: 'thinkingPattern', kind: 'text', label: '思考块识别正则', note: '捕获组 1 = 展示正文；留空 = 不做兜底' },
+    { key: 'lenientLayers', kind: 'bool', label: '宽松层名（认不出的层当自定义层）',
+      note: '关掉后：层名不是内置层/别名时该行退回普通文本 → **标签会原样显示**。建议保持开启' },
     { key: 'autoRepair', kind: 'select', label: '自动修复模型漂移',
       note: 'safe：只修「只写了层名」与纯引号行（有依据）；aggressive：再把完全没标注的归为旁白（不猜角色）',
       options: [['off', '不修'], ['safe', 'safe（有依据才修）'], ['aggressive', 'aggressive（再归旁白）']] },
@@ -288,10 +320,23 @@ const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  *  ★ 不能用 ['台词','动作','感官','心理'].join('|') + '|' + extra.join('|') ——
  *    自定义层为空时会在尾部留下一个 `|`，产生**空层名分支**，
  *    于是 `林野· 内容`（漏了层名）会被当成**合法行**而不是格式错误。 */
+/** 内置层 + 别名 + 自定义层 → 正则用的**非捕获**分支（不许多出捕获组，否则 r[2]/r[3] 会错位） */
+function layerWordAlternation(layers, lenient) {
+    const words = [];
+    const push = w => { const s = String(w == null ? '' : w).trim(); if (s && words.indexOf(s) < 0) words.push(s); };
+    for (const L of (layers || LAYERS)) {
+        push(L);
+        for (const a of (LAYER_ALIAS[L] || [])) push(a);
+    }
+    const list = words.map(escRe).join('|');
+    /* lenient：再接受**任意短词**（≤8 字符、无分隔符）→ 由 parseLine 落成「自定义层」。
+       这样即使层名是没见过的写法，也**不会把标签露在界面上**。 */
+    return lenient ? '(?:' + list + '|[^\\s·・:：]{1,8})' : '(?:' + list + ')';
+}
+
+/** 层名分支（不含「任意短词」那一条）—— 给「松散匹配/修复」这类需要严格层名的场景用 */
 function layerAlternation(layers) {
-    const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
-    const all = ['台词', '动作', '感官', '心理'].concat(extra);
-    return all.map(escRe).join('|');
+    return layerWordAlternation(layers, false);
 }
 
 /** 内置层 + 配置里的自定义层（去重、保序） */
@@ -304,19 +349,18 @@ export function allLayers(config = {}) {
 /* 动态层名正则的缓存：不给每一行都 new 一个 RegExp。
    ★ key 初值必须是 null，不能是 '' —— 否则会和「没有自定义层」时的真实 key（空串）撞上，
      正则**永远不会被构建**（re 停在 null），松散匹配全部失效。
-     这是夹具抓到的真 bug：结果「层名后漏空格」这种最常见的格式错误根本标不出来。 */
+     这是夹具抓到的真 bug：结果「层名后漏空格」这种最常见的格式错误根本标不出来。
+   ★ key 里必须带上 lenient 标志 —— 否则两种模式的缓存会互相覆盖。 */
 let _layerRe = { key: null, re: null };
 let _looseRe = { key: null, re: null };
 
-/** 取「认哪些层」的行正则；没有自定义层时直接返回内置 RE_ROW */
-export function rowRegexFor(layers) {
-    const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
-    if (!extra.length) return RE_ROW;
-    const key = extra.join('\u0001');
+/** 取「认哪些层」的行正则（含别名；lenient 时再接受任意短词） */
+export function rowRegexFor(layers, lenient = false) {
+    const key = (layers || LAYERS).join('\u0001') + '\u0002' + (lenient ? '1' : '0');
     if (_layerRe.key !== key || !_layerRe.re) {
         _layerRe = {
             key,
-            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerAlternation(layers) + ')\\s+(.+)$'),
+            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s+(.+)$'),
         };
     }
     return _layerRe.re;
@@ -329,13 +373,12 @@ export function rowRegexFor(layers) {
  *   反例（绝不能标红）：模型思考块里的普通散文 —— 它们和分镜格式毫无关系，
  *   刷红只会把整段思考内容变成一屏「格式错误」（真机踩过，就是这个现象）。
  */
-export function looseRegexFor(layers) {
-    const extra = (layers || LAYERS).filter(l => LAYERS.indexOf(l) < 0);
-    const key = extra.join('\u0001');
+export function looseRegexFor(layers, lenient = false) {
+    const key = (layers || LAYERS).join('\u0001') + '\u0002' + (lenient ? '1' : '0');
     if (_looseRe.key !== key || !_looseRe.re) {
         _looseRe = {
             key,
-            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerAlternation(layers) + ')\\s*(.*)$'),
+            re: new RegExp('^([^\\s·・:：]{1,12})\\s*[·・:：]\\s*(' + layerWordAlternation(layers, lenient) + ')\\s*(.*)$'),
         };
     }
     return _looseRe.re;
@@ -365,12 +408,27 @@ export const RE_OPTIONS_TAG_BLOCK = /<options>([\s\S]*?)<\/options>/gi;
  *         | {kind:'narr',body:string}
  *         | {kind:'other',raw:string}}
  */
-export function parseLine(line, layers = LAYERS) {
+export function parseLine(line, layers = LAYERS, lenient = false) {
     const n = line.match(RE_NARR);
     if (n) return { kind: 'narr', body: n[1].trim() };
 
-    const r = line.match(rowRegexFor(layers));
-    if (r) return { kind: 'row', name: r[1].trim(), layer: r[2], text: r[3].trim() };
+    const r = line.match(rowRegexFor(layers, lenient));
+    if (r) {
+        const raw = r[2];
+        const canon = canonLayer(raw);
+        if (canon) {
+            /* 本来就是规范层名 → 原样返回（**不许多出键**，否则深度相等断言会全线失配） */
+            if (canon === raw) return { kind: 'row', name: r[1].trim(), layer: canon, text: r[3].trim() };
+            /* 别名（如英文 action）→ 归一到规范层名，留 alias 记号让用户知道是插件翻译的 */
+            return { kind: 'row', name: r[1].trim(), layer: canon, text: r[3].trim(), repaired: 'alias', rawLayer: raw };
+        }
+        /* 认不出的层词 → 当**自定义层**渲染（名字列/颜色保留，层名不展示）。
+           ★ 守住铁律「标签绝不出现在 UI」：宁可当自定义层，也不能把 `染·action` 原样露出来。 */
+        return {
+            kind: 'row', name: r[1].trim(), layer: raw, text: r[3].trim(),
+            repaired: 'unknown-layer', rawLayer: raw,
+        };
+    }
 
     /* 长得像我们的行但写错了（最常见：层名后漏了空格）→ 显式标红，不静默降级 */
     if (line.match(looseRegexFor(layers))) return { kind: 'err', raw: line };
@@ -381,8 +439,8 @@ export function parseLine(line, layers = LAYERS) {
 }
 
 /** 这行是不是「我们的行」 */
-export function isOurLine(line, layers = LAYERS) {
-    const p = parseLine(line, layers);
+export function isOurLine(line, layers = LAYERS, lenient = false) {
+    const p = parseLine(line, layers, lenient);
     return p.kind === 'row' || p.kind === 'narr';
 }
 
@@ -423,7 +481,7 @@ export function splitSections(raw) {
  * 正文 → 段落分组
  * 空行分段；每组是若干「行对象」；不匹配的行保留为 other（原样输出）
  */
-export function parseBlocks(body, layers = LAYERS) {
+export function parseBlocks(body, layers = LAYERS, cfg = null) {
     const groups = [];
     let cur = [];
     let errs = 0;
@@ -434,7 +492,7 @@ export function parseBlocks(body, layers = LAYERS) {
             if (cur.length) { groups.push(cur); cur = []; }
             continue;
         }
-        const p = parseLine(line, layers);
+        const p = parseLine(line, layers, !!(cfg && cfg.lenientLayers));
         if (p.kind === 'err') errs++;
         cur.push(p);
     }
@@ -519,12 +577,16 @@ export function stClassPrefix(html) {
 }
 
 /** 修复痕迹的 hover 说明（**必须可见**：让用户随时能分辨哪些是模型写的、哪些是插件补的） */
-function fixTitle(repaired) {
+function fixTitle(r) {
+    const repaired = (r && r.repaired) || null;
+    const rawLayer = (r && r.rawLayer) || '';
     switch (repaired) {
         case 'name': return '这一行的「名字·」是模型漏写的，插件按同楼最近标注过的角色补上';
         case 'quote': return '这一行没有层名，插件按引号判为「台词」，名字按同楼最近标注过的角色补上';
         case 'layer-only': return '这一行只有层名、没有名字，插件按「旁白」处理（不猜角色）';
         case 'bare': return '这一行完全没标注，插件按「不猜角色」的原则归为「旁白」';
+        case 'alias': return '这一行的层名是非规范写法（英文或别名），插件已自动归一到对应中文层';
+        case 'unknown-layer': return '这一行的层名不在内置层里，插件按**自定义层**渲染（层名不显示，可在原文里核对）';
         default: return '';
     }
 }
@@ -532,7 +594,7 @@ function fixTitle(repaired) {
 function rowHTML(r, colorMap, config) {
     const dim = rowDimmed(r, config.onlyChar) ? ' cd-dim' : '';
     const fix = r.repaired ? ' cd-fix' : '';
-    const fixTip = fixTitle(r.repaired);
+    const fixTip = fixTitle(r);
 
     if (r.kind === 'narr') {
         return '<div class="cd-row cd-L-narr' + dim + fix + '" style="' + esc(layerVars('旁白', config)) + '">'
@@ -687,7 +749,7 @@ export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
         ? rawLines.map(raw => {
             const t = raw.trim();
             if (t === '') return { kind: 'blank', raw };
-            return { p: parseLine(t, layers), raw };
+            return { p: parseLine(t, layers, !!cfg.lenientLayers), raw };
         })
         : repairLines(rawLines, cfg).map(x => x.p.kind === 'blank' ? { kind: 'blank', raw: x.line } : { p: x.p, raw: x.line, repaired: x.repaired });
 
@@ -1035,7 +1097,7 @@ export function repairLines(lines, cfg = {}) {
 
     const parsed = (lines || []).map(l => {
         const t = String(l == null ? '' : l).trim();
-        return { line: String(l == null ? '' : l), p: (t === '') ? { kind: 'blank', raw: '' } : parseLine(t, layers) };
+        return { line: String(l == null ? '' : l), p: (t === '') ? { kind: 'blank', raw: '' } : parseLine(t, layers, !!c.lenientLayers) };
     });
     if (mode === 'off') return parsed.map(x => ({ line: x.line, p: x.p, repaired: null }));
 

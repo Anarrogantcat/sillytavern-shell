@@ -10,7 +10,7 @@ import {
     MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
     allLayers, layerVars, resolveColors, validateLayerName, rowDimmed,
     highlightPlan, sceneTitle, messageTitle, rowRegexFor,
-    serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock, PLAIN_ANCHOR, repairLines,
+    serializeConfig, parseConfig, stClassPrefix, wrapThinkingBlock, hasThinkingBlock, PLAIN_ANCHOR, repairLines, layerClass,
     esc, parseLine, isOurLine, splitSections, parseBlocks, collectNames,
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats,
@@ -25,7 +25,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.6.1');
+eq('version 与 manifest 一致', VERSION, '0.6.2');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -654,6 +654,47 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
         .replace(/\/\*[\s\S]*?\*\//g, '');
     ok('★ CSS 有 .custom-cd-fix 规则（记号看得见）', cssText.indexOf('.custom-cd-fix') >= 0);
 }
+/* ============================================================================
+   ★ 层名别名：英文/变体 → 规范中文（真机：模型写了 `染·action 我低头…`）
+   原来这种行匹配不上 → 掉进 text 直通 → **标签原样显示在界面上**，违反铁律。
+   ============================================================================ */
+{
+    const L = allLayers(DEFAULT_CONFIG);
+
+    const a = parseLine('染·action 我低头凑近她的耳畔。', L, true);
+    eq('★ 英文 action → 中文层「动作」', a.layer, '动作');
+    eq('★ 名字保留', a.name, '染');
+    eq('★ 标为 alias（让用户知道是插件翻译的）', a.repaired, 'alias');
+    eq('★ 样式类按「动作」走', layerClass(a.layer), 'cd-L-act');
+    ok('★ 正文没被改动', a.text.indexOf('我低头凑近') === 0);
+
+    eq('★ 英文 speech → 台词', parseLine('染·speech 我低声说。', L, true).layer, '台词');
+    eq('★ 英文 narration → 旁白', parseLine('染·narration 灯灭了。', L, true).layer, '旁白');
+    eq('★ 中文变体「对白」→ 台词', parseLine('染·对白 「别躲。」', L, true).layer, '台词');
+
+    eq('★ 本来就是规范层名 → 不在返回里塞 repaired 键', parseLine('染·动作 正常行。', L, true).repaired, undefined);
+
+    const d = parseLine('染·xyz 认不出的层词。', L, /* lenient */ true);
+    eq('★ 认不出的层词 → 当自定义层（名字列/颜色保留）', d.layer, 'xyz');
+    eq('★ 自定义层的样式类', layerClass(d.layer), 'cd-L-custom');
+    eq('★ 标为 unknown-layer', d.repaired, 'unknown-layer');
+
+    eq('默认（lenient 关）这类行退回普通文本 —— 由别名表覆盖，不靠乱认',
+        parseLine('染·xyz 认不出的层词。', L, false).kind, 'text');
+
+    eq('★ lenientLayers 默认**关**（避免误伤含间隔号的正文）', DEFAULT_CONFIG.lenientLayers, false);
+
+    /* ★★ 铁律：标签绝不出现在**可见文字**里（title 里的诊断说明不算） */
+    const html = renderMessageHTML(
+        '染·action 我低头凑近她的耳畔。\n沙良·动作 我顺从地向前倾斜。\n染·speech 「别躲。」',
+        { '染': '#00F5EF', '沙良': '#D982EF' }, DEFAULT_CONFIG).html;
+    const visible = html.replace(/<[^>]*>/g, '');
+    ok('★★ 可见文字里没有 action / speech（标签绝不出现）',
+        visible.indexOf('action') < 0 && visible.indexOf('speech') < 0, visible.slice(0, 120));
+    ok('★ 名字列还在', html.indexOf('染') >= 0 && html.indexOf('沙良') >= 0);
+    ok('★ 三行都进了网格（不是裸文本）', (html.match(/cd-row/g) || []).length >= 3);
+}
+
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);
 if (failures.length) {
