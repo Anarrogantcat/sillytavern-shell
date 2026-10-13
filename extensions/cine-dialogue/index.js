@@ -1032,6 +1032,25 @@ function chatWideColors() {
  * 所以那个修复从来没对用户生效（用户反馈「间距有点大」）。这里做一次迁移。
  * 用户在面板里改过的话，之后的版本不会再动它（stamp 只跑一次）。
  */
+/**
+ * 一次性迁移：把「空行分组之间画分隔线」打开（用户 2026-10-14：「把默认值改成 true」）。
+ * 为什么需要迁移：默认值改了**碰不到已经保存的配置** ✗（用户配置里存着 false）
+ * 只跑一次（stamp）⇒ 之后你在面板关掉，不会再被翻回来 ✓
+ */
+function migrateSeparators() {
+    try {
+        const c = cfg();
+        if (c.sepStamp === 'v2') return;
+        if (c.showSeparators !== true) {
+            c.showSeparators = true;
+            saveSettingsDebounced();
+            console.info('[' + EXT_ID + '] 已打开「分组之间画分隔线」（可在面板关闭）');
+        }
+        c.sepStamp = 'v2';
+        saveSettingsDebounced();
+    } catch (e) { console.warn('[' + EXT_ID + '] 分隔线迁移失败（不影响渲染）', e); }
+}
+
 function migrateRowGap() {
     try {
         const c = cfg();
@@ -2296,6 +2315,7 @@ function buildSettingsPanel() {
 function start() {
     try { migrateColorStamp(); } catch (_) { }
     try { migrateRowGap(); } catch (_) { }
+    try { migrateSeparators(); } catch (_) { }
     /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
        这个坑踩过两次：
          · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行

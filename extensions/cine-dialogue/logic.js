@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.47';
+export const VERSION = '0.8.48';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -112,7 +112,7 @@ export const DEFAULT_CONFIG = {
      * ★ 默认 **false**：模型经常**每行之间都空一行** → 每行各自成一个分组 →
      *   分隔线 + 行间距**双重叠加**，整屏被撑得很散（真机反馈：「间距有点大」）。
      */
-    showSeparators: false,
+    showSeparators: true,
     /** 行高（正文行距；1.9 偏松，1.7 更紧凑） */
     lineHeight: 1.9,
     /** 首行缩进（em） */

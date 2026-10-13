@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.47');
+eq('version 与 manifest 一致', VERSION, '0.8.48');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -109,7 +109,8 @@ eq('10 个角色都有色', Object.keys(many).length, 10);
 const r = renderMessage(body, {}, DEFAULT_CONFIG);
 ok('渲染出 HTML', typeof r.html === 'string' && r.html.length > 0);
 ok('只有一个网格（一条消息一个网格）', (r.html.match(/cd-grid/g) || []).length === 1);
-ok('默认不画分隔线（避免与行间距叠加）', !r.html.includes('cd-sep'));
+    /* ★ 用户 2026-10-14：「把默认值改成 true」⇒ 推翻旧的"默认不画线"决定 ✓ */
+    eq('★★ 默认画分隔线（用户要求改默认）', DEFAULT_CONFIG.showSeparators, true);
 ok('打开 showSeparators 才画分隔线', renderMessage(body, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html.includes('cd-sep'));
 ok('动作行带 cd-L-act', r.html.includes('cd-L-act'));
 ok('心理行带 cd-L-mind', r.html.includes('cd-L-mind'));
@@ -1921,6 +1922,24 @@ ok('stClassPrefix 不是幂等的（重复套用会变 custom-custom-，所以�
     ok('★★ 长行区间是 150–300', LENGTH_SPEC.indexOf('150–300 字') >= 0 && FORMAT_SPEC.indexOf('150–300 字') >= 0);
     ok('★ 旧的 150–500 / 200–300 已清', LENGTH_SPEC.indexOf('150–500') < 0 && LENGTH_SPEC.indexOf('200–300') < 0);
     ok('★ 条目里仍然不用星号', LENGTH_SPEC.indexOf('*') < 0);
+}
+
+/* ★★ 分隔线：默认 true + 一次性迁移（用户 2026-10-14「把默认值改成 true」） */
+{
+    eq('★★ showSeparators 默认 true', DEFAULT_CONFIG.showSeparators, true);
+    eq('★ 面板字段仍在（可关）', typeof PANEL_FIELDS, 'object');
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 有 migrateSeparators()', /function migrateSeparators\(\)/.test(src));
+    ok('★★ start() 里调用了它', src.indexOf('migrateSeparators();') >= 0);
+    ok('★★ 只跑一次（stamp）', /sepStamp === 'v2'/.test(src));
+    ok('★ 迁移后仍可手动关闭（不再翻回来）', /if \(c\.sepStamp === 'v2'\) return;/.test(src));
+    /* 渲染层：开关为 true 时组间应画线 */
+    const NL2 = String.fromCharCode(10);
+    const two = '甲·动作 我按住她。' + NL2 + NL2 + '甲·动作 我又松开。';
+    const on = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html);
+    const off = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: false }).html);
+    ok('★★ 开着时组间有 cd-sep', on.indexOf('cd-sep') >= 0);
+    ok('★ 关掉时没有 cd-sep', off.indexOf('cd-sep') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
