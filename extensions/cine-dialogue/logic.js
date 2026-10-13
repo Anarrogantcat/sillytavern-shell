@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.9';
+export const VERSION = '0.8.10';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -666,7 +666,7 @@ function fixTitle(r) {
     switch (repaired) {
         case 'name': return '这一行的「名字·」是模型漏写的，插件按同楼最近标注过的角色补上';
         case 'quote': return '这一行没有层名，插件按引号判为「台词」，名字按同楼最近标注过的角色补上';
-        case 'layer-only': return '这一行只有层名、没有名字，插件按「旁白」处理（不猜角色）';
+        case 'layer-only': return '这一行只有层名、没有名字（插件不猜角色，就按写明的那个层渲染）';
         case 'bare': return '这一行完全没标注，插件按「不猜角色」的原则归为「旁白」';
         case 'alias': return '这一行的层名是非规范写法（英文或别名），插件已自动归一到对应中文层';
         case 'unknown-layer': return '这一行的层名不在内置层里，插件按**自定义层**渲染（层名不显示，可在原文里核对）';
@@ -681,7 +681,7 @@ function rowHTML(r, colorMap, config) {
 
     if (r.kind === 'narr') {
         return '<div class="cd-row cd-L-narr' + dim + fix + '" style="' + esc(layerVars('旁白', config)) + '">'
-            + '<span class="cd-who"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '></span>'
+            + '<span class="cd-who cd-noname"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '></span>'
             + '<span class="cd-body" title="双击复制这一行">' + esc(r.body) + '</span>'
             + '</div>';
     }
@@ -690,7 +690,7 @@ function rowHTML(r, colorMap, config) {
         const lv = layerVars(r.layer, config);
         const css = '--c:' + esc(c) + (lv ? ';' + esc(lv) : '');
         return '<div class="cd-row ' + layerClass(r.layer) + dim + fix + '" style="' + css + '">'
-            + '<span class="cd-who"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '>' + esc(r.name) + '</span>'
+            + '<span class="cd-who' + (r.name ? '' : ' cd-noname') + '"' + (fixTip ? ' title="' + esc(fixTip) + '"' : '') + '>' + esc(r.name) + '</span>'
             + '<span class="cd-body" title="双击复制这一行">' + esc(r.text) + '</span>'
             + '</div>';
     }

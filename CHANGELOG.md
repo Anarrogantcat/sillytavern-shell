@@ -1,5 +1,23 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 0.8.10：空名字的行收起名字列
+
+### 现象（用户截图：海津岛那楼）
+同一楼三种左边缘：有名字的行 ✓ / **空名字的行**（旁白、只写层名）✗ / 普通段 ✓ ⇒ 第 2 类被推右，看着就是"没对齐"
+
+### 根因（实测）
+`.cd-grid{grid-template-columns: var(--cd-namew,96px) 1fr}` 是**固定名字列**，
+而 `.cd-row{display:contents}` 让名字格直接参与网格 ⇒ **名字空着也占 96px** ✗
+
+### 修法
+空名字时给名字格加 `cd-noname`；CSS 里 `display:none` + 用**相邻兄弟**把正文 `grid-column:1/-1`
+（不必改正文那几行 ✓ 选择器全是自有前缀 ✓）· 内置兜底同步 · 顺带修正 `layer-only` 的过时 hover 提示
+
+### 夹具：**473 → 479 条**（含两条旧断言按新标记更新，意图不变）
+- 全量：compat-logic 658/0 · plot-pilot 67/67 · cine-dialogue **479/479** · ext-manage 49/49
+
+### 说明
+- 只改扩展 + 夹具 → **不升套壳版本号、不打 tag、不发包**（AGENTS §1.1）；套壳维持 **2.3.1**
 ## 未发版（2026-10-13）— cine-dialogue 0.8.9：逐卡「本卡不生效」
 
 ### 用户问题

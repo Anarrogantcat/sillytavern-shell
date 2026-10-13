@@ -1199,6 +1199,8 @@ const FALLBACK_CSS = [
     '.custom-cd-row.custom-cd-dim{opacity:.32}',
     '.custom-cd-hit{background:rgba(255,214,0,.30);border-radius:.15em}',
 '.custom-cd-anchor{display:none}',
+'.custom-cd-who.custom-cd-noname{display:none}',
+'.custom-cd-who.custom-cd-noname + .custom-cd-body{grid-column:1 / -1}',
 '.cd-tw{overflow-x:auto;max-width:100%}','.cd-tw>table{white-space:nowrap}',
     '.custom-cd-options{display:flex;flex-direction:column;gap:.35em;margin-top:.9em}',
     '.custom-cd-opt{display:flex;align-items:baseline;gap:.7em;width:100%;text-align:left;cursor:pointer;',
