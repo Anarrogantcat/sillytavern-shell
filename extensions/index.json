@@ -57,8 +57,8 @@
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 14508,
-          "sha1": "3414ea3174647461c90f67cdaff7eaba529f80a1"
+          "size": 15371,
+          "sha1": "f0f5a07eda14648e57b44fde3a6318b1cfec25e4"
         },
         {
           "path": "README.md",
@@ -140,5 +140,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T13:02:40.135Z"
+  "generatedAt": "2026-10-14T13:06:05.083Z"
 }
