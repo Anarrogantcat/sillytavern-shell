@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.0.1';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -515,7 +515,11 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
         }
     }
 
-    const layerFirst = line.match(/^([^·・:：\n]{2,8})\s*[·・:：]\s*([\s\S]{12,})$/);
+    /* ★★ 真机修复 1.0.1：状态栏 / 变量块的 YAML 行被这里吃掉键名 ✗
+       例：`        行动: "趴在沙发上"` —— `行动` 是 `动作` 的别名 ⇒ 被当成"只有层名的行"
+       ⇒ 键名 + 冒号被吞 ⇒ 状态栏内容被毁（用户："状态栏是被删了"—— 对 ✓）
+       YAML 的键**一定缩进**，而我们自己的行**永远顶格** ⇒ 用行首无空白区分 ✓ */
+    const layerFirst = /^\S/.test(line) ? line.match(/^([^·・:：\n]{2,8})\s*[·・:：]\s*([\s\S]{12,})$/) : null;
     if (layerFirst) {
         const canonFirst = canonLayer(layerFirst[1]);
         if (canonFirst) {

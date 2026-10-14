@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.0.0');
+eq('version 与 manifest 一致', VERSION, '1.0.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2070,6 +2070,31 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 冒号写法的整楼被接手', !!rc);
     ok('★★ 接手后可见文字里没有「·感官:」类标签', !!rc && !/·(动作|感官|台词|心理|旁白)\s*[:：]/.test(String(rc.html).replace(/<[^>]*>/g, '')));
     ok('★★ 并且台词已归一成「」', !!rc && String(rc.html).indexOf('「请尽管吩咐吧。」') >= 0);
+}
+
+/* ★★ 状态栏 / 变量块的 YAML 行不许被当成"只有层名的行"（用户 2026-10-14：状态栏是被删了） */
+{
+    const L8 = allLayers(DEFAULT_CONFIG);
+    const y1 = parseLine('        行动: "趴在沙发上，黑丝包裹的双腿交叠着"', L8, false);
+    ok('★★ 缩进的 YAML 行不再变成 row', y1.kind !== 'row');
+    const y2 = parseLine('        内心: 「好想吃玉子焼き~不过，长大了呢」', L8, false);
+    ok('★★ 缩进的「内心:」也不再变成 row', y2.kind !== 'row');
+    const y3 = parseLine('  日期和时间: "2025年08月25日 19点30分 星期一"', L8, false);
+    ok('★ 其它 YAML 键同样不受影响', y3.kind !== 'row');
+    /* 顶格的正常写法必须照旧 */
+    const y4 = parseLine('动作: 我抬手把门关上，指节压得发白。', L8, false);
+    ok('★ 顶格的「层: 内容」仍然认成 row', y4.kind === 'row' && y4.layer === '动作');
+    const y5 = parseLine('染·动作: 我抬手把门关上，指节压得发白。', L8, false);
+    ok('★★ 带名字的冒号写法照旧（不受本次影响）', y5.kind === 'row' && y5.name === '染' && y5.layer === '动作');
+    /* 端到端：状态栏块必须原样活下来 */
+    const N9 = String.fromCharCode(10);
+    const msg9 = ['染·动作 我伸手把门关上。', '<StatusBar>', '状态栏:', '  日期和时间: "2025年08月25日"', '        行动: "趴在沙发上"', '        内心: 「好想吃玉子焼き~」', '</StatusBar>'].join(N9);
+    const r9 = renderMessageHTML(msg9, {}, DEFAULT_CONFIG);
+    const h9 = r9 ? String(r9.html) : '';
+    ok('★★ 渲染后键名「行动:」还在', h9.indexOf('行动:') >= 0);
+    ok('★★ 渲染后键名「内心:」还在', h9.indexOf('内心:') >= 0);
+    ok('★★ 日期那行原样在', h9.indexOf('日期和时间:') >= 0);
+    ok('★ 分镜行照旧被渲染', (h9.match(/cd-row/g) || []).length >= 1);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
