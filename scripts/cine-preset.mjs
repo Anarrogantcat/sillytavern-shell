@@ -88,6 +88,14 @@ const CLEAN_EXTRA_NAMES = [
     '广播剧nsfw配件',
     '✔️文风-男性视觉（感谢k一串）',
     '🔴NSFW加强',
+    /* ★ 1.5.2：用户第二批点名（2026-10-14「这些」） */
+    '⭐思维链语言-中文',
+    '涩涩加速',
+    '防重复上文',
+    '结尾协议（顺序固定）',
+    '结尾完整性（最高优先级）',
+    '不许语气描写',
+    '推剧情',
 ];
 if (clean && r.ok) {
     let pool = null;
@@ -101,13 +109,15 @@ if (clean && r.ok) {
         const P = r.preset.prompts = r.preset.prompts || [];
         const O = r.preset.prompt_order[0].order;
         let added = 0, on = 0;
+        /* ★ 1.5.2：**去掉 emoji / 变体选择符 / 空白后再精确比对** ✓
+           教训（两条，都是本会话踩到的）：
+           ① 上游条目带 emoji 前缀（🎆/🎇/😍/⛔️…），用户截图里 emoji 不显示 ⇒ 全名匹配会漏 ✗
+           ② 但**包含匹配又太松** ✗：`⚡推剧情` 会匹配到 `⚡️慢推剧情`（两个不同条目！）
+           ③ 还有**变体选择符**坑：`⭐思维链语言-中文` 的真实名字是 `⭐️思维链语言-中文`（多了 U+FE0F）
+           ⇒ 正解：两侧都剥掉 emoji 区间与 U+FE0F 与空白，再**精确**比较 ✓ */
+        const normName = (s) => String(s == null ? '' : s).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{FE0F}\u{200D}\s]/gu, '');
         for (const nm of CLEAN_EXTRA_NAMES) {
-            /* ★ 1.5.1：**包含匹配** —— 上游这些条目带 emoji 前缀（🎆实验-nsfw / 🎇实验-ASMR…），
-               用户截图里 emoji 没显示出来 ⇒ 只按全名匹配会漏 ✗ ⇒ 改成「全名相同 或 包含」✓ */
-            const src = poolP.find((x) => {
-                const n = String(x.name || '').trim();
-                return n === nm || n.indexOf(nm) >= 0;
-            });
+            const src = poolP.find((x) => normName(x.name) === normName(nm));
             if (!src) { console.log('  · ⚠ 素材里没有「' + nm + '」⇒ 跳过'); continue; }
             const realName = String(src.name || '').trim();
             if (P.some((x) => String(x.name || '').trim() === realName)) { console.log('  · 「' + realName + '」已在干净版里 ⇒ 跳过'); continue; }
