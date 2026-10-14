@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.0.1';
+export const VERSION = '1.0.4';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -519,13 +519,27 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
        例：`        行动: "趴在沙发上"` —— `行动` 是 `动作` 的别名 ⇒ 被当成"只有层名的行"
        ⇒ 键名 + 冒号被吞 ⇒ 状态栏内容被毁（用户："状态栏是被删了"—— 对 ✓）
        YAML 的键**一定缩进**，而我们自己的行**永远顶格** ⇒ 用行首无空白区分 ✓ */
-    const layerFirst = /^\S/.test(line) ? line.match(/^([^·・:：\n]{2,8})\s*[·・:：]\s*([\s\S]{12,})$/) : null;
+    /* ★★ 1.0.3 最终判据：**看分隔符** ✓
+       · `·` / `・` ⇒ 这是**行**（模型写行时用它；YAML 从不用 `·`）⇒ 认别名 ✓
+       · `:` / `：` ⇒ 可能是**行**（`动作: 内容`）也可能是 **YAML 键值**（`行动: "…"`）
+         ⇒ 只认**五个正名** ✓（状态栏的键都是别名：行动/内心/名字/欲望值…）
+       缘由：1.0.1 的"必须顶格"没修干净（真机 33 条仍 28 条丢键名）；
+             1.0.2 的"只认正名"又误伤 `旁的叙述·…`（别名 + ·）⇒ 夹具报红 ✗ */
+    const layerFirst = line.match(/^([^·・:：\n]{2,8})\s*([·・:：])\s*([\s\S]{12,})$/);
     if (layerFirst) {
-        const canonFirst = canonLayer(layerFirst[1]);
+        /* ★★ 1.0.2：裸层名写法**只认五个正名** ✓
+           真机数据：状态栏 YAML 的键常写 `行动:` / `内心:`（这是**别名**，不是正名）
+           ⇒ 若这里走 canonLayer（认别名）就会把它们当成"只有层名的行" ⇒ 吃掉键名 ✗
+           正名写法（动作/感官/台词/心理/旁白）照旧 ✓ */
+        const rawF = layerFirst[1];
+        const sepF = layerFirst[2];
+        const canonFirst = (sepF === '·' || sepF === '・')
+            ? canonLayer(rawF)
+            : ((LAYERS || []).indexOf(rawF) >= 0 ? canonLayer(rawF) : null);
         if (canonFirst) {
-            const body = layerFirst[2].trim();
+            const body = layerFirst[3].trim();
             if (canonFirst === '旁白') return { kind: 'narr', body };
-            return { kind: 'row', name: '', layer: canonFirst, text: body, repaired: 'layer-only', rawLayer: layerFirst[1] };
+            return { kind: 'row', name: '', layer: canonFirst, text: body, repaired: 'layer-only', rawLayer: rawF };
         }
     }
 

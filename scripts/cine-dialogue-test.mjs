@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.0.1');
+eq('version 与 manifest 一致', VERSION, '1.0.4');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1623,21 +1623,26 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 }
 
 /* ============================================================================
-   ★ 有意行为（用户 2026-10-14「按你倾向」确认）：
-   `行动: "…"` 这类「层名 + 中文冒号 + 正文」的行，按**动作行（无名字）**渲染：
-   去掉 `行动:` 前缀 ✓、正文对齐正文列 ✓。
-   这不是 bug —— 钉住它，免得以后被误当 bug 改掉。
+   ★★ 判据**反转**（2026-10-14，1.0.4）：
+   旧决定（当年「按你倾向」）把 `行动: "…"` 当**动作行**渲染、去掉 `行动:` 前缀 ✗
+   —— 它与**状态栏 YAML 的键同形** ⇒ 把状态栏的键名吃掉了 ✗（用户："状态栏是被删了"）
+   新判据：`:` 分隔时**只认五个正名** ✓（没有卡会把 YAML 键写成"动作"）
+   ⇒ `行动:` / `内心:`（别名）⇒ **不碰** ✓ 状态栏原样活下来 ✓
    ============================================================================ */
 {
     const L = allLayers(DEFAULT_CONFIG);
     const s = '行动: "趴在沙发上，黑丝包裹的双腿交叠着"';
     const p = parseLine(s, L, false);
-    eq('★ 归为动作行（无名字）', p.kind + '/' + p.layer + '/' + p.name, 'row/动作/');
-    ok('★ 正文完整保留（引号在）', p.text.indexOf('趴在沙发上') >= 0);
+    ok('★★ 别名+冒号不再当行（保住状态栏键名）', p.kind !== 'row');
     const html = String(renderMessageHTML('染·动作 我推门进去。' + String.fromCharCode(10) + s, {}, DEFAULT_CONFIG).html);
-    const vis = html.replace(/<[^>]*>/g, '');
-    ok('★★ 可见文字里没有「行动:」这个前缀（被层名吃掉了）', vis.indexOf('行动') < 0);
-    ok('★ 正文仍然可见（实体编码后也算在）', /趴在沙发上/.test(vis));
+    ok('★★ 状态栏那行的「行动:」原样保留', html.indexOf('行动:') >= 0);
+    ok('★ 该行正文也还在', html.indexOf('趴在沙发上') >= 0);
+    const q = parseLine('动作: 我抬手把门关上，指节压得发白。', L, false);
+    ok('★ 正名 + 冒号仍然是行（没有卡把 YAML 键写成正名）', q.kind === 'row' && q.layer === '动作');
+    const q2 = parseLine('行动: 我抬手把门关上，指节压得发白。', L, false);
+    ok('★ 别名 + 冒号不再是行', q2.kind !== 'row');
+    const q3 = parseLine('染·行动 我抬手把门关上，指节压得发白。', L, false);
+    ok('★★ 但是「染·行动」（带名字）仍然是行 —— 别名只在有 · 时生效', q3.kind === 'row' && q3.layer === '动作');
 }
 
 /* ★★ 禁掉 ST「引用文本」色在我们行内的渗入（0.8.22，用户定位到的根因） */
@@ -2095,6 +2100,23 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 渲染后键名「内心:」还在', h9.indexOf('内心:') >= 0);
     ok('★★ 日期那行原样在', h9.indexOf('日期和时间:') >= 0);
     ok('★ 分镜行照旧被渲染', (h9.match(/cd-row/g) || []).length >= 1);
+}
+
+/* ★★ 1.0.2：裸层名写法只认正名 ⇒ 顶格的 YAML 键（别名）也不许变成 row */
+{
+    const L9 = allLayers(DEFAULT_CONFIG);
+    const z1 = parseLine('行动: "趴在沙发上，黑丝包裹的双腿交叠着"', L9, false);
+    ok('★★ 顶格的「行动:」（别名）不再变 row', z1.kind !== 'row');
+    const z2 = parseLine('内心: 「好想吃玉子焼き~不过，长大了呢」', L9, false);
+    ok('★★ 顶格的「内心:」（别名）不再变 row', z2.kind !== 'row');
+    const z3 = parseLine('动作: 我抬手把门关上，指节压得发白。', L9, false);
+    ok('★ 正名「动作:」照旧是 row', z3.kind === 'row' && z3.layer === '动作');
+    const z4 = parseLine('旁白: 走廊的灯闪了一下，又灭了。', L9, false);
+    ok('★ 正名「旁白:」照旧是旁白', z4.kind === 'narr');
+    const z5 = parseLine('染·动作: 我抬手把门关上，指节压得发白。', L9, false);
+    ok('★★ 带名字的 染·动作: 写法完全不受影响', z5.kind === 'row' && z5.name === '染' && z5.layer === '动作');
+    const z6 = parseLine('染·行动 我抬手把门关上，指节压得发白。', L9, false);
+    ok('★ 带名字的别名写法（染·行动）仍然认', z6.kind === 'row' && z6.layer === '动作');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
