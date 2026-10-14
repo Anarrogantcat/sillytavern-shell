@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.54');
+eq('version 与 manifest 一致', VERSION, '0.8.55');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1774,7 +1774,7 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
     const lp = r.preset.prompts.find((p) => String(p.name || '') === PRESET_RECIPE.lengthName);
     ok('★★ 预设里新增了「篇幅与节奏」条目', !!lp);
-    ok('★★ 内容是 LENGTH_SPEC（含 5 个回合 / 长行 150–300 字）', String(lp.content).indexOf('写满 5 个回合') >= 0 && String(lp.content).indexOf('150–300 字') >= 0);
+    ok('★★ 内容是 LENGTH_SPEC（含篇幅参考 / 长行 150–300 字）', String(lp.content).indexOf('8–12 个回合') >= 0 && String(lp.content).indexOf('150–300 字') >= 0);
     ok('★ 条目不用星号（免得模型抄进正文）', String(lp.content).indexOf('*') < 0);
     const od = r.preset.prompt_order[0].order;
     /* 停用的派生说明会排在它后面 ⇒ 判据看「最后一条启用」✓ */
@@ -1814,13 +1814,6 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 {
     ok('★★ 一组 = 一个回合（不再绑死 5 行）', LENGTH_SPEC.indexOf('一个回合 = 一组') >= 0);
     ok('★★ 台词句数 = 在场开口的人数（2/3/5 人举例）', LENGTH_SPEC.indexOf('2 人 ⇒ 2 句') >= 0 && LENGTH_SPEC.indexOf('5 人 ⇒ 5 句') >= 0);
-    ok('★★ 组数随人数下调（10 / 8 / 6–7）', LENGTH_SPEC.indexOf('2 人 ⇒ 5 组') >= 0 && LENGTH_SPEC.indexOf('5 人以上 ⇒ 3 组') >= 0);
-    ok('★★ 不再出现与人数无关的绝对组数（旧的"7 组/3 组"已清）', LENGTH_SPEC.indexOf('7 组是重场') < 0 && LENGTH_SPEC.indexOf('3 组是过渡') < 0);
-    ok('★ 节奏改成按比例表述', LENGTH_SPEC.indexOf('约七成组是重场') >= 0 && LENGTH_SPEC.indexOf('约三成组是过渡') >= 0);
-    ok('★★ 台词行数 = 在场开口的人数', LENGTH_SPEC.indexOf('台词行数 = 在场') >= 0);
-    ok('★★ 重要角色可以多说一句', LENGTH_SPEC.indexOf('重要角色可以多说一句') >= 0);
-    ok('★ 没开口的人不给台词行', LENGTH_SPEC.indexOf('不给台词行') >= 0);
-    ok('★ 组数随人数下调（总量不变）', LENGTH_SPEC.indexOf('组数随人数下调') >= 0);
     const mk3 = (content) => ({
         prompts: [{ identifier: 'cine-dialogue-length', name: PRESET_RECIPE.lengthName, content }],
         prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-length', enabled: true }] }],
@@ -1905,17 +1898,10 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 /* ★★ 硬目标 + 长行 200–300（用户 2026-10-14：先要 10 组，再把长行定在 200–300）
    实测：回复上限 30000t 不是限制；真凶是原生「正文字数不小于1000」⇒ 模型满足就收工 ✗ */
 {
-    ok('★★ 写明一次生成要写满 10 个回合', LENGTH_SPEC.indexOf('写满 5 个回合') >= 0);
-    ok('★★ 明说写短也要写满回合数（回合数不能少）', LENGTH_SPEC.indexOf('回合数不能少') >= 0);
-    ok('★★ 不再出现 token 数字（免得被当上限）', LENGTH_SPEC.indexOf('token 以内') < 0 && LENGTH_SPEC.indexOf('≈5000') < 0);
     /* ★ 防重复：同一条要求只许出现一次（0.8.45 踩到过"新旧文案各留一份" ✗） */
     eq('★★ "只是最低门槛"只出现一次', LENGTH_SPEC.split('只是最低门槛').length - 1, 1);
-    eq('★★ "接着写下一个回合"只出现一次', LENGTH_SPEC.split('接着写下一个回合').length - 1, 1);
-    eq('★★ "写满 10 个回合"在总目标里只出现一次', LENGTH_SPEC.split('这一次生成要写满 5 个回合').length - 1, 1);
     ok('★ 没有连续三个换行（清理干净）', LENGTH_SPEC.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(10)) < 0);
     /* ★ 近似重复也要盯住：同一条要求换了个说法再出现一次，也是残留 ✗（0.8.46 踩到） */
-    eq('★★ "直到写满"只出现一次', LENGTH_SPEC.split('直到写满').length - 1, 1);
-    eq('★★ "允许提前收尾"只出现一次', LENGTH_SPEC.split('允许提前收尾').length - 1, 1);
     ok('★ 不再出现旧的"10 组；只有"写法', LENGTH_SPEC.indexOf('10 组；只有') < 0);
     ok('★★ 明确说「不小于 1000」只是最低门槛', LENGTH_SPEC.indexOf('只是最低门槛') >= 0);
     ok('★★ 场景提前结束要接着写下一个回合', LENGTH_SPEC.indexOf('接着写下一个回合') >= 0);
@@ -2004,16 +1990,22 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     eq('★ 标签后无内容且到底 ⇒ 不改', mergeSplitTags('甲·台词'), '甲·台词');
 }
 
-/* ★★ 目标按模型实测天花板反推（用户 2026-10-14：「是不是10组太多」）
-   实测：30 楼里最长 4070 字，达到 4000+ 的只有 1 楼 ⇒ 7500–8500 字做不到 ⇒ 降到 5 组 ~3500–4000 字 */
 {
-    ok('★★ 目标写明 5 个回合', LENGTH_SPEC.indexOf('写满 5 个回合') >= 0);
-    ok('★★ 字数目标 3500–4000', LENGTH_SPEC.indexOf('3500–4000') >= 0);
-    ok('★★ 组数表按人数下调到 5/4/3', LENGTH_SPEC.indexOf('2 人 ⇒ 5 组') >= 0 && LENGTH_SPEC.indexOf('5 人以上 ⇒ 3 组') >= 0);
-    ok('★ 不再出现 10 组的目标', LENGTH_SPEC.indexOf('写满 10') < 0 && LENGTH_SPEC.indexOf('⇒ 10 组') < 0);
-    ok('★ 五行结构与「不许连续两个动作行」仍在', LENGTH_SPEC.indexOf('五行一组，顺序固定') >= 0 && LENGTH_SPEC.indexOf('绝对不要连续写两个「动作」行') >= 0);
 }
 
+/* ★★ 篇幅：有最低要求、不设上限（用户 2026-10-14：「但要有最低要求」） */
+{
+    ok('★★ 写明最低要求（至少 8 个回合 / 不少于 6000 字）', LENGTH_SPEC.indexOf('至少写满 8 个回合') >= 0 && LENGTH_SPEC.indexOf('不少于 6000 字') >= 0);
+    ok('★★ 写明不设上限', LENGTH_SPEC.indexOf('不设上限') >= 0);
+    ok('★★ 一个回合给参考区间 700–1000 字', LENGTH_SPEC.indexOf('700–1000 字') >= 0);
+    ok('★★ 五行结构与不允许连续两个动作行仍在', LENGTH_SPEC.indexOf('五行一组，顺序固定') >= 0 && LENGTH_SPEC.indexOf('绝对不要连续写两个「动作」行') >= 0);
+    ok('★★ 长行仍是 150–300 字', LENGTH_SPEC.split('150–300 字').length - 1 >= 3);
+    ok('★ 不再出现旧的 10 组目标', LENGTH_SPEC.indexOf('写满 10 组') < 0 && LENGTH_SPEC.indexOf('写完 10 个回合') < 0);
+    eq('★ 关键句各只出现一次（无重复）', LENGTH_SPEC.split('接着写下一个回合').length - 1, 1);
+    ok('★ 没有连续三个换行', LENGTH_SPEC.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(10)) < 0);
+}
+
+/* ---------------------------- 汇总 ---------------------------- */
 /* ---------------------------- 汇总 ---------------------------- */
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);
 if (failures.length) {
