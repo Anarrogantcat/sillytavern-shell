@@ -211,6 +211,10 @@ function isLightTheme() {
    ------------------------------------------------------------------ */
 
 const hookStats = { formatted: 0, lastMid: -1 };
+/* ★★ 1.9.6：带卡前端标记的楼**不进钩子路径** —— 钩子要重建整条消息 HTML，卡脚本画出来的
+   选项栏/状态栏节点全丢（真机：选项变纯文本、点不动 ✗）。放行给 DOM 路径（它原样保留卡的节点）✓ */
+const CD_FE_MARKER = /StatusPlaceHolderImpl|<option\s*\/?>|<options>|<StatusBar>|UpdateVariable|TavernHelper|stat_data|<%/i;
+const cdPassthrough = new Set();
 
 /** 核内补丁接线了没有（补丁里会设这个标记） */
 function hookActive() {
@@ -232,6 +236,10 @@ function formatHook(mes, ctx) {
         if (!hasOurLines(mergedMes)) return mes;                  // 合并后仍没有我们的行 → 一个字不改
 
         const mid = (ctx && Number.isFinite(Number(ctx.messageId))) ? Number(ctx.messageId) : -1;
+        if (CD_FE_MARKER.test(mergedMes)) {   /* 1.9.6：卡的节点保持原样 ⇒ 放行 */
+            if (mid >= 0) cdPassthrough.add(mid);
+            return mes;
+        }
 
         /* 思考块兜底：预设那条思维链正则只覆盖最近 N 层，更早的层由我们折叠。
            depth 算不出来时**选择包**（宁可折叠也不要把思考摊在外面）。 */
@@ -525,7 +533,7 @@ function run(all) {
         try {
             /* 核内钩子已渲染好了 → 只补装饰，不再解析 DOM
                （钩子的输出里已不含标签，重解析等于白跑，还会把成果再包一层） */
-            if (hooked) { decorate(mesEl); continue; }
+            if (hooked && !cdPassthrough.has(mesId)) { decorate(mesEl); continue; }   // 1.9.6：放行的楼照旧走 DOM 路径
 
             const r = transformMessage(mesEl, mesId);
             if (r.ok) { decorate(mesEl); rendered++; }
