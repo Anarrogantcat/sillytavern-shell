@@ -84,8 +84,10 @@ for (const [label, args] of [['夹具', ['scripts/cine-dialogue-test.mjs']], ['�
         const dirty = execFileSync('git', ['-C', ST, 'status', '--porcelain'], { encoding: 'utf8' }).split('\n').filter((x) => x.trim());
         const core = dirty.filter((d) => /\s(public|src|default|plugins|node_modules)\//.test(d) || /\sserver\.js|\spackage\.json|\sconfig\.yaml/.test(d));
         const untracked = dirty.filter((d) => d.startsWith('??'));
-        /* 允许的：① patches/ 里记录过的补丁 ② 套壳安装时留下的（config.yaml / index.html / .bak / .git-head / img 素材） */
-        const KNOWN_INSTALLER = /(\?\?|M)\s+(\.git-head|public\/index\.html\.bak|public\/img\/|default\/config\.yaml|public\/index\.html)$/;
+        /* 允许的：① patches/ 里记录过的补丁 ② 套壳安装时留下的 / **用户自己放的素材**
+           ★ 1.9.2 修正：`public/img/cg/`、`public/img/cg2/` 是用户自己的 CG 素材目录 ✗
+             之前正则写成 `public\/img\/$`（要求行尾结束）⇒ 匹配不上 `public/img/cg/` ⇒ 假报 ✗ */
+        const KNOWN_INSTALLER = /(\?\?|M)\s+(\.git-head$|public\/index\.html\.bak$|public\/img\/|default\/config\.yaml$|public\/index\.html$)/;
         const patches = fs.existsSync(path.join(R, 'patches')) ? fs.readdirSync(path.join(R, 'patches')).filter((f) => f.endsWith('.patch')) : [];
         let appliedOk = 0, appliedBad = [];
         for (const p of patches) {
