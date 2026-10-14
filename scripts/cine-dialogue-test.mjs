@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.4.0');
+eq('version 与 manifest 一致', VERSION, '1.5.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2282,6 +2282,16 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 干净版配方能跑通', r.ok === true);
     ok('★★ 干净版不含上游痕迹（没改字数指令也不报错）', Array.isArray(r.changes) && r.changes.length > 0);
     ok('★★ 干净版里铁律被插进 order', (r.preset.prompt_order[0].order || []).some((x) => String(x.identifier) === 'cine-dialogue-iron'));
+}
+
+/* ★★ 1.5.1：干净版要带上用户点名的 NSFW 素材条目（包含匹配，容 emoji 前缀） */
+{
+    const sc = fs.readFileSync(new URL('../scripts/cine-preset.mjs', import.meta.url), 'utf8');
+    ok('★★ 有素材名单 CLEAN_EXTRA_NAMES', sc.indexOf('CLEAN_EXTRA_NAMES') >= 0);
+    ok('★★ 名单含 13 条（用户点名的那批）', (sc.match(/^\s{4}'.+',$/gm) || []).filter((x) => /NSFW|nsfw|ASMR|广播剧|男性向|男性视觉|王小波/.test(x)).length >= 12);
+    ok('★ 用包含匹配（容 emoji 前缀）', sc.indexOf('n.indexOf(nm) >= 0') >= 0);
+    ok('★ 从 DEFAULT_SRC 取素材（不是 ST 默认预设）', sc.indexOf('fs.readFileSync(DEFAULT_SRC') >= 0);
+    ok('★ 保持原启用状态', sc.indexOf('poolEn.get(String(src.identifier)) === true') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

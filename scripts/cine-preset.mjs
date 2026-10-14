@@ -68,6 +68,61 @@ const orig = JSON.parse(srcBuf.toString('utf8'));
    这样用户在派生文件里自己做的额外调整不会被抹掉。 */
 const base = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : orig;
 const r = applyPresetRecipe(base, { srcName: path.basename(SRC), srcHash, clean });
+
+/* ★★ 1.5.0：干净版还要带上用户**点名**的那些条目（2026-10-14「这些加上」）
+   它们属于上游预设的"素材库"（NSFW / 文风），从**上游预设**按名字搬过来 ✓
+   · 保持**原启用状态**（下游想用就自己开）✓
+   · 只搬条目本体 + 在 prompt_order 里挂位（已存在就跳过）✓
+   · 搬运来源固定是 DEFAULT_SRC（Izumi），与 --src 无关，避免把 ST 默认预设当素材 ✗ */
+const CLEAN_EXTRA_NAMES = [
+    '🎁可写NSFW↓',
+    'nsfw-体型差色色',
+    'nsfw-木珠',
+    '✔️多人称文风-王小波',
+    '实验-nsfw',
+    'NSFW-本子-实验',
+    '实验-ASMR',
+    '❄️男性向-直白色情',
+    '❄️NSFW-谷崎润一郎',
+    '✔️文风-广播剧（点进去）',
+    '广播剧nsfw配件',
+    '✔️文风-男性视觉（感谢k一串）',
+    '🔴NSFW加强',
+];
+if (clean && r.ok) {
+    let pool = null;
+    try { pool = JSON.parse(fs.readFileSync(DEFAULT_SRC, 'utf8')); } catch (_) { }
+    if (!pool) {
+        console.log('⚠ 找不到素材来源（' + DEFAULT_SRC + '）⇒ 跳过追加条目');
+    } else {
+        const poolP = pool.prompts || [];
+        const poolO = ((pool.prompt_order || [])[0] || {}).order || [];
+        const poolEn = new Map(poolO.map((x) => [String(x.identifier), !!x.enabled]));
+        const P = r.preset.prompts = r.preset.prompts || [];
+        const O = r.preset.prompt_order[0].order;
+        let added = 0, on = 0;
+        for (const nm of CLEAN_EXTRA_NAMES) {
+            /* ★ 1.5.1：**包含匹配** —— 上游这些条目带 emoji 前缀（🎆实验-nsfw / 🎇实验-ASMR…），
+               用户截图里 emoji 没显示出来 ⇒ 只按全名匹配会漏 ✗ ⇒ 改成「全名相同 或 包含」✓ */
+            const src = poolP.find((x) => {
+                const n = String(x.name || '').trim();
+                return n === nm || n.indexOf(nm) >= 0;
+            });
+            if (!src) { console.log('  · ⚠ 素材里没有「' + nm + '」⇒ 跳过'); continue; }
+            const realName = String(src.name || '').trim();
+            if (P.some((x) => String(x.name || '').trim() === realName)) { console.log('  · 「' + realName + '」已在干净版里 ⇒ 跳过'); continue; }
+            const copy = JSON.parse(JSON.stringify(src));
+            P.push(copy);
+            const wantOn = poolEn.get(String(src.identifier)) === true;
+            O.push({ identifier: copy.identifier, enabled: wantOn });
+            added++;
+            if (wantOn) on++;
+            console.log('  · 追加「' + realName + '」（' + (wantOn ? '启用' : '停用') + '，' + String(copy.content || '').length + ' 字）');
+        }
+        console.log('');
+        console.log('干净版追加素材条目 ' + added + ' 条（其中启用 ' + on + ' 条）');
+    }
+}
 if (!r.ok) {
     console.error('配方失败：' + r.changes.join('；'));
     process.exit(1);
