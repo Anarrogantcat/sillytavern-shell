@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.8.1');
+eq('version 与 manifest 一致', VERSION, '1.8.2');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2331,9 +2331,9 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 /* ★★ 1.8.1：cardHasFrontend 判据要含纯 CSS 与 markdown 着色（用户指着「欲妈群」那楼问） */
 {
     const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
-    ok('★★ 判据含 <style> 与 CSS 规则', src.indexOf('CSS_RE = /<style') >= 0 && src.indexOf('{0,300}') >= 0);
-    ok('★★ 判据含 markdown 着色（## / **…** / *#*#）', src.indexOf('MD_RE = ') >= 0 && src.indexOf('\\*#\\*#') >= 0);
-    ok('★ 三者取或（FE || CSS || MD）', /FE_RE\.test\(s\) \|\| CSS_RE\.test\(s\) \|\| MD_RE\.test\(s\)/.test(src));
+    ok('★★ 判据**只认真有渲染器的标记**（占位符 / TavernHelper / MVU）', /RENDER_RE = \/StatusPlaceHolderImpl/.test(src));
+    ok('★★ CSS 文本**不算**（没有渲染器就等于没生效 ✓ 用户：「我怎么没看出来有美化」）', src.indexOf('CSS_RE') < 0 && src.indexOf('MD_RE') < 0);
+    ok('★ 只用 RENDER_RE 判定', /const val = RENDER_RE\.test\(s\);/.test(src));
     ok('★ 仍然按卡缓存', src.indexOf('cardFECache.key === key') >= 0);
 }
 

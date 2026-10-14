@@ -1135,13 +1135,16 @@ function cardKey() {
  *   带缓存（按卡 avatar 作键）✓ —— 卡的世界书可能有几百条，不能每条消息都 JSON.stringify ✗
  */
 /**
- * ★ 1.8.1：判据**补上纯 CSS 与 markdown 着色** ✓
- *   教训（用户指着「欲妈群」那楼问「这是美化？」）：
- *   我原来的判据是"标签型"（`<style>` / `<%` / 占位符 / MVU）⇒ **只有 CSS 的卡会被漏掉** ✗
- *   107 张卡实测（放宽口径后）：
- *     `<style>` 84 · CSS 规则 86 · TavernHelper `<%` 38 · 占位符 62 · MVU 68 · markdown 着色 84
- *     ★ 任一命中 = **97 / 107**（原来报 89 ✗ 偏小）
- *   ⇒ 所以这里加上：CSS 规则（`.x{…}`）· `<style>` · markdown 标题/加粗（`## ` / `**…**` / `*#*#`）
+ * ★★ 1.8.2：判据**改成"真有渲染器才认"** ✓
+ *   用户一句「我怎么没看出来有美化」把我问住了 —— **他说得对** ✗：
+ *   · 卡 JSON 里躺着 `<style>` / CSS 文本 ⇒ **没有渲染器就等于没生效** ✗（看不见 ✓）
+ *   · `## ` / `**加粗**` 是 **ST 自己**渲染的 ✗ ⇒ 根本不算"卡的美化" ✓
+ *   ⇒ 所以 1.8.1 的 97/107 是**虚高且归因错误**的 ✗
+ *   真正**能看见**的效果只来自：
+ *     · **占位符**（`<StatusPlaceHolderImpl/>` / `<option/>` / `<StatusBar>`）—— 由 card-compat 渲染 ✓
+ *     · **TavernHelper `<%…%>` 脚本**（装上且绑定到卡才会跑 ✓）
+ *     · **MVU / UpdateVariable**（变量状态栏 ✓）
+ *   ⇒ 只按这三类判定 ✓（CSS / markdown 一律不算 ✗）
  */
 let cardFECache = { key: '', val: false };
 function cardHasFrontend() {
@@ -1152,10 +1155,9 @@ function cardHasFrontend() {
         const key = String(c.avatar || c.name || '');
         if (cardFECache.key === key) return cardFECache.val;
         const s = JSON.stringify(c);
-        const FE_RE = /StatusPlaceHolderImpl|<option|<StatusBar|UpdateVariable|TavernHelper|stat_data|<%/i;
-        const CSS_RE = /<style[\s>]|[.#][A-Za-z][\w-]*\s*\{[^}]{0,300}\}/;
-        const MD_RE = /^\s*#{2,}\s|\*\*[^*\n]{2,}\*\*|\*#\*#/m;
-        const val = FE_RE.test(s) || CSS_RE.test(s) || MD_RE.test(s);
+        /* 只认"真的有东西会去渲染它"的标记 ✓ */
+        const RENDER_RE = /StatusPlaceHolderImpl|<option\s*\/?>|<StatusBar>|UpdateVariable|TavernHelper|stat_data|<%/i;
+        const val = RENDER_RE.test(s);
         cardFECache = { key, val };
         return val;
     } catch (_) { return false; }

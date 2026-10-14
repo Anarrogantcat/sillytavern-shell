@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.8.2：判据回到"真有渲染器才认"
+
+用户「我怎么没看出来有美化」⇒ 承认 1.8.1 的 97/107 虚高（拿"文本存在"当"效果存在"）。
+cardHasFrontend 回到只认占位符 / TavernHelper / MVU；CSS 与 markdown 不算。夹具 +4。
 ## 未发版（2026-10-14）— cine-dialogue 1.8.1：判据补 CSS/markdown
 
 用户问「这是美化？」⇒ 重扫：97/107 张卡有样式资源（原报 89 偏小）。cardHasFrontend 补上
