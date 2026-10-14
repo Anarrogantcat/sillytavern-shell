@@ -223,7 +223,12 @@ function formatHook(mes, ctx) {
         if (!c.enabled) return mes;
         if (ctx && ctx.isSystem) return mes;
         if (ctx && ctx.isUser && !c.transformUserMessages) return mes;
-        if (!hasOurLines(mes)) return mes;                        // 没有我们的行 → 一个字不改
+        /* ★★ 真机根因修复（0.8.57）：模型会把「名字·层」单独写一行、内容写在下一行。
+           原文里那种写法**不是合法行** ⇒ 下面这句 hasOurLines 会返回 false ⇒
+           钩子直接把原文放行 ⇒ 标签全裸露（用户：「完全是插件的问题」—— 对 ✓）。
+           所以：**先合并、再判断** ✓ */
+        const mergedMes = mergeSplitTags(mes);
+        if (!hasOurLines(mergedMes)) return mes;                  // 合并后仍没有我们的行 → 一个字不改
 
         const mid = (ctx && Number.isFinite(Number(ctx.messageId))) ? Number(ctx.messageId) : -1;
 
@@ -234,7 +239,7 @@ function formatHook(mes, ctx) {
         const wrapThinking = (mode === 'always')
             || (mode === 'auto' && (d === undefined || d > (Number(c.thinkingDepth) || 0)));
 
-        const res = renderMessageHTML(mes, { ...chatWideColors(), ...(colorMap[mid] || {}) }, c, { wrapThinking });
+        const res = renderMessageHTML(mergedMes, { ...chatWideColors(), ...(colorMap[mid] || {}) }, c, { wrapThinking });
         if (!res || !res.html) return mes;
 
         if (mid >= 0) colorMap[mid] = res.colors;                 // 本楼缓存

@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 0.8.57：修钩子放行（标签独占一行）
+
+用户坚持是插件的问题，对。真因：钩子 formatHook 用【原文】调 hasOurLines，
+标签独占一行时原文无合法行 ⇒ 直接放行 ⇒ mergeSplitTags 没机会跑。
+改为先合并再判断，并渲染合并后的文本。夹具 659/0。
 ## 未发版（2026-10-14）— cine-dialogue 0.8.56：发送栏三个按钮
 
 在 card-compat 的 #cc-var-bar 里追加（不改它的代码）：重渲染本楼 / 诊断本楼 / 本卡生效开关。

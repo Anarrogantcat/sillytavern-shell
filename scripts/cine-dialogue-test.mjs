@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.56');
+eq('version 与 manifest 一致', VERSION, '0.8.57');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2021,6 +2021,21 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ CSS 全自有前缀（.cd-bar / .cd-bar-btn）', /\.cd-bar\s*\{/.test(css2) && /\.cd-bar-btn\s*\{/.test(css2));
     ok('★ 我们没有写 card-compat 的前缀样式', !/\.cc-var[^\s]*\s*\{/.test(css2));
     ok('★ 按钮文案是中文且不空', ['重渲染本楼', '诊断本楼', '本卡生效/不生效'].every((s) => btn.indexOf(s) >= 0));
+}
+
+/* ★★ 真机根因（0.8.57）：钩子必须在合并【之后】判断，否则"标签独占一行"被整条放行 ✗ */
+{
+    const ix3 = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 钩子里先 mergeSplitTags 再 hasOurLines', /const mergedMes = mergeSplitTags\(mes\);/.test(ix3) && /hasOurLines\(mergedMes\)/.test(ix3));
+    ok('★★ 钩子渲染用的是合并后的文本', /renderMessageHTML\(mergedMes,/.test(ix3));
+    eq('★★ 不再有拿原文判断的门（hasOurLines(mes)）', (ix3.match(/hasOurLines\(mes\)/g) || []).length, 0);
+    /* 端到端：模拟钩子路径 —— 原文不合法、合并后才合法 ⇒ 必须能被接手 */
+    const N7 = String.fromCharCode(10);
+    const raw7 = '沙良·心理' + N7 + '我真的在发疯吗？居然还会如此坦荡地承认自己的渴求。';
+    ok('★ 原文 hasOurLines=false（这就是旧版放行的原因）', hasOurLines(raw7) === false);
+    ok('★★ 合并后 hasOurLines=true', hasOurLines(mergeSplitTags(raw7)) === true);
+    const r7 = renderMessageHTML(mergeSplitTags(raw7), {}, DEFAULT_CONFIG);
+    ok('★★ 合并后能渲染且标签不裸露', !!r7 && !/·心理/.test(String(r7.html).replace(/<[^>]*>/g, '')));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
