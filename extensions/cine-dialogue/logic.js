@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.59';
+export const VERSION = '0.8.60';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -501,6 +501,20 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
          · `·` 后面**至少 12 个字符** —— 挡住「外文名里的间隔号」这类误判
        ⇒ 当「该层名 + 没有名字」处理：旁白走 narr（本来就没有名字格 ✓），其余层走 row（名字为空）。
        ★ 顺序很关键：必须在 RE_NARR 之后、rowRegexFor 之前 —— 否则会抢掉正常的 `名字·层 内容`。 */
+    /* ★★ 模型常用的另一种写法：`名字·层: 内容`（层名后是【冒号】）。
+       真机实测：这种行原来落进 err ⇒ 整楼被判格式错误 ⇒ 美化完全不生效 ✗（用户截图）
+       ⇒ 先把它认下来（层名走 canonLayer，认不出就走下面的兜底）✓ */
+    const colonRow = line.match(/^([^\s·・:：*#>\[\]{}()=+~\`|,，.。!！?？-][^·・:：\n]{0,15})[·・]\s*([^\s·・:：]{1,6})\s*[:：]\s*([\s\S]+)$/);
+    if (colonRow) {
+        const rawL = colonRow[2];
+        const canonL = canonLayer(rawL);
+        if (canonL) {
+            const p = { kind: 'row', name: colonRow[1].trim(), layer: canonL, text: colonRow[3].trim(), rawLayer: rawL };
+            if (canonL !== rawL) p.repaired = 'alias';
+            return p;
+        }
+    }
+
     const layerFirst = line.match(/^([^·・:：\n]{2,8})\s*[·・:：]\s*([\s\S]{12,})$/);
     if (layerFirst) {
         const canonFirst = canonLayer(layerFirst[1]);
@@ -540,7 +554,7 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
          · 正文**至少 12 个字符** —— 这条用来排除「外文名里的间隔号」：
            `阿尔托莉雅·潘德拉贡 说道` 的正文只有「说道」两字 ⇒ 不满足 ⇒ 不会被误判成行 ✓
        （真机踩过：`女娲·眼神 从她那双淡金色的眸子里…` 整行露着标签。） */
-    const guarded = line.match(new RegExp('^([^\\s·・:：*#>\\[\\]{}()=+~`|,，.。!！?？-][^·・:：\\n]{0,15}?)\\s*[·・]\\s*([^\\s·・:：]{2,6})\\s+([\\s\\S]{12,})$'));
+    const guarded = line.match(new RegExp('^([^\\s·・:：*#>\\[\\]{}()=+~`|,，.。!！?？-][^·・:：\\n]{0,15}?)\\s*[·・]\\s*([^\\s·・:：]{2,6})(?:\\s+|[:：]\\s*)([\\s\\S]{12,})$'));
     if (guarded) {
         return {
             kind: 'row', name: guarded[1].trim(), layer: guarded[2], text: guarded[3].trim(),
@@ -570,6 +584,24 @@ export function isOurLine(line, layers = LAYERS, lenient = false) {
  * 规则：某行**恰好**是 `名字·层`（层是五个之一，行尾没有内容）⇒ 与下面第一个非空行合并 ✓
  * 只合并紧邻的下一行；空行会被跳过 ✓ 合并后原来那些行删掉 ✓
  */
+/**
+ * ★★ B 方案（用户选 A+B）：台词行的**外层引号**统一成中文「」
+ *   模型有时写 ASCII "…"、有时写弯引号 “…” ⇒ 观感不统一 ✗
+ *   只动"包在整句外面的那一对"，句子里原有的引号不动 ✓
+ */
+export function normalizeSpeechQuotes(text) {
+    const Q = /["“”'‘’]/;
+    return String(text == null ? '' : text).split('\n').map((line) => {
+        const m = line.match(/^(\s*[^\n]*?[·・]\s*台词\s*[:：]?\s*)([\s\S]+)$/);
+        if (!m) return line;
+        let body = m[2].trim();
+        if (body.length >= 2 && Q.test(body[0]) && Q.test(body[body.length - 1])) {
+            body = '「' + body.replace(/^["“”'‘’]+/, '').replace(/["“”'‘’]+$/, '') + '」';
+        }
+        return m[1] + body;
+    }).join('\n');
+}
+
 export function mergeSplitTags(text) {
     const LAYERS5 = ['台词', '动作', '感官', '心理', '旁白'];
     const lines = String(text == null ? '' : text).split('\n');
@@ -992,7 +1024,7 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const text = String(rawText == null ? '' : rawText);
     /* ★ 先合并「标签独占一行」的写法（模型换写法会这样 ✗ ⇒ 不合并就标签全裸露） */
-    const merged = mergeSplitTags(text);
+    const merged = normalizeSpeechQuotes(mergeSplitTags(text));
     const sections = splitSections(merged);
 
     /* ★ 判据必须用「切完之后」的正文，不能用整条原文。
@@ -1459,6 +1491,7 @@ export const LENGTH_SPEC = [
     '  ① 名字·动作   100–300 字（区间里随节奏波动，别每行都一样长），写过程与细节，不是概括',
     '  ② 名字·感官   100–300 字，写触感 / 温度 / 气味 / 声音',
     '  ③ 名字·台词   按需要来回波动：短的 10 字上下，常规 10–50 字（在场每个开口的人都要有一句）',
+    '     ★ 台词一律用中文引号「」包住（不要用英文引号或弯引号，观感会不统一）',
     '  ④ 名字·台词   分量足的可以到 100 字左右 —— 关键是别每句一样长',
     '  ⑤ 名字·心理   100–300 字，写犹豫 / 欲望 / 算计',
     '',

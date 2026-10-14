@@ -65,7 +65,7 @@ import {
 
     layerClass,
     PANEL_GROUPS,
-mergeSplitTags, guessGenderFromText, parseLine, } from './logic.js';
+normalizeSpeechQuotes, mergeSplitTags, guessGenderFromText, parseLine, } from './logic.js';
 import { cdStartButtons } from './buttons.js';
 
 // ---------------------------------------------------------------- 配置
@@ -227,7 +227,7 @@ function formatHook(mes, ctx) {
            原文里那种写法**不是合法行** ⇒ 下面这句 hasOurLines 会返回 false ⇒
            钩子直接把原文放行 ⇒ 标签全裸露（用户：「完全是插件的问题」—— 对 ✓）。
            所以：**先合并、再判断** ✓ */
-        const mergedMes = mergeSplitTags(mes);
+        const mergedMes = normalizeSpeechQuotes(mergeSplitTags(mes));
         if (!hasOurLines(mergedMes)) return mes;                  // 合并后仍没有我们的行 → 一个字不改
 
         const mid = (ctx && Number.isFinite(Number(ctx.messageId))) ? Number(ctx.messageId) : -1;

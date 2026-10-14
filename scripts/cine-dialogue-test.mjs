@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-mergeSplitTags, stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
+normalizeSpeechQuotes, mergeSplitTags, stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.59');
+eq('version 与 manifest 一致', VERSION, '0.8.60');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2026,7 +2026,7 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 /* ★★ 真机根因（0.8.57）：钩子必须在合并【之后】判断，否则"标签独占一行"被整条放行 ✗ */
 {
     const ix3 = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
-    ok('★★ 钩子里先 mergeSplitTags 再 hasOurLines', /const mergedMes = mergeSplitTags\(mes\);/.test(ix3) && /hasOurLines\(mergedMes\)/.test(ix3));
+    ok('★★ 钩子里先 mergeSplitTags 再 hasOurLines', /const mergedMes = [^\n]*mergeSplitTags\(mes\)/.test(ix3) && /hasOurLines\(mergedMes\)/.test(ix3));
     ok('★★ 钩子渲染用的是合并后的文本', /renderMessageHTML\(mergedMes,/.test(ix3));
     eq('★★ 不再有拿原文判断的门（hasOurLines(mes)）', (ix3.match(/hasOurLines\(mes\)/g) || []).length, 0);
     /* 端到端：模拟钩子路径 —— 原文不合法、合并后才合法 ⇒ 必须能被接手 */
@@ -2044,6 +2044,32 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 写明不许无标签散文段落', LENGTH_SPEC.indexOf('绝对不要写没有标签的散文段落') >= 0);
     ok('★ 引用了真机反例', LENGTH_SPEC.indexOf('染原本以为') >= 0);
     ok('★ 条目内不用星号', LENGTH_SPEC.indexOf('*') < 0);
+}
+
+/* ★★ 冒号写法 + 引号归一化（用户 2026-10-14：「你看那张图的美化生效了吗」+「A+B」） */
+{
+    const L7 = allLayers(DEFAULT_CONFIG);
+    const c1 = parseLine('染·感官: 他闻到了她从发丝间散发出的淡淡花香。', L7, false);
+    ok('★★ 冒号写法认成 row（不再是 err）', c1.kind === 'row' && c1.name === '染' && c1.layer === '感官');
+    const c2 = parseLine('染·感官：他闻到了她从发丝间散发出的淡淡花香。', L7, false);
+    ok('★★ 全角冒号也认', c2.kind === 'row' && c2.layer === '感官');
+    const c3 = parseLine('沙良·台词: 那么……请尽管吩咐吧。', L7, false);
+    ok('★ 台词冒号写法认成 row', c3.kind === 'row' && c3.layer === '台词');
+    /* 引号归一化 */
+    const q1 = normalizeSpeechQuotes('沙良·台词: \"啊……好奇怪。\"');
+    ok('★★ ASCII 引号 → 「」', q1.indexOf('「啊……好奇怪。」') >= 0);
+    const q2 = normalizeSpeechQuotes('沙良·台词 “啊……好奇怪。”');
+    ok('★★ 弯引号 → 「」', q2.indexOf('「啊……好奇怪。」') >= 0);
+    const q3 = normalizeSpeechQuotes('染·动作 他伸手把门关上。');
+    ok('★ 非台词行不动', q3 === '染·动作 他伸手把门关上。');
+    const q4 = normalizeSpeechQuotes('沙良·台词: 他说「把柄」这两个字。');
+    ok('★ 句子内部的引号不动', q4.indexOf('他说「把柄」这两个字。') >= 0);
+    /* 整楼：冒号写法必须被接手且标签不裸露 */
+    const colonMsg = '染·感官: 他闻到了她从发丝间散发出的淡淡花香。' + String.fromCharCode(10) + '沙良·台词: \"请尽管吩咐吧。\"';
+    const rc = renderMessageHTML(colonMsg, {}, DEFAULT_CONFIG);
+    ok('★★ 冒号写法的整楼被接手', !!rc);
+    ok('★★ 接手后可见文字里没有「·感官:」类标签', !!rc && !/·(动作|感官|台词|心理|旁白)\s*[:：]/.test(String(rc.html).replace(/<[^>]*>/g, '')));
+    ok('★★ 并且台词已归一成「」', !!rc && String(rc.html).indexOf('「请尽管吩咐吧。」') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
