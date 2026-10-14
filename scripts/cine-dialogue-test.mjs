@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.0.8');
+eq('version 与 manifest 一致', VERSION, '1.0.9');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2137,6 +2137,31 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 写明每个回合都要有一条旁白', LENGTH_SPEC.indexOf('每个回合都要有一条旁白') >= 0);
     ok('★ 引用了用户反馈（缺少旁白）', LENGTH_SPEC.indexOf('用户反馈过「缺少旁白」') >= 0);
     ok('★ 两条条目都不用星号', FORMAT_SPEC.indexOf('*') < 0 && LENGTH_SPEC.indexOf('*') < 0);
+}
+
+/* ★★ 旁白的各种写法都要认（对照实验发现「旁白 内容」空格写法掉进 text ✗） */
+{
+    const LA = allLayers(DEFAULT_CONFIG);
+    const n1 = parseLine('旁白 走廊的灯闪了一下，又灭了。', LA, false);
+    ok('★★ 空格写法的旁白认成 narr', n1.kind === 'narr' && n1.body.indexOf('走廊的灯') === 0);
+    const n2 = parseLine('旁白　走廊的灯闪了一下，又灭了。', LA, false);
+    ok('★★ 全角空格也认', n2.kind === 'narr');
+    const n3 = parseLine('旁白·走廊的灯闪了一下，又灭了。', LA, false);
+    ok('★ 点号写法照旧', n3.kind === 'narr');
+    const n4 = parseLine('旁白: 走廊的灯闪了一下，又灭了。', LA, false);
+    ok('★ 冒号写法照旧', n4.kind === 'narr');
+    const n5 = parseLine('染·旁白 走廊的灯闪了一下，又灭了。', LA, false);
+    ok('★ 带名字的 染·旁白 照旧是 row', n5.kind === 'row' && n5.layer === '旁白');
+    /* 状态栏 YAML 不受影响 */
+    const n6 = parseLine('        行动: "趴在沙发上，黑丝包裹的双腿交叠着"', LA, false);
+    ok('★★ 状态栏 YAML 仍然不受影响', n6.kind !== 'row');
+    /* 端到端 */
+    const NR = String.fromCharCode(10);
+    const mm = ['染·动作 我推门进去，冷风灌进领口。', '旁白 走廊的灯闪了一下，又灭了。', '沙良·台词 「你回来了。」'].join(NR);
+    const rr = renderMessageHTML(mm, {}, DEFAULT_CONFIG);
+    const hh = rr ? String(rr.html) : '';
+    eq('★★ 整楼渲染出 1 个旁白元素', (hh.match(/cd-L-narr/g) || []).length, 1);
+    ok('★★ 旁白内容可见', hh.indexOf('走廊的灯') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

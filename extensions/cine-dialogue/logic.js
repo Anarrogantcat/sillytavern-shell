@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.0.8';
+export const VERSION = '1.0.9';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -528,6 +528,11 @@ export function parseLine(line, layers = LAYERS, lenient = false) {
          ⇒ 只认**五个正名** ✓（状态栏的键都是别名：行动/内心/名字/欲望值…）
        缘由：1.0.1 的"必须顶格"没修干净（真机 33 条仍 28 条丢键名）；
              1.0.2 的"只认正名"又误伤 `旁的叙述·…`（别名 + ·）⇒ 夹具报红 ✗ */
+    /* ★★ 1.0.9：裸「旁白 内容」（空格分隔）也要认（库里有这种写法，之前掉进 text ✗）
+       只认「旁白」这一个词 ⇒ 不会误伤状态栏 YAML（那里的键从不叫「旁白」）✓ */
+    const bareNarr = line.match(/^旁白[\s\u3000]+([\s\S]{6,})$/);
+    if (bareNarr) return { kind: 'narr', body: bareNarr[1].trim(), repaired: 'bare-narr' };
+
     const layerFirst = line.match(/^([^·・:：\n]{2,8})\s*([·・:：])\s*([\s\S]{12,})$/);
     if (layerFirst) {
         /* ★★ 1.0.2：裸层名写法**只认五个正名** ✓
