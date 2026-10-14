@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.0.9';
+export const VERSION = '1.1.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -842,15 +842,17 @@ function rowHTML(r, colorMap, config) {
  * 规则：遇到 动作 行、且本回合已有内容 ⇒ 先画一条线，再写这一行 ✓
  * 同一回合里的 感官 / 台词 / 心理 不再画线 ✓
  */
+/**
+ * ★★ 1.1.0：分割线 = **空行分组之间**（用户：「预览每组对话都有分割线」）
+ *   前提：预设侧硬要求「每个回合之间空一行、回合内部不要空行」
+ *   ⇒ 模型守规矩时，空行分组 == 一个回合 ✓
+ *   历史：0.8.50 曾按「动作」当回合起点（模型常连写动作行 ⇒ 会把同一回合切开 ✗）；
+ *         1.1.0 改回分组边界，并把「空一行」写进预设当硬要求 ✓
+ */
 export function rowsHTMLFrom(groups, colorMap = {}, cfg = DEFAULT_CONFIG) {
-    let seenAction = false;
-    return groups.map((g) =>
-        g.map((r) => {
-            const isAct = (r.kind === 'row' && String(r.layer || '') === '动作');
-            const sep = (cfg.showSeparators && isAct && seenAction) ? '<div class="cd-sep"></div>' : '';
-            if (isAct) seenAction = true;
-            return sep + rowHTML(r, colorMap, cfg);
-        }).join('')
+    return groups.map((g, gi) =>
+        ((gi > 0 && cfg.showSeparators) ? '<div class="cd-sep"></div>' : '')
+        + g.map((r) => rowHTML(r, colorMap, cfg)).join('')
     ).join('');
 }
 
@@ -1513,6 +1515,8 @@ export const LENGTH_SPEC = [
     '  绝对不要写没有标签的散文段落 —— 真机数据：模型写过',
     '  「染原本以为这只是一个简单的邻里寒暄…」这类无标签段落，插件只能原样显示，看起来像没生效。',
     '  凡是要写的内容，都必须归到 动作 / 感官 / 台词 / 心理 / 旁白 里，一行一条。',
+    '★ 排版硬要求：每个回合之间空一行；同一个回合内部不要空行（五行连着写）✓',
+    '  （插件按空行分组画分割线 ⇒ 你空错地方，线就画错地方 ✗）',
     '一个回合 = 一组（五行一组，顺序固定）：',
     '  ★ 必须 动作 → 感官 → 台词（一或两句）→ 心理 → 旁白，走完这几步才进入下一个回合',
     '  ★ 每个回合都要有一条旁白（写 旁白·内容 这种行）：用第三人称交代环境、镜头、',

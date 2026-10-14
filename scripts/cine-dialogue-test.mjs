@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.0.9');
+eq('version 与 manifest 一致', VERSION, '1.1.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1929,24 +1929,24 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const two = '甲·动作 我按住她。' + NL2 + NL2 + '甲·动作 我又松开。';
     const on = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html);
     const off = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: false }).html);
-    ok('★★ 开着时回合间有 cd-sep', on.indexOf('<div class="cd-sep"></div>') >= 0);
+    ok('★★ 开着时组间有 cd-sep', on.indexOf('<div class="cd-sep"></div>') >= 0);
     /* ★ 回归防线：整楼不许被渲染多遍（0.8.50 我在 map 里调用整组渲染，4 组 ⇒ 输出 4 遍 ✗） */
     {
         const N4 = String.fromCharCode(10);
         const four = ['甲·动作 一', '甲·动作 二', '甲·动作 三', '甲·动作 四'].join(N4 + N4);
         const hh = String(renderMessageHTML(four, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html);
         eq('★★ 四个回合 ⇒ 只 1 个 cd-grid（整楼不重复）', (hh.match(/cd-grid/g) || []).length, 1);
-        eq('★★ 四个动作行 ⇒ 恰好 3 条分隔线', (hh.match(/<div class="cd-sep"><\/div>/g) || []).length, 3);
+        eq('★★ 四个空行分组 ⇒ 恰好 3 条分隔线', (hh.match(/<div class="cd-sep"><\/div>/g) || []).length, 3);
         ok('★ 每行的正文只出现一次（查 <span> 里的正文）', (hh.split('>一<').length - 1) === 1 && (hh.split('>四<').length - 1) === 1);
     }
     {
         const N3 = String.fromCharCode(10);
         const two = '甲·动作 我按住她。' + N3 + N3 + '甲·感官 手指发烫。' + N3 + N3 + '甲·台词 「别动。」' + N3 + N3 + '甲·动作 我又松开。';
         const h = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html);
-        eq('★★ 两个回合（两个动作行）只画 1 条线', (h.match(/<div class="cd-sep"><\/div>/g) || []).length, 1);
+        eq('★★ 四个空行分组 ⇒ 3 条线（每组之间都有 ✓）', (h.match(/<div class="cd-sep"><\/div>/g) || []).length, 3);
         const one = '甲·动作 我按住她。' + N3 + N3 + '甲·感官 手指发烫。' + N3 + N3 + '甲·台词 「别动。」';
         const h1 = String(renderMessageHTML(one, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html);
-        eq('★★ 单回合（只有一个动作行）不画线', (h1.match(/<div class="cd-sep"><\/div>/g) || []).length, 0);
+        eq('★★ 三个空行分组 ⇒ 2 条线', (h1.match(/<div class="cd-sep"><\/div>/g) || []).length, 2);
         const offh = String(renderMessageHTML(two, {}, { ...DEFAULT_CONFIG, showSeparators: false }).html);
         eq('★ 关掉开关就没有线', (offh.match(/<div class="cd-sep"><\/div>/g) || []).length, 0);
     }
@@ -2162,6 +2162,18 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const hh = rr ? String(rr.html) : '';
     eq('★★ 整楼渲染出 1 个旁白元素', (hh.match(/cd-L-narr/g) || []).length, 1);
     ok('★★ 旁白内容可见', hh.indexOf('走廊的灯') >= 0);
+}
+
+/* ★★ 1.1.0：分割线 = 空行分组之间（每组都有线） */
+{
+    ok('★★ 预设写明回合之间空一行', LENGTH_SPEC.indexOf('每个回合之间空一行') >= 0);
+    ok('★★ 预设写明回合内部不空行', LENGTH_SPEC.indexOf('内部不要空行') >= 0);
+    const NB2 = String.fromCharCode(10);
+    const cnt2 = (msg) => ((String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, showSeparators: true }).html)).match(/<div class="cd-sep"><\/div>/g) || []).length;
+    eq('★ 两个空行分组 ⇒ 1 条线', cnt2(['甲·动作 一。', '甲·感官 二。'].join(NB2 + NB2)), 1);
+    eq('★ 三个空行分组 ⇒ 2 条线', cnt2(['甲·动作 一。', '甲·感官 二。', '甲·动作 三。'].join(NB2 + NB2)), 2);
+    eq('★ 同一分组内（无空行）⇒ 0 条线', cnt2(['甲·动作 一。', '甲·感官 二。', '甲·台词 三。'].join(NB2)), 0);
+    eq('★ 关掉开关 ⇒ 0 条线', ((String(renderMessageHTML(['甲·动作 一。', '甲·感官 二。'].join(NB2 + NB2), {}, { ...DEFAULT_CONFIG, showSeparators: false }).html)).match(/<div class="cd-sep"><\/div>/g) || []).length, 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
