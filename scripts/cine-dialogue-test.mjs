@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.3.0');
+eq('version 与 manifest 一致', VERSION, '1.3.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2231,6 +2231,38 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const ironP = (r2.preset.prompts || []).find((x) => String(x.name) === '【分镜】铁律（先读）');
     ok('★ 铁律文本带版本盖章', String(ironP.content).indexOf('（分镜对话 v') === 0);
     ok('★ 铁律文本不含星号', String(ironP.content).indexOf('*') < 0);
+}
+
+/* ★★ 1.3.1：清掉上游垃圾条目（用户：「这叫专属预设？」） */
+{
+    const lgx = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+    ok('★★ 有垃圾条目过滤表', lgx.indexOf('JUNK_NAME_PATTERNS') >= 0);
+    const junk = {
+        prompts: [
+            { identifier: 'g', name: '🔴指南（可改）', content: 'x' },
+            { identifier: 'j1', name: '哦对了，贩子死妈', content: '{{//贩子死妈}}' },
+            { identifier: 'j2', name: '😨千万别点开', content: 'x' },
+            { identifier: 'j3', name: '📋说明（点小铅笔看）', content: 'x' },
+            { identifier: 'ok1', name: '⚡️抢话', content: 'x' },
+        ],
+        prompt_order: [{ character_id: 1, order: [
+            { identifier: 'g', enabled: true },
+            { identifier: 'j1', enabled: true },
+            { identifier: 'j2', enabled: true },
+            { identifier: 'j3', enabled: true },
+            { identifier: 'ok1', enabled: true },
+        ] }],
+        extensions: {},
+    };
+    const r = applyPresetRecipe(junk, { srcName: 't', srcHash: 'h' });
+    const od = r.preset.prompt_order[0].order;
+    const on = (id) => (od.find((x) => String(x.identifier) === id) || {}).enabled;
+    ok('★★ 骂人注释条目被停用', on('j1') === false);
+    ok('★★ 「千万别点开」被停用', on('j2') === false);
+    ok('★★ 上游「说明」被停用', on('j3') === false);
+    ok('★★ 正常条目不受影响（抢话仍启用）', on('ok1') === true);
+    ok('★ 指南也没被动', on('g') === true);
+    ok('★ 没删条目（只停用，可追溯）', (r.preset.prompts || []).some((x) => String(x.name) === '哦对了，贩子死妈') && (r.preset.prompts || []).some((x) => String(x.name) === '😨千万别点开'));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

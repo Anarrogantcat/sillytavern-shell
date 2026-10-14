@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.3.0';
+export const VERSION = '1.3.1';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1852,6 +1852,24 @@ export function applyPresetRecipe(srcObj, opts = {}) {
     } else {
         changes.push('说明条目已是停用状态');
     }
+
+    /* ★★ 1.3.1：清掉上游自带的垃圾条目（用户质疑：「这叫专属预设？」—— 说得对 ✗）
+       实测 live 预设里第 2 位就是【哦对了，贩子死妈】（1030 字的 `{{//…}}` 骂人注释，还是启用状态 ✗），
+       另有【😨千万别点开】【📋说明（点小铅笔看）】等上游自己的东西。
+       ⇒ 一律**停用**（不删除 ✓ 保留可追溯 ✓ 不修改上游内容 ✓） */
+    const JUNK_NAME_PATTERNS = [
+        /贩子|死妈|妈的|他妈|傻逼|煞笔|操你|狗东西|贱货|婊|fuck|shit/i,
+        /千万别点开/,
+        /^📋说明/,
+    ];
+    let junkOff = 0;
+    for (const p of prompts) {
+        const nm = String(p.name || '').trim();
+        if (!JUNK_NAME_PATTERNS.some((re) => re.test(nm))) continue;
+        const e = order.find(o => String(o.identifier) === String(p.identifier));
+        if (e && e.enabled) { e.enabled = false; junkOff++; changes.push('停用上游垃圾条目「' + nm.slice(0, 16) + '」'); }
+    }
+    if (!junkOff) changes.push('上游垃圾条目：没有需要停用的');
 
     /* ★★ 1.3.0：铁律条目 —— 真机实测（2026-10-14）：
        动作行含「我」的 0%、含他/她/角色名的 100% ✗（感官只有 13%）
