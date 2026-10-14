@@ -65,7 +65,8 @@ import {
 
     layerClass,
     PANEL_GROUPS,
-guessGenderFromText, parseLine, } from './logic.js';
+mergeSplitTags, guessGenderFromText, parseLine, } from './logic.js';
+import { cdStartButtons } from './buttons.js';
 
 // ---------------------------------------------------------------- 配置
 
@@ -2316,6 +2317,7 @@ function start() {
     try { migrateColorStamp(); } catch (_) { }
     try { migrateRowGap(); } catch (_) { }
     try { migrateSeparators(); } catch (_) { }
+    try { cdStartButtons({ getContext, effectiveConfig, hasOurLines, allLayers, parseLine, mergeSplitTags, renderMessageHTML, cardKey, cfg, saveSettingsDebounced, EXT_ID }); } catch (_) { }
     /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
        这个坑踩过两次：
          · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行

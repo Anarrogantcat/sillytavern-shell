@@ -520,3 +520,32 @@
     color: inherit;
     font-style: inherit;
 }
+
+/* ---------------------------------------------------------------- 发送栏按钮
+   这三个按钮**追加**进 card-compat 的 #cc-var-bar（不改它的代码 ✗ —— AGENTS §0.3.1）；
+   容器不在（没装 / 它关掉了）时用我们自建的 #cd-bar ✓
+   选择器全部自有前缀（.cd-bar / .cd-bar-btn）⇒ 不会漏进消息区 ✓ */
+.cd-bar {
+    display: flex;
+    gap: .5em;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: .35em 0 0;
+}
+
+.cd-bar-btn {
+    cursor: pointer;
+    padding: .18em .8em;
+    border-radius: 9px;
+    border: 1px solid var(--cd-btn-line, rgba(128, 140, 160, .32));
+    background: var(--cd-btn-bg, rgba(255, 255, 255, .04));
+    font-size: .86em;
+    line-height: 1.6;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.cd-bar-btn:hover {
+    filter: brightness(1.25);
+}
+
