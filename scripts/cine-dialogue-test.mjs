@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.58');
+eq('version 与 manifest 一致', VERSION, '0.8.59');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1774,7 +1774,7 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const r = applyPresetRecipe(base, { srcName: 't', srcHash: 'h' });
     const lp = r.preset.prompts.find((p) => String(p.name || '') === PRESET_RECIPE.lengthName);
     ok('★★ 预设里新增了「篇幅与节奏」条目', !!lp);
-    ok('★★ 内容是 LENGTH_SPEC（含篇幅参考 / 长行 150–300 字）', String(lp.content).indexOf('8–12 个回合') >= 0 && String(lp.content).indexOf('150–300 字') >= 0);
+    ok('★★ 内容是 LENGTH_SPEC（含篇幅参考 / 长行 100–300 字）', String(lp.content).indexOf('8–12 个回合') >= 0 && String(lp.content).indexOf('100–300 字') >= 0);
     ok('★ 条目不用星号（免得模型抄进正文）', String(lp.content).indexOf('*') < 0);
     const od = r.preset.prompt_order[0].order;
     /* 停用的派生说明会排在它后面 ⇒ 判据看「最后一条启用」✓ */
@@ -1888,9 +1888,9 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 
 /* ★★ 长行（动作/感官/心理）也波动：150–500 字（用户 2026-10-14「300 字那些也可以波动」） */
 {
-    ok('★★ LENGTH_SPEC 长行写成 150–500 字波动', LENGTH_SPEC.split('150–300 字').length - 1 >= 3);
-    ok('★★ FORMAT_SPEC 长行也统一成同一区间', FORMAT_SPEC.split('150–300 字').length - 1 >= 3);
-    ok('★★ 写明了是区间内波动', LENGTH_SPEC.indexOf('150–300 字') >= 0 && LENGTH_SPEC.indexOf('随节奏波动') >= 0);
+    ok('★★ LENGTH_SPEC 长行写成 150–500 字波动', LENGTH_SPEC.split('100–300 字').length - 1 >= 3);
+    ok('★★ FORMAT_SPEC 长行也统一成同一区间', FORMAT_SPEC.split('100–300 字').length - 1 >= 3);
+    ok('★★ 写明了是区间内波动', LENGTH_SPEC.indexOf('100–300 字') >= 0 && LENGTH_SPEC.indexOf('随节奏波动') >= 0);
     ok('★ 旧的死板 ~300 字已清（篇幅条目里）', LENGTH_SPEC.indexOf('~300 字') < 0);
     ok('★ 旧的死板 200–400 字已清（说明条目里）', FORMAT_SPEC.indexOf('200–400 字') < 0);
 }
@@ -1905,7 +1905,7 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★ 不再出现旧的"10 组；只有"写法', LENGTH_SPEC.indexOf('10 组；只有') < 0);
     ok('★★ 明确说「不小于 1000」只是最低门槛', LENGTH_SPEC.indexOf('只是最低门槛') >= 0);
     ok('★★ 场景提前结束要接着写下一个回合', LENGTH_SPEC.indexOf('接着写下一个回合') >= 0);
-    ok('★★ 长行区间是 150–300', LENGTH_SPEC.indexOf('150–300 字') >= 0 && FORMAT_SPEC.indexOf('150–300 字') >= 0);
+    ok('★★ 长行区间是 100–300', LENGTH_SPEC.indexOf('100–300 字') >= 0 && FORMAT_SPEC.indexOf('100–300 字') >= 0);
     ok('★ 旧的 150–500 / 200–300 已清', LENGTH_SPEC.indexOf('150–500') < 0 && LENGTH_SPEC.indexOf('200–300') < 0);
     ok('★ 条目里仍然不用星号', LENGTH_SPEC.indexOf('*') < 0);
 }
@@ -1997,9 +1997,9 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 {
     ok('★★ 写明最低要求（至少 8 个回合 / 不少于 6000 字）', LENGTH_SPEC.indexOf('至少写满 8 个回合') >= 0 && LENGTH_SPEC.indexOf('不少于 6000 字') >= 0);
     ok('★★ 写明不设上限', LENGTH_SPEC.indexOf('不设上限') >= 0);
-    ok('★★ 一个回合给参考区间 700–1000 字', LENGTH_SPEC.indexOf('700–1000 字') >= 0);
+    ok('★★ 一个回合给参考区间 600–1000 字', LENGTH_SPEC.indexOf('600–1000 字') >= 0);
     ok('★★ 五行结构与不允许连续两个动作行仍在', LENGTH_SPEC.indexOf('五行一组，顺序固定') >= 0 && LENGTH_SPEC.indexOf('绝对不要连续写两个「动作」行') >= 0);
-    ok('★★ 长行仍是 150–300 字', LENGTH_SPEC.split('150–300 字').length - 1 >= 3);
+    ok('★★ 长行仍是 100–300 字', LENGTH_SPEC.split('100–300 字').length - 1 >= 3);
     ok('★ 不再出现旧的 10 组目标', LENGTH_SPEC.indexOf('写满 10 组') < 0 && LENGTH_SPEC.indexOf('写完 10 个回合') < 0);
     eq('★ 关键句各只出现一次（无重复）', LENGTH_SPEC.split('接着写下一个回合').length - 1, 1);
     ok('★ 没有连续三个换行', LENGTH_SPEC.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(10)) < 0);
