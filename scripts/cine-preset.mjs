@@ -38,9 +38,23 @@ const DEFAULT_OUT = path.join(DEFAULT_DIR, versionedOutName());
 const args = process.argv.slice(2);
 const val = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const check = args.includes('--check');
+/* ★★ 1.4.0：--clean = 从零构建的「干净版」
+   底稿换成 **SillyTavern 官方默认预设**（不含任何第三方预设内容）
+   输出到另一个文件名，两份预设并存（派生的那份继续保留） */
+const clean = args.includes('--clean');
 
-const SRC = val('--src', DEFAULT_SRC);
-const OUT = val('--out', DEFAULT_OUT);
+const ST_DEFAULT = path.join(DEFAULT_DIR, 'Default.json');
+function cleanOutName() {
+    try {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'extensions', 'cine-dialogue', 'logic.js'), 'utf8');
+        const mm = src.match(/export const VERSION = '([^']+)'/);
+        if (mm) return '分镜对话（专属·干净版）v' + mm[1] + '.json';
+    } catch (_) { }
+    return '分镜对话（专属·干净版）.json';
+}
+
+const SRC = val('--src', clean ? ST_DEFAULT : DEFAULT_SRC);
+const OUT = val('--out', clean ? path.join(DEFAULT_DIR, cleanOutName()) : DEFAULT_OUT);
 
 if (!fs.existsSync(SRC)) {
     console.error('原版预设不存在：' + SRC);
@@ -53,7 +67,7 @@ const orig = JSON.parse(srcBuf.toString('utf8'));
 /* 关键：**以磁盘上现有的派生文件为基础**再套配方（而不是每次从原版重做），
    这样用户在派生文件里自己做的额外调整不会被抹掉。 */
 const base = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : orig;
-const r = applyPresetRecipe(base, { srcName: path.basename(SRC), srcHash });
+const r = applyPresetRecipe(base, { srcName: path.basename(SRC), srcHash, clean });
 if (!r.ok) {
     console.error('配方失败：' + r.changes.join('；'));
     process.exit(1);
@@ -79,4 +93,9 @@ if (check) {
 fs.writeFileSync(OUT, JSON.stringify(r.preset, null, 4), 'utf8');
 console.log('');
 console.log('已写入：' + OUT + '（' + Math.round(fs.statSync(OUT).size / 1024) + ' KB）');
-console.log('⚠️ 原预设许可要求「禁止二传」—— 这个派生文件只留在本地，不要分发。');
+if (clean) {
+    console.log('✓ 干净版：底稿是 SillyTavern 官方默认预设 ⇒ 不含任何第三方预设内容，可自由分发 ✓');
+    console.log('⚠️ 代价：不含角色卡自带的前端条目 ⇒ 若状态栏 / 选项栏不出现，请改用「专属适配」那份 ✓');
+} else {
+    console.log('⚠️ 原预设许可要求「禁止二传」—— 这个派生文件只留在本地，不要分发。');
+}

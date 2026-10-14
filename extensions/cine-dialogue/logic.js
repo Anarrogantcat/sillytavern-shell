@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.3.1';
+export const VERSION = '1.4.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1583,6 +1583,27 @@ export const PRESET_RECIPE = {
 /** 派生说明的正文（人可读；做成**停用**条目，只留痕不进提示词） */
 export function presetNoteText(opts = {}) {
     const R = PRESET_RECIPE;
+    /* ★★ 1.4.0：干净版（--clean）—— 底稿是 **ST 官方默认预设**，
+       与任何第三方预设无关 ⇒ 出处说明必须换掉，不能再说"派生自泉此方" ✗ */
+    if (opts.clean) {
+        return [
+            '{{//',
+            '【分镜干净版说明】这份预设是**从零构建**的：',
+            '底稿 = SillyTavern 官方默认预设（Default.json）⇒ **不含任何第三方预设内容** ✓',
+            '',
+            '构建方式：SillyTavern 默认预设 + 「分镜对话」扩展的三条条目',
+            '  （由 panel / scripts/cine-preset.mjs --clean 生成，可重放）',
+            '  1. 【分镜】铁律（先读）      —— 人称 / 台词 / 旁白三条硬约束',
+            '  2. 【分镜】正文行格式        —— 名字·层 内容的完整格式说明',
+            '  3. 【分镜】篇幅与节奏（可改） —— 每行字数 / 回合数 / 总量',
+            '  副产物：把上游会打架的字数指令改写成指向【分镜】篇幅与节奏 ✓',
+            '',
+            '⚠️ 因为底稿是 ST 默认预设，**不含任何角色卡自带的前端条目** ——',
+            '   如果这张卡的状态栏 / 选项栏不出现，请改用「分镜对话（专属适配）」那份派生版 ✓',
+            '⚠️ 本条目**保持停用**，只是留个说明，不要启用。',
+            '}}',
+        ].join('\n');
+    }
     return [
         '{{//',
         '【分镜派生说明】这份预设是从原版派生出来的**本地副本**，不是原作者的发布版。',
@@ -1816,7 +1837,17 @@ export function applyPresetRecipe(srcObj, opts = {}) {
 
     // ⑤ 出处 + 许可（署名）
     out.extensions = out.extensions || {};
-    out.extensions.cine_dialogue = {
+    out.extensions.cine_dialogue = opts.clean ? {
+        kind: 'clean-preset',
+        base: { file: opts.srcName || 'Default.json', sha256: opts.srcHash || '' },
+        generator: 'cine-dialogue（scripts/cine-preset.mjs --clean，从零构建）',
+        note: '干净版：底稿是 SillyTavern 官方默认预设 ⇒ 不含任何第三方预设内容 ✓',
+        changes: [
+            '新增提示条目「' + R.promptName + '」并启用',
+            R.toggles.map(t => t[0] + (t[1] ? ' 开' : ' 关')).join(' / '),
+            '思维链美化正则 maxDepth → ' + R.thinkingDepth,
+        ],
+    } : {
         kind: 'derived-preset',
         derivedFrom: { file: opts.srcName || '', sha256: opts.srcHash || '' },
         upstream: { author: PRESET_UPSTREAM.author, license: PRESET_UPSTREAM.license, source: PRESET_UPSTREAM.source },
@@ -1828,10 +1859,10 @@ export function applyPresetRecipe(srcObj, opts = {}) {
             '思维链美化正则 maxDepth → ' + R.thinkingDepth,
         ],
     };
-    changes.push('写入出处与许可（作者：' + PRESET_UPSTREAM.author + '）');
+    changes.push(opts.clean ? '写入出处说明（干净版：底稿 = ST 官方默认预设）' : '写入出处与许可（作者：' + PRESET_UPSTREAM.author + '）');
 
     // 说明条目（停用，只留痕）
-    const noteText = presetNoteText({ srcName: opts.srcName, srcHash: opts.srcHash });
+    const noteText = presetNoteText({ srcName: opts.srcName, srcHash: opts.srcHash, clean: !!opts.clean });
     let note = prompts.find(x => String(x.name || '') === R.noteName);
     if (!note) {
         note = { identifier: 'cine-dialogue-provenance', name: R.noteName, system_prompt: false, role: 'system', content: noteText };

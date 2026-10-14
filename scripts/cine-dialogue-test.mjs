@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.3.1');
+eq('version 与 manifest 一致', VERSION, '1.4.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2263,6 +2263,25 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 正常条目不受影响（抢话仍启用）', on('ok1') === true);
     ok('★ 指南也没被动', on('g') === true);
     ok('★ 没删条目（只停用，可追溯）', (r.preset.prompts || []).some((x) => String(x.name) === '哦对了，贩子死妈') && (r.preset.prompts || []).some((x) => String(x.name) === '😨千万别点开'));
+}
+
+/* ★★ 1.4.0：从零构建的干净专属预设（--clean，底稿 = ST 官方默认预设） */
+{
+    const lgx = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+    ok('★★ 出处说明有干净版分支', lgx.indexOf('【分镜干净版说明】') >= 0);
+    ok('★★ 干净版说明写明底稿是 ST 官方默认预设', lgx.indexOf('底稿 = SillyTavern 官方默认预设') >= 0);
+    ok('★★ 干净版说明提醒卡前端条目会缺', lgx.indexOf('不含任何角色卡自带的前端条目') >= 0);
+    ok('★★ provenance 分 kind（clean-preset / derived-preset）', lgx.indexOf("kind: 'clean-preset'") >= 0 && lgx.indexOf("kind: 'derived-preset'") >= 0);
+    const note = presetNoteText({ clean: true, srcName: 'Default.json', srcHash: 'abc' });
+    ok('★★ 干净版说明不提第三方作者', note.indexOf('泉此方') < 0 && note.indexOf('二传') < 0);
+    ok('★★ 干净版说明提三条条目', note.indexOf('铁律') >= 0 && note.indexOf('正文行格式') >= 0 && note.indexOf('篇幅与节奏') >= 0);
+    const note2 = presetNoteText({ srcName: 'x.json', srcHash: 'abc' });
+    ok('★ 派生版说明照旧（有原作者与许可）', note2.indexOf('泉此方') >= 0 && note2.indexOf('二传') >= 0);
+    const base = JSON.parse(fs.readFileSync('D:/AI/SillyTavern/Data/default-user/OpenAI Settings/Default.json', 'utf8'));
+    const r = applyPresetRecipe(base, { srcName: 'Default.json', srcHash: 'h', clean: true });
+    ok('★★ 干净版配方能跑通', r.ok === true);
+    ok('★★ 干净版不含上游痕迹（没改字数指令也不报错）', Array.isArray(r.changes) && r.changes.length > 0);
+    ok('★★ 干净版里铁律被插进 order', (r.preset.prompt_order[0].order || []).some((x) => String(x.identifier) === 'cine-dialogue-iron'));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
