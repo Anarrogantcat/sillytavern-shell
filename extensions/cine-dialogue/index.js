@@ -22,6 +22,7 @@ import {
     setExtensionPrompt,
     extension_prompt_types,
     extension_prompt_roles,
+    streamingProcessor,
 } from '../../../../script.js';
 
 /* ★ extension_settings 必须从 extensions.js 拿 —— 它不是 script.js 的导出。
@@ -539,10 +540,77 @@ function run(all) {
     try { eventSource.emit('cine:rendered', { rendered, hooked, total: list.length, at: Date.now() }); } catch (_) { /* 广播失败不影响渲染 */ }
 }
 
+// ---------------------------------------------------------------- 流式边出边排版（可开关）
+
+/**
+ * ★★ 1.9.0（用户要求：「让流式输出边出边排版 做，但设置成可开关的」）
+ *
+ * 为什么**不用动本体**：ST 每 tick 都会写
+ *     `script.js:3693  this.messageTextDom.innerHTML = formattedText;`
+ * ⇒ 扩展只要在 ST 写完之后**再写一次**即可 ✓
+ *
+ * 怎么拿到"逐 tick 的累积原文"：
+ *   包装**内存里那个实例**的方法（`streamingProcessor.onProgressStreaming`）✓
+ *   —— 不改任何文件、不动本体、ST 更新也不会因此报废 ✓
+ *   （§0.5 第 1 条：扩展层能做到就不动本体 ✓）
+ *
+ * 安全阀：
+ *   · 开关 `streamLiveFormat` **默认关** ✓（面板「性能」组里可开 ✓）
+ *   · 节流 120ms（别每 token 都重排 ✗）
+ *   · 只有**认得出来是我们的行**才接管 ✓；认不出 ⇒ 保留 ST 原样输出 ✓（永不丢字 ✓）
+ *   · 只动 `messageTextDom.innerHTML` ✓ 其它节点一个字节不碰 ✓
+ */
+let cdLiveAt = 0;
+function cdLiveFormat(text) {
+    try {
+        const cfgNow = effectiveConfig();
+        if (!cfgNow.streamLiveFormat || !cfgNow.enabled) return false;
+        if (typeof text !== 'string' || !text) return false;
+        if (!hasOurLines(text)) return false;                 /* 不是分镜格式 ⇒ 不碰 ✓ */
+        const now = Date.now();
+        if (now - cdLiveAt < 120) return false;               /* 节流 ✓ */
+        cdLiveAt = now;
+        const r = renderMessageHTML(text, {}, cfgNow);
+        if (!r || !r.html) return false;                      /* 认不出 ⇒ 交给 ST ✓ */
+        const sp = streamingProcessor;
+        const dom = sp && sp.messageTextDom;
+        if (!(dom instanceof HTMLElement)) return false;
+        dom.innerHTML = r.html;
+        return true;
+    } catch (e) { return false; }
+}
+
+/** 幂等包装：每次生成 ST 都会 new 一个 StreamingProcessor ⇒ 每轮重新包 ✓ */
+function cdArmStreamLive() {
+    try {
+        const sp = streamingProcessor;
+        if (!sp || typeof sp.onProgressStreaming !== 'function' || sp.__cdLivePatched) return;
+        const orig = sp.onProgressStreaming.bind(sp);
+        sp.__cdLivePatched = true;
+        sp.onProgressStreaming = async function (messageId, text, isFinal) {
+            const out = await orig(messageId, text, isFinal);
+            try { cdLiveFormat(text); } catch (_) { }
+            return out;
+        };
+    } catch (e) { try { console.warn('[' + EXT_ID + '] 流式包装失败（不影响正常渲染）', e); } catch (_) { } }
+}
+
+if (typeof window !== 'undefined') {
+    /* 供诊断用：手动打一次（面板「诊断本楼」那种场景也能复用 ✓） */
+    window.CineDialogueLiveFormat = cdLiveFormat;
+}
+
 // ---------------------------------------------------------------- 事件（6 个触发点）
 
 function bind() {
     const safe = (fn) => () => { try { fn(); } catch (e) { console.error('[' + EXT_ID + ']', e); } };
+
+    /* ★ 1.9.0：每个生成开始都重新包装一次流式处理器（ST 每轮 new 一个新实例 ✓） */
+    eventSource.on(event_types.GENERATION_STARTED, safe(() => { cdLiveAt = 0; cdArmStreamLive(); }));
+    eventSource.on(event_types.STREAM_TOKEN_RECEIVED, safe(() => {
+        /* 兜底：万一 onProgressStreaming 包装失败（ST 改结构），这里还能按"累积不到原文"退回 ✓ */
+        cdArmStreamLive();
+    }));
 
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, safe(() => schedule(false)));
     eventSource.on(event_types.USER_MESSAGE_RENDERED, safe(() => schedule(false)));

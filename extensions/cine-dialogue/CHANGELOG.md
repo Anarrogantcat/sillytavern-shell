@@ -1,5 +1,38 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v1.9.0 (2026-10-14) — **流式边出边排版**（可开关 ✓ 扩展层实现，未动本体 ✓）
+
+用户：「让流式输出边出边排版 做，但设置成可开关的」✓
+
+**先说结论：这件事不用动本体** ✓（按 AGENTS §0.5 第 1 条：扩展层能做到就不动本体 ✓）
+依据（读本体源码得到的事实 ✓）：
+```
+public/script.js:3693   this.messageTextDom.innerHTML = formattedText;   ← ST 每 tick 都会重写
+public/script.js:3860   eventSource.emit(event_types.STREAM_TOKEN_RECEIVED, text);
+public/script.js:3861   await sw.tick(… onProgressStreaming(this.messageId, this.continueMessage + text))
+```
+⇒ ST 写完**我们紧接着再写一次**就够了 ✓ 不需要改 ST 的任何文件 ✓
+
+**实现** ✓：
+· 在**内存里那个实例**外面包一层（`streamingProcessor.onProgressStreaming`）✓
+  —— 不改文件、不动本体 ⇒ **ST 更新也不会因此报废** ✓
+  ST 每轮生成都会 `new StreamingProcessor` ⇒ 我们在 `GENERATION_STARTED` 重新包一次 ✓
+· 拿到的是**逐 tick 的累积原文**（ST 自己算好的 `this.continueMessage + text`）✓
+· 重排后只写 `messageTextDom.innerHTML` ✓ 其它节点一个字节不碰 ✓
+
+**安全阀**（为什么可以放心开）✓：
+```
+① 开关 streamLiveFormat **默认关** ✓（面板「性能」组里勾选 ✓）
+② 节流 120ms —— 不是每个 token 都重排
+③ 只有**认得出来是我们的行**才接管 ✓（hasOurLines）
+   认不出 ⇒ 保留 ST 原样输出 ✓ —— 永不丢字 ✓
+④ 插件总开关关掉时一并停用 ✓
+```
+
+**本体改动：无** ✓（§0.5 第 3 条要求的汇报：本轮未改 ST 任何文件 ✓
+ 所以"ST 更新后怎么重新适配"这一问不适用 ✓）
+夹具 795 / 0（新增 7 条：开关默认关 / 面板勾选框 / 包装实现 / 节流 / 只认我们的行 / 重新包 / 只动一个节点 ✓）。
+说明：只改扩展 + 脚本 → 不升套壳版本号、不打 tag、不发包（AGENTS 1.1）
 ## v1.8.4 (2026-10-14) — 按钮改挂 **ST 官方发送栏**（不再依赖别的扩展）
 
 用户提醒：「我记得这个插件是不设限的，st本体允许插件做到什么地步，这个插件就做到什么地步」✓

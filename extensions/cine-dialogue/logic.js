@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.8.4';
+export const VERSION = '1.9.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -101,6 +101,15 @@ export const DEFAULT_CONFIG = {
     autoOffCardFrontend: false,
     /** 用户楼要不要也渲染（默认否 —— 用户打的是大白话，不是分镜格式） */
     transformUserMessages: false,
+    /**
+     * ★★ 1.9.0（用户要求：「让流式输出边出边排版 做，但设置成可开关的」）
+     *   开 = 生成过程中**边出边排版** ✓（每 120ms 把已生成的部分重排成分镜 ✓）
+     *   关（默认）= ST 原样流式，生成结束后再整体变分镜 ✓
+     *   实现**不需要动本体** ✓：ST 每 tick 都写 `messageTextDom.innerHTML`（script.js:3693）
+     *   ⇒ 我们在内存里那个 `streamingProcessor` 实例的方法外面包一层，写完之后再写一次 ✓
+     *   只有**认得出来是我们的行**才接管 ✓（认不出保留 ST 原样 ✓ 永不丢字 ✓）
+     */
+    streamLiveFormat: false,
     /** auto=按最长名字 | left | right | fixed */
     nameColMode: 'auto',
     /** nameColMode=fixed 时的像素宽 */
@@ -351,6 +360,8 @@ export const PANEL_FIELDS = [
     { key: 'roleBlueColor', group: '基本', kind: 'text', label: '蓝名单用的颜色', note: '十六进制色号，例 #3B82F6' },
     { key: 'rolePurpleColor', group: '基本', kind: 'text', label: '紫名单用的颜色', note: '十六进制色号，例 #A855F7' },
     { key: 'transformUserMessages', group: '基本', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
+    { key: 'streamLiveFormat', group: '性能', kind: 'bool', label: '流式边出边排版',
+      note: '开：生成过程中边出边变分镜（每 120ms 一次）；关（默认）：等生成完再整体变。只在认得出分镜行时才接管，认不出保留 ST 原样' },
     { key: 'indentOnlyWrapped', group: '排版', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },
     { key: 'markErrors', group: '基本', kind: 'bool', label: '格式错的行标红', note: '关掉 = 不显示（不推荐，会静默吞掉格式错误）' },
     { key: 'nameColMode', group: '排版', kind: 'select', label: '名字列宽', note: 'auto = 按整条消息最长名字',

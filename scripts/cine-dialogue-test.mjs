@@ -31,7 +31,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.8.4');
+eq('version 与 manifest 一致', VERSION, '1.9.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2350,6 +2350,18 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 发送栏按钮也是同一个开关', fs.readFileSync(new URL('../extensions/cine-dialogue/buttons.js', import.meta.url), 'utf8').indexOf('cdToggleCardOff') >= 0);
     ok('★ off 仍然只在 effectiveConfig 一个点翻 enabled:false', /if \(merged\.off\) return \{ \.\.\.merged, enabled: false, off: true \};/.test(src));
     ok('★ respectCardFrontend 仍为 true（占位符/<options> 原样保留 ✓）', DEFAULT_CONFIG.respectCardFrontend === true);
+}
+
+/* ★★ 1.9.0：流式边出边排版（可开关；扩展层实现，不动本体） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 开关默认关（用户要求：设置成可开关的）', DEFAULT_CONFIG.streamLiveFormat === false);
+    ok('★★ 面板有对应勾选框（性能组）', PANEL_FIELDS.some((f) => f.key === 'streamLiveFormat' && f.kind === 'bool'));
+    ok('★★ 用包装 streamingProcessor 实现（不改任何文件 ⇒ 不用动本体 ✓）', src.indexOf('sp.__cdLivePatched') >= 0 && src.indexOf('orig(messageId, text, isFinal)') >= 0);
+    ok('★★ 有节流（不是每 token 都重排）', /now - cdLiveAt < 120/.test(src));
+    ok('★★ 只在认得出我们的行时才接管（认不出保留 ST 原样 ✓）', src.indexOf('if (!hasOurLines(text)) return false;') >= 0);
+    ok('★★ 生成开始的每个新实例都会重新包', src.indexOf('event_types.GENERATION_STARTED') >= 0 && src.indexOf('cdArmStreamLive()') >= 0);
+    ok('★ 只动 messageTextDom.innerHTML（不碰别的节点）', /dom\.innerHTML = r\.html;/.test(src));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

@@ -1,5 +1,8 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.9.0：流式边出边排版（可开关）
+
+用包装 streamingProcessor 的方式实现（不改文件、不动本体）；面板「性能」组里可开关。夹具 795/0。
 ## 未发版（2026-10-14）— cine-dialogue 1.8.4：按钮改挂 ST 官方发送栏
 
 优先 #rightSendForm，退回 #cc-var-bar / 自建 #cd-bar；不再依赖别的扩展的 DOM。
