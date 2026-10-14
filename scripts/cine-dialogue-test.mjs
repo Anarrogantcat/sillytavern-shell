@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.5.2');
+eq('version 与 manifest 一致', VERSION, '1.6.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1808,12 +1808,17 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
         prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-length', enabled: true }] }],
         extensions: {},
     });
-    const r1 = applyPresetRecipe(mk('旧版内容 ~10 字'), { srcName: 't', srcHash: 'h' });
-    ok('★★ 我们写的 v1 会被更新为"按需要波动"', String(r1.preset.prompts[0].content).indexOf('按需要来回波动') >= 0);
-    const rv2 = applyPresetRecipe(mk('旧 v2 内容 10–20 字'), { srcName: 't', srcHash: 'h' });
-    ok('★★ 我们写的 v2 也会被更新（v2 也认）', String(rv2.preset.prompts[0].content).indexOf('按需要来回波动') >= 0);
+    /* ★★ 1.6.0 判据改了：**看版本盖章**（旧写法靠匹配措辞 ⇒ 措辞一改就永远失配 ✗）
+       · 内容以我们的盖章开头 ⇒ 用户没改过 ⇒ 同步到最新 ✓
+       · 没有盖章（= 用户改过）⇒ 一个字不动 ✓ */
+    const r1 = applyPresetRecipe(mk('（分镜对话 v1.0.0 生成）\n旧内容'), { srcName: 't', srcHash: 'h' });
+    ok('★★ 有我们的盖章 ⇒ 会自动同步到最新', String(r1.preset.prompts[0].content).indexOf('（分镜对话 v') === 0 && String(r1.preset.prompts[0].content).indexOf('按需要来回波动') >= 0);
+    const rv2 = applyPresetRecipe(mk('（分镜对话 v0.9.0 生成）\n旧 v2 内容 10–20 字'), { srcName: 't', srcHash: 'h' });
+    ok('★★ 老盖章也认（同步到最新）', String(rv2.preset.prompts[0].content).indexOf('按需要来回波动') >= 0);
     const r2 = applyPresetRecipe(mk('我自己改的：每次 6 组，台词随意'), { srcName: 't', srcHash: 'h' });
     eq('★★ 你改过的内容一个字不动', r2.preset.prompts[0].content, '我自己改的：每次 6 组，台词随意');
+    const rNo = applyPresetRecipe(mk('旧版内容 ~10 字（没盖章）'), { srcName: 't', srcHash: 'h' });
+    eq('★★ 没盖章（认不出是我们写的）⇒ 也不动', rNo.preset.prompts[0].content, '旧版内容 ~10 字（没盖章）');
 }
 
 /* ★★ 多人场景：台词行数随在场人数变（用户 2026-10-14：「遇到多人怎么办呢？」） */
@@ -1825,8 +1830,8 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
         prompt_order: [{ character_id: 1, order: [{ identifier: 'cine-dialogue-length', enabled: true }] }],
         extensions: {},
     });
-    const rv3 = applyPresetRecipe(mk3('旧 v3：按需要来回波动'), { srcName: 't', srcHash: 'h' });
-    ok('★★ v3 也认（会被更新成新版）', String(rv3.preset.prompts[0].content).indexOf('台词行数 = 在场') >= 0);
+    const rv3 = applyPresetRecipe(mk3('（分镜对话 v1.5.0 生成）\n旧内容'), { srcName: 't', srcHash: 'h' });
+    ok('★★ 有盖章的老版本会被同步成新版', String(rv3.preset.prompts[0].content).indexOf('台词行数 = 在场') >= 0);
 }
 
 /* ★★ 字段形态必须和原生条目一致（真机踩到：缺 marker ⇒ 列表里不显示 ✗） */

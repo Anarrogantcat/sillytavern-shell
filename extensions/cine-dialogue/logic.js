@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.5.2';
+export const VERSION = '1.6.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1766,13 +1766,19 @@ export function applyPresetRecipe(srcObj, opts = {}) {
             prompts.push(nl);
             order.push({ identifier: nl.identifier, enabled: true });
             changes.push('新增提示条目「' + R.lengthName + '」并启用（放在 order 最末尾）');
-        } else if (String(lp.content || '').indexOf('~10 字') >= 0
-                || String(lp.content || '').indexOf('10–20 字') >= 0
-                || String(lp.content || '').indexOf('按需要来回波动') >= 0) {
-            /* 内容还是我们写的 v1（台词 ~10 字）⇒ 更新为 v2（10–20 字）；
-               一旦你改过（不含这个标记）⇒ 一个字都不动 ✗ */
-            lp.content = stampSpec(opts.lengthSpec || LENGTH_SPEC);
-            changes.push('更新提示条目「' + R.lengthName + '」（台词改为按需要波动）');
+        } else if (String(lp.content || '').indexOf('（分镜对话 v') === 0) {
+            /* ★★ 1.6.0：改成**看版本盖章**（稳）✓
+               旧写法是靠匹配「~10 字 / 10–20 字 / 按需要来回波动」这类**措辞** ✗ ——
+               措辞一改就永远失配 ⇒ 我们升级了规范，用户那份**永远拿不到**（1.6.0 实测踩到 ✗）。
+               新判据：内容以我们的盖章开头 ⇒ 说明**用户没改过** ⇒ 同步到最新 ✓；
+               盖章被去掉/改掉 ⇒ 用户改过 ⇒ 一个字不动 ✓ */
+            const wantLen = stampSpec(opts.lengthSpec || LENGTH_SPEC);
+            if (String(lp.content) !== wantLen) {
+                lp.content = wantLen;
+                changes.push('同步「' + R.lengthName + '」到最新（你没改过 ⇒ 自动更新 ✓）');
+            } else {
+                changes.push('「' + R.lengthName + '」已是最新');
+            }
         } else {
             changes.push('提示条目「' + R.lengthName + '」已被你改过（**不覆盖** ✓）');
         }

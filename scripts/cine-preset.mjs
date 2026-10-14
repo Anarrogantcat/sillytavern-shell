@@ -48,13 +48,22 @@ function cleanOutName() {
     try {
         const src = fs.readFileSync(path.join(__dirname, '..', 'extensions', 'cine-dialogue', 'logic.js'), 'utf8');
         const mm = src.match(/export const VERSION = '([^']+)'/);
-        if (mm) return '分镜对话（专属·干净版）v' + mm[1] + '.json';
+        /* ★ 1.6.0 C3：干净版正名为「通用版」—— 一份预设走天下 ✓ */
+        if (mm) return '分镜对话（通用版）v' + mm[1] + '.json';
     } catch (_) { }
-    return '分镜对话（专属·干净版）.json';
+    return '分镜对话（通用版）.json';
 }
 
 const SRC = val('--src', clean ? ST_DEFAULT : DEFAULT_SRC);
 const OUT = val('--out', clean ? path.join(DEFAULT_DIR, cleanOutName()) : DEFAULT_OUT);
+/* ★★ 1.6.0（C3）：--merge-from <预设文件> —— 把那份预设里的"卡前端支撑条目"合并进通用版
+   用途：某些卡的状态栏 / 选项栏 / MVU 变量更新，靠的是**卡配套预设**里的条目 ✗
+        与其换卡就换预设，不如把那些条目**并进通用版** ⇒ 一份预设走天下 ✓
+   判据（保守，只搬明显是前端支撑的）：
+     · 条目内容里出现 <StatusPlaceHolderImpl/> / <option/> / <StatusBar> / TavernHelper / UpdateVariable / <%
+     · 或名字里出现 状态栏 / 选项 / 前端 / MVU / 变量更新 / stat
+   只搬目标里**还没有**的（按名字去重 ✓），并保持原启用状态 ✓ */
+const MERGE_FROM = val('--merge-from', '');
 
 if (!fs.existsSync(SRC)) {
     console.error('原版预设不存在：' + SRC);
@@ -131,6 +140,44 @@ if (clean && r.ok) {
         }
         console.log('');
         console.log('干净版追加素材条目 ' + added + ' 条（其中启用 ' + on + ' 条）');
+    }
+}
+
+/* ★★ 1.6.0（C3）：--merge-from —— 把某份预设里的"卡前端支撑条目"并进本预设 ✓ */
+if (MERGE_FROM && r.ok) {
+    const FE_CONTENT = /StatusPlaceHolderImpl|<option\s*\/?>|<StatusBar>|TavernHelper|UpdateVariable|<%|getVariables|replaceVariables|Mvu|stat_data/i;
+    const FE_NAME = /状态栏|选项|前端|界面|面板|MVU|变量更新|变量|stat/i;
+    const p2 = path.isAbsolute(MERGE_FROM) ? MERGE_FROM : path.join(DEFAULT_DIR, MERGE_FROM);
+    console.log('');
+    console.log('=== --merge-from：从「' + path.basename(p2) + '」并入卡前端支撑条目 ===');
+    if (!fs.existsSync(p2)) {
+        console.log('  ⚠ 找不到 ' + p2 + ' ⇒ 跳过');
+    } else {
+        const mp = JSON.parse(fs.readFileSync(p2, 'utf8'));
+        const mpP = mp.prompts || [];
+        const mpO = ((mp.prompt_order || [])[0] || {}).order || [];
+        const mpEn = new Map(mpO.map((x) => [String(x.identifier), !!x.enabled]));
+        const P = r.preset.prompts = r.preset.prompts || [];
+        const O = r.preset.prompt_order[0].order;
+        const have = new Set(P.map((x) => String(x.name || '').trim()));
+        let got = 0, gotOn = 0;
+        for (const sp of mpP) {
+            const nm = String(sp.name || '').trim();
+            const c = String(sp.content || '');
+            if (!nm) continue;
+            if (!FE_CONTENT.test(c) && !FE_NAME.test(nm)) continue;
+            if (have.has(nm)) continue;
+            const copy = JSON.parse(JSON.stringify(sp));
+            P.push(copy);
+            const wantOn = mpEn.get(String(sp.identifier)) === true;
+            O.push({ identifier: copy.identifier, enabled: wantOn });
+            have.add(nm);
+            got++;
+            if (wantOn) gotOn++;
+            console.log('  · 并入「' + nm.slice(0, 26) + '」（' + (wantOn ? '启用' : '停用') + '，' + c.length + ' 字）');
+        }
+        console.log('  ⇒ 并入 ' + got + ' 条（其中启用 ' + gotOn + ' 条）');
+        if (!got) console.log('  （没有可并入的 —— 要么来源里没有，要么本预设已经有了 ✓）');
     }
 }
 if (!r.ok) {
