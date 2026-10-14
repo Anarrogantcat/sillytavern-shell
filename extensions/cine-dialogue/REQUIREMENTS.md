@@ -96,3 +96,31 @@
 
 **插件侧的证据（可复跑）**：库里 168 楼含前端占位符，我们接手 26 楼，
 接手后占位符**原样保留、不被转义、不被嵌套**（在 `.cd-root` 之外的顶层）⇒ **0 丢失** ✓
+
+## 七、UI 规格的源头（2026-10-14 补登，用户问「为什么预览做好了没用」）
+
+**规格文件**：`reference/ui-spec-preview.html`（原 `工作区/st-cine-preview-clean.html`，2026-10-13 22:09 定稿）
+
+**为什么补登**：这份预览**早就把样式与规则写明了** ✓，但它一直**没被登记** ✗ ——
+`REQUIREMENTS.md` 里 0 次提及 ⇒ 我实现"分镜样式"时**没读它** ✗，而是从真机数据**反推规则** ✓
+⇒ 结果规格漂流：分隔线规则绕了 5 个版本（空行块 → 动作行 → 空行块 ✗✗✓），
+  最后 1.1.0 才回到预览里本来写着的那条 ✓。**这件事的责任在我，不在预览。**
+
+**预览定稿的规则（照抄，不许再"重新猜"）**：
+```css
+/* * 一条消息 = 一个网格
+   * 名字列宽 = 整条消息最长的名字（不是每段各算各的）
+   * 段落之间的内容也对齐
+   * row-gap 是行与行之间唯一有效的间距手段（.row 是 display:contents，margin 对它无效） */
+.grid{ display:grid; grid-template-columns:max-content 1fr; row-gap:.8em }
+.row{ display:contents; color:var(--c, inherit) }
+/* 名字列：靠右紧贴内容，后面留一个间隔 */
+.who{ font-weight:600; opacity:.85; text-align:right; padding-right:.6em; white-space:nowrap }
+/* 段与段之间的分隔线，横跨两列 */
+.grpsep{ grid-column:1 / -1; height:0; border-top:1px solid var(--line); margin:1.25em 0 }
+/* 空行分段 */  if(gi > 0) html += '<div class="grpsep"></div>';
+```
+**其它定稿口径**：标签一律不显示 ✓ · 格式错的行显式标红 ✓ · 旁白无名字且对齐正文列 ✓ ·
+角色 → 色、层 → 样式（人称/层名不写死）✓
+
+**落实为夹具**：断言 `style.css` 与「分隔线 = 空行分组」这两处**不再漂移** ✓

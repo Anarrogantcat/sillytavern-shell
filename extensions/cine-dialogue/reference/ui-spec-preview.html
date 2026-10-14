@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>分镜对话预览 · 干净重写版</title>
+<style>
+/* ============ 这一块是页面外壳，不参与「分镜样式」，不可编辑 ============ */
+  :root{
+    --bg:#12161d; --panel:#1a2029; --panel2:#222a36; --line:#333d4d;
+    --fg:#e6e9ef; --sub:#9aa8bf; --dim:#6b7889;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.6 "Microsoft YaHei",system-ui,sans-serif;display:flex;height:100vh}
+
+  .left{width:38%;min-width:320px;border-right:1px solid var(--line);
+        display:flex;flex-direction:column;background:var(--panel)}
+  .left h3{margin:0;padding:.55em 1em;font-size:.78em;color:var(--dim);
+           border-bottom:1px solid var(--line);font-weight:400;letter-spacing:.06em;
+           display:flex;justify-content:space-between;align-items:center}
+  .left h3 button{background:#2a3441;border:1px solid var(--line);color:var(--fg);
+                  border-radius:.25em;padding:.15em .6em;font:inherit;font-size:.9em;cursor:pointer}
+  .left h3 button:hover{border-color:var(--sub)}
+  textarea{resize:none;border:0;outline:0;padding:.9em 1em;
+           background:var(--panel);color:var(--fg);
+           font:12.5px/1.75 "Consolas","Microsoft YaHei",monospace}
+  #src{flex:1 1 auto}
+  #css{flex:0 0 40%;border-top:1px solid var(--line);background:#161b23;color:#9fd6c8}
+
+  .right{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .legend{display:flex;flex-wrap:wrap;gap:.9em;font-size:.74em;color:var(--dim);
+          padding:.5em 1.2em;border-bottom:1px solid var(--line);background:var(--panel)}
+  .legend i{font-style:normal;display:inline-block;width:.7em;height:.7em;
+            border-radius:2px;margin-right:.3em;vertical-align:middle}
+  .legend b{font-weight:400;color:var(--sub)}
+  .legend .sep{color:#3a4454}
+  .chat{flex:1;overflow-y:auto;padding:1.2em 1.5em}
+  .foot{border-top:1px solid var(--line);background:var(--panel);
+        padding:.5em 1.2em;font-size:.72em;color:var(--dim);line-height:1.9}
+
+/* ============ 消息气泡（外壳） ============ */
+  .msg{background:var(--panel2);border:1px solid var(--line);border-radius:.5em;
+       padding:1em 1.2em;max-width:58em;margin-bottom:1.1em}
+  .msg.user{background:#1d2634;border-color:#2c3748}
+  .warn{color:#ff8f8f;border:1px dashed #7a3a3a;background:#2a1c1f;
+        border-radius:.3em;padding:.4em .7em;font-size:.8em;margin-bottom:.7em}
+  .panel{margin-top:1.1em;padding-top:.9em;border-top:1px solid var(--line)}
+  .pbar{font-size:.8em;color:var(--dim);margin-bottom:.7em}
+  .pbar b{color:var(--sub);font-weight:400}
+  .opts{display:flex;flex-direction:column;gap:.35em}
+  .opt{display:flex;align-items:center;gap:.7em;width:100%;text-align:left;
+       background:var(--panel);border:1px solid var(--line);border-radius:.3em;
+       padding:.5em .8em;color:var(--fg);font:inherit;font-size:.9em;cursor:pointer}
+  .opt:hover{border-color:var(--sub);background:#28313f}
+  .opt .oi{color:var(--dim);font-size:.85em;min-width:1.4em}
+  .opt .ot{flex:1}
+  .opt .ok{color:var(--dim);font-size:.8em}
+</style>
+</head>
+<body>
+
+<div class="left">
+  <h3><span>模型输出（源文本）—— 标签只在这里出现</span></h3>
+  <textarea id="src" spellcheck="false">
+
+林野·台词 「都进来。」
+林婉婷·动作 我侧身把门让开，手没离开门框，指节抵着那道冷硬的木头，凉气顺着指尖往上爬，爬到手腕的时候我才发现自己一直在抖——不是因为冷，是因为我知道门一旦关上，就没有退回去的余地了。我抬眼看了他一下，他站在屋里没动，眼睛却一直落在我身上，那种眼神我认得，是他打定主意的时候才会有的。
+林晚·动作 我第一个跨进门，鞋都没脱，脚尖在地板上蹭了两下，蹭出一道浅浅的水痕，然后径直往床边走，走到一半又停下，回头去看门口那两个人。我不知道自己在等什么，只是手指一直绞着衣角，把那块布绞出一片细密的褶子，绞到指腹发麻也没松开。
+苏晴·台词 「……我看着就行。」
+旁白·门缝底下那道光暗了一下。
+
+林晚·动作 我把手撑在身后，上身的重量全压在手腕上，肩膀往后打开，胸口就那样正对着他的方向。我知道这个姿势意味着什么，我甚至是故意摆成这样的，可是当他的视线真的落下来的时候，我的呼吸还是乱了一拍，喉咙发紧，连吞咽都变得很明显，胸口的皮肤自己绷了起来，那两点在冷空气里一点点立起来，硬得发疼。
+林婉婷·感官 被林晚那双眼睛盯着的时候，我后背上先起了一层薄汗，从肩胛骨中间往下淌，沿着脊柱沟一路滑到腰窝，凉得我忍不住缩了一下肩。屋里暖气明明开得很足，我的手脚却是冷的，只有被他看过的那一小块皮肤是热的，热得不正常，像有人拿指腹在上面慢慢碾，碾得那片皮肤一直发麻，麻得我几乎想伸手去揉一下。
+林婉婷·台词 「不脱。」
+林晚·台词 「我又没让你脱。」
+林婉婷·心理 我嘴上说不脱，手却已经按在了自己腰带上，指腹把那个金属扣摸了一遍又一遍。我不是不想，我是不敢在他面前先松口——先松口的那个人就输了，从小就没人教过我这个道理，可是我一直知道。
+
+林野·动作 我走过去，没有立刻碰她，只是站得很近，近到能看清她锁骨上那层细细的绒毛。我抬起手，用指背从她的下颌线一路划到锁骨窝，力道轻得像在擦灰，然后停在那里不动，等她先眨眼。她没眨眼，睫毛却抖了一下，脖子上的筋绷起来，喉咙里咽了一口气，那口气我听见了。
+林婉婷·感官 他的指背贴在我下巴上的时候，我一整条脊背都绷紧了。他没有用力，可就是那一点点温度，从下颌一路烧到耳根，我耳朵里嗡了一下，身后那些声音全退远了。我能感觉到自己的呼吸在变浅，胸口起伏得很明显，裙子的布料随着每一次吸气绷紧又松开，蹭在乳尖上，蹭得我不得不把注意力放到别处去。
+林婉婷·台词 「……你手别抖。」
+林野·台词 「我没抖。」
+
+林野·动作 我低头含住她的时候，她整个人弹了一下。我一只手按住她的胯，不让她退，另一只手从她肋下绕过去托住后背，把她的上半身稍微抬起来一点；她的皮肤很烫，掌心贴上去能感觉到皮下的血流都往一个地方涌。我吸得很慢，一道一道地把那片软肉往嘴里收，舌尖绕着那一点来回扫了两圈，她的手指立刻插进我的头发里，攥得很紧，头皮被拽得发麻。
+林婉婷·感官 被含住的那一刻我脑子里是空的。热度从胸口往下走，走过肋骨，走过小腹，最后全堆在腿根那一小片地方，堆得那里一阵一阵地抽。我下意识想夹腿，可是膝盖被他压着，夹不起来；我伸手去抓床单，抓到一手空，只能反手抓住自己的头发。我听见自己在喘，喘得很难听，喉咙里还有一点没压住的细声，从鼻腔里漏出来，我自己都听得清清楚楚。
+林婉婷·台词 「……别、别停。」
+林野·台词 「你先说说你刚才装什么。」
+林婉婷·心理 我想骂他，可是嘴一张开，出来的不是话，是一声很短的哼。我恨死这个声音了，它比任何一句承认都诚实。
+
+林野·动作 我把她翻过去，让她跪好，一只手扣住她的腰往下压，另一只手从她背后绕过去按住肩膀，整个人的重量压在她背上，床垫跟着陷下去一大块。她被压得几乎动不了，只能把手撑在床头稳住自己，肩胛骨一下一下地顶起来又塌下去，喘气的声音都变了调，从嗓子深处一点点挤出来，跟刚才完全不一样。
+林婉婷·感官 进到最里面的时候，我整条小腹都是酸的。那种酸不是疼，是从里面往外胀的，胀得我想把腿并起来，可膝盖底下是床垫，没有着力点，我越用力越陷下去。他每动一下，那股酸就往四周散开一圈，散到腰上，散到骨盆里面，最后全聚在身体最深处那一点，一点一点地被我自己的心跳撞开。
+林野·感官 她里面绞得太紧，一下一下地箍着，箍得我腰眼发麻。我停下来喘了一口气，手从她腰上滑到前面去，掌心贴住她的小腹，能感觉到那里面隔着一层肉在轻轻地动，跟我的心跳完全对不上频率。
+林晚·台词 「婉婷姐你叫出来啊。」
+林婉婷·台词 「……闭嘴。」
+
+苏晴·感官 我站在门边，一只手扶着门框，另一只手不知道什么时候已经滑到自己裙子里面去了。指腹隔着内裤压在那个地方，压一下，那里就往外渗一点，布料很快湿了一小片，黏在大腿内侧，凉下来的时候特别明显。我能闻到床上那股味道，混着汗味和别的什么，腻得人发昏，可我一步都没有退。
+苏晴·心理 我今年四十六岁，我女儿就在那张床上，坐在床尾，正看着他们。这个念头冒出来的时候，我的手停了一下。可是只停了一下，它又动了。我恨的就是这个只停了一下。
+苏晴·台词 「……别弄到床外面。」
+林晚·感官 听见我妈的声音那一下，我手指的动作停住了，停在半路上，进退都不是。我偏头去看门边，正好对上她的视线，她眼睛很亮，比平时亮得多；我看着她，她也看着我，两个人谁都没说话，我手指上那点黏腻在这时候变得特别清楚。
+林晚·台词 「妈你、你还在啊……」
+苏晴·台词 「我一直都在。」
+
+林晚·动作 快感一层一层叠上来的时候，我已经撑不住了，上半身整个趴下去，只剩下腰被他握着，膝盖在床垫上蹭得发红。我伸手往后去抓，抓到他的手腕，攥着不放，指甲掐进他皮肤里；我知道我掐疼他了，可是松不开，我连自己叫了什么都听不清。
+林晚·感官 高潮来的时候我里面疯狂收缩，一股水喷在床单上，喷出来那一下整个人是空的，脑子里什么都没有，只有小腹里一阵一阵的余震，一波接一波地往下过。我腿抖得并不拢，只能趴在那儿，脸埋在枕头里，口水把枕套浸湿了一小块，我连抬头的力气都没有。
+林野·感官 她绞得太紧，我也跟着交代在里面了，退出来的时候带出一小片温热的东西，顺着她的股缝往下淌，淌到床单上，很快洇成一团深色。
+苏晴·动作 我走进来，把被子的一角拉起来，盖在林晚身上，动作很轻，轻得像在盖一个睡着的小孩。
+苏晴·台词 「明天还要早起。」
+旁白·大家这一晚，谁都没有睡好。
+
+---用户楼---
+
+后入
+
+[选项]
+1. 第一项
+2. 第二项 | 附注
+3. 第三项</textarea>
+
+  <h3>
+    <span>分镜样式（唯一来源，改完立刻生效）</span>
+    <button id="reset">还原</button>
+  </h3>
+  <textarea id="css" spellcheck="false">/* 一条消息 = 一个网格
+   → 名字列宽 = 整条消息最长的名字（不是每段各算各的）
+   → 段落之间的内容也对齐
+   ★ row-gap 是行与行之间**唯一**有效的间距手段
+     （.row 是 display:contents，margin 对它无效） */
+.grid{ display:grid; grid-template-columns:max-content 1fr; row-gap:.8em }
+
+/* 一行占两格：名字 + 内容。row 自己不生成盒子，但 color 照常继承 */
+.row{ display:contents; color:var(--c, inherit) }
+
+/* 名字列：靠右紧贴内容，后面留一个间隔
+   想改成「名字靠左」就把 text-align 换成 left */
+.who{
+  font-weight:600; opacity:.85;
+  text-align:right;
+  padding-right:.6em;
+  white-space:nowrap;
+}
+
+/* 内容格：统一留出「竖线那一格」的宽度
+   ★ 所有行的 border 宽度必须一样（只是颜色/样式不同）
+     否则有线的行文字会被推偏，对齐就坏了 */
+.body{
+  border-left:3px solid transparent;
+  padding-left:.7em;
+  min-width:0;
+}
+/* 首行缩进两格：只给「真的换行了」的段落（由 JS 量高度后加 .wrap）
+   单行的行一律不缩进 → 所有行的左边缘才对得齐 */
+.body.wrap{ text-indent:2em }
+
+/* 层 → 线条形状 + 字体
+   ★ 必须同时给 style 和 color
+     只给 style 的话颜色还是上面的 transparent，线根本看不见 */
+.row.L-act   .body{ border-left-style:solid;  border-left-color:currentColor }  /* 动作：实线 */
+.row.L-sense .body{ border-left-style:dotted; border-left-color:currentColor }  /* 感官：点线 */
+.row.L-mind  .body{ border-left-style:double; border-left-color:currentColor;   /* 心理：双线 */
+                    font-style:italic }
+
+/* 台词：引号是内容的一部分，不额外上色 */
+.body q{ quotes:none }
+.body q::before,.body q::after{ content:"" }
+
+/* 旁白：没有名字字段，内容用中性灰，缩进跟正文一致 */
+.row.L-narr .body{ color:var(--sub) }
+
+/* 段与段之间的分隔线，横跨两列 */
+.grpsep{ grid-column:1 / -1; height:0; border-top:1px solid var(--line); margin:1.25em 0 }
+
+/* 格式错误：显式暴露，绝不静默降级成旁白 */
+.row.err .who{ color:#ff6b6b; font-size:.78em; font-weight:400 }
+.row.err .body{ color:#ff9b9b; border-left-color:#ff6b6b; border-left-style:dashed }
+</textarea>
+</div>
+
+<div class="right">
+  <div class="legend" id="legend"></div>
+  <div class="chat" id="chat"></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<!-- 生效中的分镜样式（唯一），内容来自身份输入框 -->
+<style id="live"></style>
+
+<script>
+"use strict";
+
+/* ==================================================================
+   规则表（只实现这些，不额外发明）
+     写法    名字·层 内容        —— 层后必须一个空格
+     层      台词 / 动作 / 感官 / 心理
+     旁白    旁白·内容           —— 没有名字字段，主语写在句子里
+     颜色    = 角色（出现顺序分配，数量不限）
+     样式    = 层：台词「」· 动作实线 · 感官点线 · 心理双线+斜体 · 旁白无装饰
+     人称    台词 / 感官 / 心理 = 我，动作 = 我（统一第一人称）
+     渲染    标签一律不显示
+   ================================================================== */
+
+const PALETTE = ['#00F5EF','#D982EF','#E8C815','#7FB2FF','#FF8C42','#B6E86B','#FF6B9D','#B48CFF'];
+
+const LAYER_CLS = { '台词':'L-speech', '动作':'L-act', '感官':'L-sense', '心理':'L-mind' };
+
+/* 旁白：旁白·内容（内容里可以含主语） */
+const RE_NARR = /^旁白\s*[·・:：]\s*(.+)$/;
+/* 普通行：名字·层 内容 —— 层后强制一个空格，写漏了就走错误分支 */
+const RE_ROW  = /^([^\s·・:：]{1,12})\s*[·・:：]\s*(台词|动作|感官|心理)\s+(.+)$/;
+/* 选项行 */
+const RE_OPT  = /^(\d+)[.、)]\s*(.+?)\s*(?:\|\s*(.*))?$/;
+
+const ENT = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ENT[c]); }
+
+/* 颜色 = 角色，按出现顺序 */
+const colors = Object.create(null);
+function colorOf(name){
+  if(!colors[name]){
+    const i = Object.keys(colors).length;
+    colors[name] = PALETTE[i] || ('hsl(' + ((i * 137.508) % 360).toFixed(0) + ',78%,66%)');
+  }
+  return colors[name];
+}
+
+/* ---------- 源文本切分：AI 楼 / 用户楼 / 选项 ---------- */
+function splitSource(text){
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const out = { ai:[], user:[], opt:[] };
+  let mode = 'ai';
+  for(const raw of lines){
+    const t = raw.trim();
+    if(/^\[选项\]$/.test(t)){ mode = 'opt'; continue; }
+    if(/^-{2,}用户楼-{2,}$/.test(t)){ mode = 'user'; continue; }
+    out[mode].push(raw);
+  }
+  return out;
+}
+
+/* 空行分段 */
+function toGroups(lines){
+  const groups = [];
+  let cur = [];
+  for(const raw of lines){
+    if(raw.trim() === ''){
+      if(cur.length){ groups.push(cur); cur = []; }
+    }else{
+      cur.push(raw.trim());
+    }
+  }
+  if(cur.length) groups.push(cur);
+  return groups;
+}
+
+/* ---------- 单行解析 ---------- */
+function parseLine(line){
+  const n = line.match(RE_NARR);
+  if(n) return { kind:'narr', body: esc(n[1].trim()) };
+
+  const r = line.match(RE_ROW);
+  if(r){
+    const name = r[1].trim(), layer = r[2], text = r[3].trim();
+    let body = esc(text);
+    if(layer === '台词'){
+      const q = text.match(/^[「『]([\s\S]+)[」』]$/);
+      if(q) body = '<q>「' + esc(q[1]) + '」</q>';
+    }
+    return { kind:'row', name, layer, body };
+  }
+
+  return { kind:'err', raw: line };
+}
+
+/* ---------- 行 HTML ---------- */
+function narrHTML(body){
+  return '<div class="row L-narr"><span class="who"></span>'
+       + '<span class="body">' + body + '</span></div>';
+}
+function rowHTML(name, layer, body){
+  return '<div class="row ' + LAYER_CLS[layer] + '" style="--c:' + colorOf(name) + '">'
+       + '<span class="who">' + esc(name) + '</span>'
+       + '<span class="body">' + body + '</span></div>';
+}
+function errHTML(raw){
+  return '<div class="row err"><span class="who">格式错误</span>'
+       + '<span class="body">' + esc(raw) + '</span></div>';
+}
+/* 用户楼里没有标签的裸输入（比如「后入」）→ 算玩家自己那行
+   注意：这条规则表里没有写，是按旧版做法处理的，你可以要求改 */
+function plainHTML(name, body){
+  return '<div class="row" style="--c:' + colorOf(name) + '">'
+       + '<span class="who">' + esc(name) + '</span>'
+       + '<span class="body">' + body + '</span></div>';
+}
+
+/* ---------- 渲染一段 ----------
+   defaultSpeaker 为空 → 没有标签的行算格式错误（用来抓模型写漏空格）
+   defaultSpeaker 有值 → 没有标签的行算这个人说的（用户楼用） */
+function renderGroups(groups, defaultSpeaker){
+  let html = '', errs = 0;
+  groups.forEach((g, gi) => {
+    if(gi > 0) html += '<div class="grpsep"></div>';
+    for(const line of g){
+      const p = parseLine(line);
+      if(p.kind === 'narr')      html += narrHTML(p.body);
+      else if(p.kind === 'row')  html += rowHTML(p.name, p.layer, p.body);
+      else if(defaultSpeaker)    html += plainHTML(defaultSpeaker, esc(p.raw));
+      else { errs++;             html += errHTML(p.raw); }
+    }
+  });
+  return { html, errs };
+}
+
+/* ---------- 主渲染 ---------- */
+function render(){
+  const src = document.getElementById('src').value;
+  const parts = splitSource(src);
+  const aiGroups = toGroups(parts.ai);
+  const userGroups = toGroups(parts.user);
+
+  let totalErr = 0;
+  let inner = '';
+
+  /* AI 楼：一条消息，内部含多段 */
+  const ai = renderGroups(aiGroups);
+  totalErr += ai.errs;
+
+  const opts = parts.opt.map(l => l.trim()).filter(Boolean)
+                        .map(l => l.match(RE_OPT)).filter(Boolean);
+
+  let panel = '<div class="panel">'
+    + '<div class="pbar">前端状态栏：<b>（占位 · 角色卡有状态栏时让位给角色卡）</b></div>'
+    + '<div class="opts">';
+  if(opts.length){
+    panel += opts.map(o =>
+        '<button class="opt" data-t="' + esc(o[2]) + '">'
+      +   '<span class="oi">' + esc(o[1]) + '.</span>'
+      +   '<span class="ot">' + esc(o[2]) + '</span>'
+      +   '<span class="ok">' + esc(o[3] || '') + '</span>'
+      + '</button>').join('');
+  }else{
+    panel += '<div class="pbar">（没有选项块）</div>';
+  }
+  panel += '</div></div>';
+
+  inner += '<div class="msg ai">';
+  if(ai.errs) inner += '<div class="warn">&#9888; 有 ' + ai.errs + ' 行格式不对（已在下方用红色标出）</div>';
+  inner += '<div class="grid">' + ai.html + '</div>' + panel + '</div>';
+
+  /* 用户楼：每段一条消息；没有标签的裸输入算玩家那行 */
+  userGroups.forEach(g => {
+    const u = renderGroups([g], '我');
+    totalErr += u.errs;
+    inner += '<div class="msg user">';
+    if(u.errs) inner += '<div class="warn">&#9888; 有 ' + u.errs + ' 行格式不对</div>';
+    inner += '<div class="grid">' + u.html + '</div></div>';
+  });
+
+  document.getElementById('chat').innerHTML = inner;
+
+  /* 选项按钮：点一下 = 发送该文本 */
+  document.querySelectorAll('.opt').forEach(b => {
+    b.onclick = () => alert('发出：' + b.dataset.t);
+  });
+
+  /* 图例：角色颜色 + 层样式 */
+  const names = Object.keys(colors);
+  document.getElementById('legend').innerHTML =
+      (names.length
+        ? names.map(n => '<span><i style="background:' + colors[n] + '"></i><b>' + esc(n) + '</b></span>').join('')
+        : '<span>（暂无角色）</span>')
+    + '<span class="sep">|</span>'
+    + '<span><b>台词</b> 引号</span><span><b>动作</b> 实线</span>'
+    + '<span><b>感官</b> 点线</span><span><b>心理</b> 双线+斜体</span><span><b>旁白</b> 无装饰</span>';
+
+  /* 规则表（自查用） */
+  document.getElementById('foot').innerHTML =
+      '规则：'
+    + '<b>名字·层 内容</b>（层后必须一个空格）　'
+    + '层 = 台词 / 动作 / 感官 / 心理　'
+    + '<b>旁白·内容</b>（没有名字字段）　'
+    + '颜色 = 角色　样式 = 层　'
+    + '人称：台词/感官/心理 = 我，动作 = 我　'
+    + '<b>标签一律不显示</b>　'
+    + '格式错的行：显式标红（不静默降级）'
+    + (totalErr ? '　<span style="color:#ff8f8f">当前 ' + totalErr + ' 行有问题</span>' : '');
+
+  /* 首行缩进：只给「真的换行了」的段落
+     必须在 innerHTML 之后、布局算完之后量高度
+     单行的行不缩进 → 所有行的文字左边缘一致 */
+  document.querySelectorAll('.grid .body').forEach(b => {
+    b.classList.remove('wrap');
+    const row = b.parentElement;
+    if(!row || row.classList.contains('L-speech')) return;   /* 台词永不缩进 */
+    const lh = parseFloat(getComputedStyle(b).lineHeight);
+    if(!lh) return;
+    if(b.getBoundingClientRect().height > lh * 1.5) b.classList.add('wrap');
+  });
+}
+
+/* ---------- 样式：单一来源 ----------
+   <style id="live"> 的内容 = 这个框的内容，没有第二份 CSS */
+const cssBox = document.getElementById('css');
+const CSS_DEFAULT = cssBox.value;
+function applyCSS(){
+  document.getElementById('live').textContent = cssBox.value;
+}
+cssBox.addEventListener('input', applyCSS);
+applyCSS();
+
+document.getElementById('reset').onclick = () => {
+  cssBox.value = CSS_DEFAULT;
+  applyCSS();
+};
+
+document.getElementById('src').addEventListener('input', render);
+render();
+</script>
+</body>
+</html>

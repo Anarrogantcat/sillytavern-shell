@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.1.0');
+eq('version 与 manifest 一致', VERSION, '1.1.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2174,6 +2174,22 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     eq('★ 三个空行分组 ⇒ 2 条线', cnt2(['甲·动作 一。', '甲·感官 二。', '甲·动作 三。'].join(NB2 + NB2)), 2);
     eq('★ 同一分组内（无空行）⇒ 0 条线', cnt2(['甲·动作 一。', '甲·感官 二。', '甲·台词 三。'].join(NB2)), 0);
     eq('★ 关掉开关 ⇒ 0 条线', ((String(renderMessageHTML(['甲·动作 一。', '甲·感官 二。'].join(NB2 + NB2), {}, { ...DEFAULT_CONFIG, showSeparators: false }).html)).match(/<div class="cd-sep"><\/div>/g) || []).length, 0);
+}
+
+/* ★★ UI 规格不许再漂（用户：为什么预览做好了没用）—— 对着 reference/ui-spec-preview.html 钉住 */
+{
+    const spec = fs.readFileSync(new URL('../extensions/cine-dialogue/reference/ui-spec-preview.html', import.meta.url), 'utf8');
+    const cssOurs = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+    ok('★★ 规格文件在仓库里（不再只躺在工作区）', spec.indexOf('max-content 1fr') >= 0);
+    ok('★★ 规格写明「段与段之间的分隔线，横跨两列」', spec.indexOf('横跨两列') >= 0);
+    ok('★★ 规格写明「空行分段」+ grpsep', spec.indexOf('空行分段') >= 0 && spec.indexOf('grpsep') >= 0);
+    ok('★★ 规格写明 row-gap 是唯一间距手段', spec.indexOf('唯一') >= 0 && spec.indexOf('display:contents') >= 0);
+    ok('★ 我们仍然两列 max-content 1fr', /grid-template-columns: max-content 1fr/.test(cssOurs));
+    ok('★ 我们的分隔线仍然横跨两列', /grid-column: 1 \/ -1/.test(cssOurs));
+    ok('★ 我们的 row 仍然是 display: contents', /custom-cd-row\{ display: contents/.test(cssOurs));
+    ok('★ 我们的名字仍然右对齐', /text-align: right/.test(cssOurs));
+    ok('★★ 逻辑上：分隔线 = 空行分组边界（不是别的判据）', /gi > 0 && cfg\.showSeparators/.test(fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8')));
+    ok('★ REQUIREMENTS 里登记了这份规格', fs.readFileSync(new URL('../extensions/cine-dialogue/REQUIREMENTS.md', import.meta.url), 'utf8').indexOf('UI 规格的源头') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
