@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.57');
+eq('version 与 manifest 一致', VERSION, '0.8.58');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2036,6 +2036,14 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 合并后 hasOurLines=true', hasOurLines(mergeSplitTags(raw7)) === true);
     const r7 = renderMessageHTML(mergeSplitTags(raw7), {}, DEFAULT_CONFIG);
     ok('★★ 合并后能渲染且标签不裸露', !!r7 && !/·心理/.test(String(r7.html).replace(/<[^>]*>/g, '')));
+}
+
+/* 预设侧硬约束：正文只允许带标签的行（用户 2026-10-14） */
+{
+    ok('★★ 写明只允许带标签的行（含旁白·内容）', LENGTH_SPEC.indexOf('只允许出现「名字·层 内容」') >= 0 && LENGTH_SPEC.indexOf('旁白·内容') >= 0);
+    ok('★★ 写明不许无标签散文段落', LENGTH_SPEC.indexOf('绝对不要写没有标签的散文段落') >= 0);
+    ok('★ 引用了真机反例', LENGTH_SPEC.indexOf('染原本以为') >= 0);
+    ok('★ 条目内不用星号', LENGTH_SPEC.indexOf('*') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
