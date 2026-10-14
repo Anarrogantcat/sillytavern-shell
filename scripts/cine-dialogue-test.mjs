@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.0.7');
+eq('version 与 manifest 一致', VERSION, '1.0.8');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2126,6 +2126,17 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 明说一律以本条为准', LENGTH_SPEC.indexOf('一律以本条为准') >= 0);
     ok('★ 明说宁可写长不要写短', LENGTH_SPEC.indexOf('宁可写长，不要写短') >= 0);
     ok('★ 最低要求仍在', LENGTH_SPEC.indexOf('至少写满 16 个回合') >= 0 && LENGTH_SPEC.indexOf('不少于 5000 字') >= 0);
+}
+
+/* ★★ 预设侧：名字必须准确；每个回合都要有旁白（用户 2026-10-14：错误的名字 / 缺少旁白） */
+{
+    ok('★★ 写明名字只能用准确姓名、不许造名', FORMAT_SPEC.indexOf('当前在场角色的准确姓名') >= 0);
+    ok('★★ 引用了真机错例（沙扬）', FORMAT_SPEC.indexOf('沙扬') >= 0);
+    ok('★ 不确定名字时允许不带名字的层', FORMAT_SPEC.indexOf('宁可用「动作/感官」这类不带名字的层') >= 0);
+    ok('★★ 回合结构里含旁白', LENGTH_SPEC.indexOf('心理 → 旁白') >= 0);
+    ok('★★ 写明每个回合都要有一条旁白', LENGTH_SPEC.indexOf('每个回合都要有一条旁白') >= 0);
+    ok('★ 引用了用户反馈（缺少旁白）', LENGTH_SPEC.indexOf('用户反馈过「缺少旁白」') >= 0);
+    ok('★ 两条条目都不用星号', FORMAT_SPEC.indexOf('*') < 0 && LENGTH_SPEC.indexOf('*') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
