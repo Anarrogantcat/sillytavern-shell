@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-normalizeSpeechQuotes, mergeSplitTags, stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
+UPSTREAM_LENGTH_FIXES, fixUpstreamLength, normalizeSpeechQuotes, mergeSplitTags, stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.1.1');
+eq('version 与 manifest 一致', VERSION, '1.2.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2190,6 +2190,24 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★ 我们的名字仍然右对齐', /text-align: right/.test(cssOurs));
     ok('★★ 逻辑上：分隔线 = 空行分组边界（不是别的判据）', /gi > 0 && cfg\.showSeparators/.test(fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8')));
     ok('★ REQUIREMENTS 里登记了这份规格', fs.readFileSync(new URL('../extensions/cine-dialogue/REQUIREMENTS.md', import.meta.url), 'utf8').indexOf('UI 规格的源头') >= 0);
+}
+
+/* ★★ 改写上游会打架的字数指令（用户贴出模型原文：6. 正文要求：不小于1000字 ✗） */
+{
+    ok('★★ 有 UPSTREAM_LENGTH_FIXES 表', Array.isArray(UPSTREAM_LENGTH_FIXES) && UPSTREAM_LENGTH_FIXES.length >= 2);
+    ok('★★ 表里含「不小于1000」那句', UPSTREAM_LENGTH_FIXES.some(([a]) => a.indexOf('不小于1000') >= 0));
+    ok('★★ 表里含思维链模板句', UPSTREAM_LENGTH_FIXES.some(([a]) => a.indexOf('正文要求写多少字') >= 0));
+    const fake = { prompts: [
+        { name: 'x', content: '正文字数: 不小于1000，具体根据情景的复杂程度规划' },
+        { name: 'y', content: '* 正文要求写多少字，如何控制剧情量既不注水也不太快？' },
+        { name: 'z', content: '与字数无关的条目' },
+    ] };
+    const n = fixUpstreamLength(fake);
+    eq('★★ 两处都被改写', n, 2);
+    ok('★★ 改写后不再有「不小于1000」', fake.prompts[0].content.indexOf('不小于1000') < 0 && fake.prompts[0].content.indexOf('5000 字') >= 0);
+    ok('★★ 思维链那句指向我们的条目', fake.prompts[1].content.indexOf('篇幅与节奏') >= 0);
+    eq('★ 无关条目不动', fake.prompts[2].content, '与字数无关的条目');
+    ok('★★ applyPresetRecipe 里确实调用了', /fixUpstreamLength\(out\)/.test(fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8')));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

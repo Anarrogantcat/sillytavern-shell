@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.1.1';
+export const VERSION = '1.2.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1613,6 +1613,35 @@ export function presetNoteText(opts = {}) {
  * @param {{srcName?:string, srcHash?:string, formatSpec?:string}} [opts]
  * @returns {{ok:boolean, preset:object, changes:string[], stats:object}}
  */
+/**
+ * ★★ 1.2.0：改写**上游**那些会和我们的篇幅要求打架的指令
+ *   真机证据（2026-10-14，用户贴的模型思考原文）：
+ *     「6. 正文要求：不小于1000字。为了保证这1000字不水，我要把每一次极其粗暴的撞击产生的…」
+ *   来源两处（都在启用状态的预设条目里）：
+ *     ① `🤖自定义（字数）`（order 第 146 位）→ 「正文字数: 不小于1000」
+ *     ② `思维链-注重流畅性`（order 第 159 位）→ 模板句「正文要求写多少字，如何控制剧情量既不注水也不太快？」
+ *   ⇒ 只在我们的条目里"点名"是不够的 ✗（1.0.5 就是那样，模型照样听 1000 字）
+ *   ⇒ 生成预设时**直接改写这两句** ✓ 重新生成也不会丢 ✓
+ */
+export const UPSTREAM_LENGTH_FIXES = [
+    ['正文字数: 不小于1000', '正文字数: 按【分镜】篇幅与节奏写足（以那条为准，正文不低于 5000 字）'],
+    ['正文要求写多少字，如何控制剧情量既不注水也不太快？', '正文按要求写足（以【分镜】篇幅与节奏那条为准，宁多勿少）'],
+];
+
+export function fixUpstreamLength(preset) {
+    let n = 0;
+    for (const p of (preset && preset.prompts) || []) {
+        let c = String(p.content == null ? '' : p.content);
+        if (!c) continue;
+        let touched = false;
+        for (const [from, to] of UPSTREAM_LENGTH_FIXES) {
+            if (c.indexOf(from) >= 0) { c = c.split(from).join(to); touched = true; n++; }
+        }
+        if (touched) p.content = c;
+    }
+    return n;
+}
+
 export function applyPresetRecipe(srcObj, opts = {}) {
     const R = PRESET_RECIPE;
     if (!srcObj || typeof srcObj !== 'object') return { ok: false, preset: null, changes: ['传入的不是一个预设对象'], stats: {} };
@@ -1827,6 +1856,8 @@ export function applyPresetRecipe(srcObj, opts = {}) {
     stats.promptsTo = prompts.length;
     stats.orderTo = order.length;
     stats.enabledTo = order.filter(o => o.enabled).length;
+    /* ★ 1.2.0：顺手改写上游会打架的字数指令（真机：模型按 1000 字收尾 ✗） */
+    try { fixUpstreamLength(out); } catch (_) { }
     return { ok: true, preset: out, changes, stats };
 }
 
