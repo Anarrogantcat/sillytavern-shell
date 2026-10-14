@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.7.0');
+eq('version 与 manifest 一致', VERSION, '1.8.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -395,9 +395,9 @@ ok('导入：类型不对的键被丢弃', (() => {
 })());
 
 /* 配置面覆盖度：加了配置键却忘了给 UI —— 这里会拦下来 */
-/* ★ 1.7.0 追加两个：respectCardFrontend（默认 true，意图就是"别抢卡的选项栏"✓）
-   cardHasFrontend（运行期注入的只读标记 ✓）—— 都是代码管理，暂无面板字段 */
-const CODE_MANAGED = ['palette', 'layerStyles', 'charColors', 'perCard', 'customLayers', 'onlyChar', 'highlight', 'respectCardFrontend', 'cardHasFrontend'];
+/* ★ 1.7.0/1.8.0 追加：respectCardFrontend / cardHasFrontend / autoOffCardFrontend
+   （意图都是"别碰自带前端的卡"✓ 目前是代码管理，面板字段待补） */
+const CODE_MANAGED = ['palette', 'layerStyles', 'charColors', 'perCard', 'customLayers', 'onlyChar', 'highlight', 'respectCardFrontend', 'cardHasFrontend', 'autoOffCardFrontend'];
 ok('每个 DEFAULT_CONFIG 键要么有面板字段、要么登记为代码管理',
     Object.keys(DEFAULT_CONFIG).every(k => PANEL_FIELDS.some(f => f.key === k) || CODE_MANAGED.indexOf(k) >= 0),
     Object.keys(DEFAULT_CONFIG).filter(k => !PANEL_FIELDS.some(f => f.key === k) && CODE_MANAGED.indexOf(k) < 0));
@@ -2314,6 +2314,18 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const sec = splitSections(msg, { keepOptions: true });
     ok('★ splitSections keepOptions ⇒ 不解析成 options、也不进 frontend（frontend 是整段跳过 ✗）', sec.options.length === 0 && sec.frontend.length === 0 && sec.keptOptions === true);
     ok('★★ 默认开关 respectCardFrontend = true', DEFAULT_CONFIG.respectCardFrontend === true);
+}
+
+/* ★★ 1.8.0：卡自带前端 ⇒ 默认对这张卡完全不动作（用户：89/107 张卡自带美化） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 默认开关 autoOffCardFrontend = true', DEFAULT_CONFIG.autoOffCardFrontend === true);
+    ok('★★ 卡自带前端时翻成 enabled:false（autoOff 标记）', /autoOffCardFrontend !== false && fe && !\(merged\.force === true\)/.test(src) && /autoOff: true/.test(src));
+    ok('★★ 用户强制启用可绕过（perCard[key].force）', /merged\.force === true/.test(src));
+    const bs = fs.readFileSync(new URL('../extensions/cine-dialogue/buttons.js', import.meta.url), 'utf8');
+    ok('★★ 按钮在自带前端的卡上改成「强制启用」语义', bs.indexOf('强制在这张卡上启用') >= 0);
+    ok('★ 按钮能取消强制', bs.indexOf('delete cur.force') >= 0);
+    ok('★ 判据含 TavernHelper（<%）', /cardHasFrontend/.test(src) && /TavernHelper/.test(src));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

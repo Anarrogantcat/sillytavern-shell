@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.8.0：卡自带前端默认完全不动作
+
+89/107 张卡自带美化 ⇒ 新增 autoOffCardFrontend（默认 true）：这类卡上插件不重排消息，
+可用发送栏按钮强制启用（perCard.force）。夹具 +6。
 ## 未发版（2026-10-14）— cine-dialogue 1.6.1：角色卡端到端测试
 
 补上 scripts/cine-card-test.mjs：107 张真卡 / 271 条真消息，6 条断言全绿。

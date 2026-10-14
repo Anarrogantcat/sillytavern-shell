@@ -1162,6 +1162,13 @@ function effectiveConfig() {
     if (key && base.perCard && base.perCard[key]) merged = { ...base, ...base.perCard[key] };
     /* 运行期注入：本卡是否自带前端（决定要不要抢它的选项栏 ✓） */
     merged = { ...merged, cardHasFrontend: fe };
+    /* ★★ 1.8.0：卡自带前端 ⇒ **默认对这张卡完全不动作** ✓
+       用户要求：「不要影响到角色卡自带的前端和选择状态栏，有自己美化的是明显不兼容的」✓
+       实测 89/107 张卡自带美化（含上千个 TavernHelper `<%` 脚本的整屏 UI）✗
+       ⇒ 除非用户在面板里明确「强制启用」（perCard[key].force = true），否则一律不动作 ✓ */
+    if (merged.autoOffCardFrontend !== false && fe && !(merged.force === true)) {
+        return { ...merged, enabled: false, off: true, autoOff: true };
+    }
     if (merged.off) return { ...merged, enabled: false, off: true };
     return merged;
 }
@@ -2383,7 +2390,7 @@ function start() {
     try { migrateRowGap(); } catch (_) { }
     try { migrateSeparators(); } catch (_) { }
     try { migrateRegexR23(); } catch (_) { }
-    try { cdStartButtons({ getContext, effectiveConfig, hasOurLines, allLayers, parseLine, mergeSplitTags, renderMessageHTML, cardKey, cfg, saveSettingsDebounced, EXT_ID }); } catch (_) { }
+    try { cdStartButtons({ getContext, effectiveConfig, hasOurLines, allLayers, parseLine, mergeSplitTags, renderMessageHTML, cardKey, cfg, saveSettingsDebounced, EXT_ID, cardHasFrontend }); } catch (_) { }
     /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
        这个坑踩过两次：
          · 0.1.0 —— extension_settings 从 script.js import → ESM 链接失败 → 一行都不执行

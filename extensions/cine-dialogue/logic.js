@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.7.0';
+export const VERSION = '1.8.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -79,6 +79,19 @@ export const DEFAULT_CONFIG = {
     respectCardFrontend: true,
     /** 运行期注入：当前角色卡是否自带前端（index.js 算 ✓） */
     cardHasFrontend: false,
+    /**
+     * ★★ 1.8.0（用户要求 + 107 张卡实测）：
+     *   「插件的选择状态栏**不要影响到角色卡自带的前端和选择状态栏**，
+     *     有自己美化的是明显不兼容的」✓
+     *   实测：**89 / 107 张卡自带美化**（`<style>` / CSS 规则 / TavernHelper `<%…%>` 脚本；
+     *         有的卡上千个 `<%` ⇒ 整个界面都是卡自己画的：画像框 / 状态栏 / 推进输入行…）
+     *   ⇒ 这种卡我们**一动手就可能破坏它的布局** ✗
+     *   ⇒ 默认 autoOffCardFrontend = true：卡自带前端时**对这张卡完全不动作** ✓
+     *     （等同面板里的「本卡不生效」✓）
+     *   ⇒ 想在这种卡上用我们：按「本卡生效/不生效」会写 `perCard[key].force = true`
+     *     （= 你明确要求强制启用 ✓ 我们照办 ✓ 但可能和卡的美化打架 ⚠）
+     */
+    autoOffCardFrontend: true,
     /** 用户楼要不要也渲染（默认否 —— 用户打的是大白话，不是分镜格式） */
     transformUserMessages: false,
     /** auto=按最长名字 | left | right | fixed */

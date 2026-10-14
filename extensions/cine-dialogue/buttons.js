@@ -101,7 +101,10 @@ export function cdDiagnoseLast() {
     }
 }
 
-/** ③ 本卡生效 / 不生效 */
+/** ③ 本卡生效 / 不生效
+ *  ★ 1.8.0：卡自带前端时**默认已经不动作了**（autoOff）⇒ 这个按钮在这种卡上的语义改成
+ *    「**强制启用**（我知道可能和卡的美化打架）」✓ 再按一次取消强制 ✓
+ */
 export function cdToggleCardOff() {
     try {
         const k = DEPS.cardKey();
@@ -109,11 +112,24 @@ export function cdToggleCardOff() {
         const c = DEPS.cfg();
         const pc = { ...(c.perCard || {}) };
         const cur = { ...(pc[k] || {}) };
-        cur.off = !cur.off;
+        const fe = (typeof DEPS.cardHasFrontend === 'function') ? DEPS.cardHasFrontend() : false;
+        const autoOff = (c.autoOffCardFrontend !== false);
+        if (fe && autoOff) {
+            if (cur.force === true) {
+                delete cur.force;
+                toast('已取消强制启用 —— 这张卡自带前端，回到「不动作」✓');
+            } else {
+                cur.force = true;
+                cur.off = false;
+                toast('已强制在这张卡上启用 ⚠ 它自带前端，可能与卡的美化冲突');
+            }
+        } else {
+            cur.off = !cur.off;
+            toast('本卡已' + (cur.off ? '设为不生效（原样交给 ST）' : '恢复生效'));
+        }
         pc[k] = cur;
         c.perCard = pc;
         DEPS.saveSettingsDebounced();
-        toast('本卡已' + (cur.off ? '设为不生效（原样交给 ST）' : '恢复生效'));
     } catch (e) {
         toast('切换失败：' + e.message, 'error');
     }
