@@ -1134,6 +1134,15 @@ function cardKey() {
  *     StatusPlaceHolderImpl · <option · <StatusBar> · UpdateVariable · TavernHelper · stat_data · <%
  *   带缓存（按卡 avatar 作键）✓ —— 卡的世界书可能有几百条，不能每条消息都 JSON.stringify ✗
  */
+/**
+ * ★ 1.8.1：判据**补上纯 CSS 与 markdown 着色** ✓
+ *   教训（用户指着「欲妈群」那楼问「这是美化？」）：
+ *   我原来的判据是"标签型"（`<style>` / `<%` / 占位符 / MVU）⇒ **只有 CSS 的卡会被漏掉** ✗
+ *   107 张卡实测（放宽口径后）：
+ *     `<style>` 84 · CSS 规则 86 · TavernHelper `<%` 38 · 占位符 62 · MVU 68 · markdown 着色 84
+ *     ★ 任一命中 = **97 / 107**（原来报 89 ✗ 偏小）
+ *   ⇒ 所以这里加上：CSS 规则（`.x{…}`）· `<style>` · markdown 标题/加粗（`## ` / `**…**` / `*#*#`）
+ */
 let cardFECache = { key: '', val: false };
 function cardHasFrontend() {
     try {
@@ -1143,7 +1152,10 @@ function cardHasFrontend() {
         const key = String(c.avatar || c.name || '');
         if (cardFECache.key === key) return cardFECache.val;
         const s = JSON.stringify(c);
-        const val = /StatusPlaceHolderImpl|<option|<StatusBar|UpdateVariable|TavernHelper|stat_data|<%/i.test(s);
+        const FE_RE = /StatusPlaceHolderImpl|<option|<StatusBar|UpdateVariable|TavernHelper|stat_data|<%/i;
+        const CSS_RE = /<style[\s>]|[.#][A-Za-z][\w-]*\s*\{[^}]{0,300}\}/;
+        const MD_RE = /^\s*#{2,}\s|\*\*[^*\n]{2,}\*\*|\*#\*#/m;
+        const val = FE_RE.test(s) || CSS_RE.test(s) || MD_RE.test(s);
         cardFECache = { key, val };
         return val;
     } catch (_) { return false; }

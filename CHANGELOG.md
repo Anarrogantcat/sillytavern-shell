@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.8.1：判据补 CSS/markdown
+
+用户问「这是美化？」⇒ 重扫：97/107 张卡有样式资源（原报 89 偏小）。cardHasFrontend 补上
+CSS 规则与 markdown 着色判据。夹具 +4。
 ## 未发版（2026-10-14）— cine-dialogue 1.8.0：卡自带前端默认完全不动作
 
 89/107 张卡自带美化 ⇒ 新增 autoOffCardFrontend（默认 true）：这类卡上插件不重排消息，

@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.8.0');
+eq('version 与 manifest 一致', VERSION, '1.8.1');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2326,6 +2326,15 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 按钮在自带前端的卡上改成「强制启用」语义', bs.indexOf('强制在这张卡上启用') >= 0);
     ok('★ 按钮能取消强制', bs.indexOf('delete cur.force') >= 0);
     ok('★ 判据含 TavernHelper（<%）', /cardHasFrontend/.test(src) && /TavernHelper/.test(src));
+}
+
+/* ★★ 1.8.1：cardHasFrontend 判据要含纯 CSS 与 markdown 着色（用户指着「欲妈群」那楼问） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 判据含 <style> 与 CSS 规则', src.indexOf('CSS_RE = /<style') >= 0 && src.indexOf('{0,300}') >= 0);
+    ok('★★ 判据含 markdown 着色（## / **…** / *#*#）', src.indexOf('MD_RE = ') >= 0 && src.indexOf('\\*#\\*#') >= 0);
+    ok('★ 三者取或（FE || CSS || MD）', /FE_RE\.test\(s\) \|\| CSS_RE\.test\(s\) \|\| MD_RE\.test\(s\)/.test(src));
+    ok('★ 仍然按卡缓存', src.indexOf('cardFECache.key === key') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
