@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.9.1：修按钮被撑大压住输入框
+
+1.8.4 把按钮塞进 ST 官方 #rightSendForm 导致撑大/溢出 ⇒ 回退到优先 #cc-var-bar，
+原生位仅兜底且尺寸钉死(11px/20px/max-height 26px)。夹具 796/0。
 ## 未发版（2026-10-14）— cine-dialogue 1.9.0：流式边出边排版（可开关）
 
 用包装 streamingProcessor 的方式实现（不改文件、不动本体）；面板「性能」组里可开关。夹具 795/0。

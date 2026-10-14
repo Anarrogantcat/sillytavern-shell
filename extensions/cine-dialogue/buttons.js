@@ -143,47 +143,47 @@ const DEFS = [
 
 /**
  * 幂等挂载。
- * ★★ 1.8.4：**优先挂 ST 官方的发送栏按钮位** ✓（`#rightSendForm` —— 本体 index.html:8094）
- *   为什么改：原来优先挂 card-compat 的 `#cc-var-bar` ✗ —— 那是**别的扩展的 DOM** ✗，
- *   它改名/改结构我们就挂不上（也会显得像在依赖它 ✓）。现在：
- *     ① ST 原生 `#rightSendForm`（官方按钮位 ✓ 最稳 ✓）
- *     ② 退回 `#cc-var-bar`（card-compat ✓ 兼容旧版）
- *     ③ 都没有 ⇒ 自建 `#cd-bar` 挂在 `#send_form` 里 ✓
- *   ⇒ 全程只用 ST 的公开 DOM，**不需要动本体** ✓（本体授权仍在，见 AGENTS §0.5 ✓）
+ * ★★ 1.9.1：**回退到"优先 #cc-var-bar"** ✗ —— 1.8.4 我把按钮塞进 ST 官方 `#rightSendForm`，
+ *   结果尺寸/溢出失控，按钮压到输入框上（真机截图确认 ✗）。
+ *   教训：官方栏是**紧凑横排**的，我们的按钮在那里很难不打架；而 card-compat 那条栏
+ *   本来就是给扩展按钮用的（之前一直正常 ✓）。
+ *   所以顺序改回：
+ *     ① `#cc-var-bar`（card-compat 的扩展按钮栏 ✓ 已知可用 ✓）
+ *     ② 自建 `#cd-bar` 挂进 `#send_form`（没装 card-compat 时 ✓）
+ *     ③ ST 原生 `#rightSendForm` **只在①②都不存在时**用 ✓（并有专门的紧凑样式 ✓）
  */
 export function cdApplyButtons() {
     try {
         if (typeof document === 'undefined') return;
-        let host = document.getElementById('rightSendForm');   /* ① ST 原生按钮位 ✓ */
+        let host = document.getElementById('cc-var-bar');
         let own = false;
-        if (!host) host = document.getElementById('cc-var-bar'); /* ② card-compat ✓ */
+        let native = false;
         if (!host) {
             host = document.getElementById('cd-bar');
             if (!host) {
+                const nativeHost = document.getElementById('rightSendForm');
                 const send = document.getElementById('send_form');
-                if (!send) return;
-                own = true;
-                host = document.createElement('div');
-                host.id = 'cd-bar';
-                host.className = 'cd-bar';
-                send.appendChild(host);
+                if (nativeHost) {
+                    /* ③ 兜底：ST 原生按钮位（紧凑样式见 .cd-bar-native ✓） */
+                    native = true;
+                    host = document.createElement('div');
+                    host.id = 'cd-bar';
+                    host.className = 'cd-bar cd-bar-native';
+                    nativeHost.insertBefore(host, nativeHost.firstChild);
+                } else if (send) {
+                    own = true;
+                    host = document.createElement('div');
+                    host.id = 'cd-bar';
+                    host.className = 'cd-bar';
+                    send.appendChild(host);
+                } else return;
             }
-        } else if (host.id === 'rightSendForm') {
-            /* 原生栏里的按钮要套一层自有容器（免得和官方按钮样式打架 ✓） */
-            let wrap = document.getElementById('cd-bar');
-            if (!wrap) {
-                wrap = document.createElement('div');
-                wrap.id = 'cd-bar';
-                wrap.className = 'cd-bar cd-bar-native';
-                host.insertBefore(wrap, host.firstChild);
-            }
-            host = wrap;
         }
         for (const [id, label, fn] of DEFS) {
             if (document.getElementById(id)) continue;
             const b = document.createElement('div');
             b.id = id;
-            b.className = 'cd-bar-btn' + (own ? ' cd-bar-btn-own' : '');
+            b.className = 'cd-bar-btn' + (own ? ' cd-bar-btn-own' : '') + (native ? ' cd-bar-btn-native' : '');
             b.textContent = label;
             b.title = '分镜对话（cine-dialogue）';
             b.addEventListener('click', (ev) => {

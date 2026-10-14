@@ -549,19 +549,34 @@
     filter: brightness(1.25);
 }
 
-/* ★★ 1.8.4：挂在 ST 官方发送栏（#rightSendForm）里的那一版 ✓
-   官方栏是横排紧凑布局 ⇒ 我们的容器要**不换行、靠右、贴合**，别把官方按钮挤走 ✓ */
+/* ★★ 1.9.1：ST 官方发送栏（#rightSendForm）里那一版 —— **只在兜底路径**才会用到 ✓
+   1.8.4 的教训：官方栏是紧凑横排，按钮在那儿很容易**撑大 / 压到输入框** ✗
+   ⇒ 这里把尺寸**钉死**（px 绝对值、不换行、不外扩）✓ 再也不让它影响官方布局 ✓ */
 .cd-bar-native {
     display: inline-flex;
     align-items: center;
-    margin: 0 .35em 0 0;
-    gap: .3em;
+    flex: 0 0 auto;
+    gap: 3px;
+    margin: 0 4px 0 0;
+    padding: 0;
     flex-wrap: nowrap;
+    overflow: hidden;
+    max-height: 26px;
+    position: static;
+    line-height: 1;
+    justify-content: flex-start;
 }
 
-.cd-bar-native .cd-bar-btn {
-    font-size: .8em;
-    padding: .1em .55em;
-    line-height: 1.5;
+.cd-bar-native .cd-bar-btn,
+.cd-bar-btn-native {
+    font-size: 11px;
+    line-height: 18px;
+    height: 20px;
+    padding: 0 6px;
+    margin: 0;
+    border-radius: 6px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    box-sizing: border-box;
 }
 
