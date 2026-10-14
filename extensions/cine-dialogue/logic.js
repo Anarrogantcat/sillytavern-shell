@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '0.8.52';
+export const VERSION = '0.8.53';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -562,6 +562,31 @@ export function isOurLine(line, layers = LAYERS, lenient = false) {
  * 前端区与选项区的标记**两种写法都认**（见上面四个常量的注释）。
  * 切掉的标记区不进正文，由调用方决定怎么安置（钩子路径：原样拼回；DOM 路径：保留原节点）。
  */
+/**
+ * ★★ 把「标签独占一行 + 内容在下一行」合并成一行（真机踩到 ✗）：
+ *   染·台词           ← 标签一行
+ *   "就是这样的…"     ← 内容一行
+ * ⇒ 我们的解析要求 `名字·层 内容` 在同一行 ⇒ 否则一个都认不出 ⇒ **标签全裸露** ✗
+ * 规则：某行**恰好**是 `名字·层`（层是五个之一，行尾没有内容）⇒ 与下面第一个非空行合并 ✓
+ * 只合并紧邻的下一行；空行会被跳过 ✓ 合并后原来那些行删掉 ✓
+ */
+export function mergeSplitTags(text) {
+    const LAYERS5 = ['台词', '动作', '感官', '心理', '旁白'];
+    const lines = String(text == null ? '' : text).split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+        const t = lines[i].trim();
+        const m = t.match(/^([^\s·・:：]{1,16})[·・]\s*(台词|动作|感官|心理|旁白)$/);
+        if (!m) { out.push(lines[i]); continue; }
+        let j = i + 1;
+        while (j < lines.length && !lines[j].trim()) j++;
+        if (j >= lines.length) { out.push(lines[i]); continue; }
+        out.push(m[1] + '·' + m[2] + ' ' + lines[j].trim());
+        i = j;
+    }
+    return out.join('\n');
+}
+
 export function splitSections(raw) {
     const text = String(raw == null ? '' : raw);
 
@@ -966,7 +991,9 @@ export function renderSegments(body, colorMap = {}, config = DEFAULT_CONFIG) {
 export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFIG, opts = {}) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const text = String(rawText == null ? '' : rawText);
-    const sections = splitSections(text);
+    /* ★ 先合并「标签独占一行」的写法（模型换写法会这样 ✗ ⇒ 不合并就标签全裸露） */
+    const merged = mergeSplitTags(text);
+    const sections = splitSections(merged);
 
     /* ★ 判据必须用「切完之后」的正文，不能用整条原文。
        反例：标签只出现在 <htmlcontent> / [FRONTEND] 里时，对整条原文 hasOurLines 为真，

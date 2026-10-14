@@ -15,7 +15,7 @@ import {
     assignColors, renderGrid, renderOptions, renderMessage, renderMessageHTML, renderSegments,
     hasOurLines, stats, renderInlineImages, parseNameList,
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
-stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
+mergeSplitTags, stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
 let pass = 0;
 const failures = [];
@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '0.8.52');
+eq('version 与 manifest 一致', VERSION, '0.8.53');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1985,6 +1985,23 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 写明五行一组、顺序固定', LENGTH_SPEC.indexOf('五行一组，顺序固定') >= 0);
     ok('★★ 写明不许连续两个动作行', LENGTH_SPEC.indexOf('绝对不要连续写两个「动作」行') >= 0);
     ok('★ 引用真机数据作为反例', LENGTH_SPEC.indexOf('23 个动作行') >= 0);
+}
+
+/* ★★ 标签独占一行 + 内容在下一行 ⇒ 必须合并（真机：不合并则标签全裸露 ✗） */
+{
+    const N6 = String.fromCharCode(10);
+    const split2 = ['染·台词', '"就是这样的，全都交给我来收割。"', '沙良·心理', '（她感觉自己像一块面团。）'].join(N6);
+    const mg = mergeSplitTags(split2);
+    ok('★★ 合并成一行', mg.indexOf('染·台词 "就是这样的') >= 0 && mg.indexOf('沙良·心理 （她感觉') >= 0);
+    ok('★ 原始两行只剩四行里的两行', mg.split(N6).length === 2);
+    const r = renderMessageHTML(split2, {}, DEFAULT_CONFIG);
+    ok('★★ 合并后能被接手', !!r);
+    ok('★★ 标签不再裸露（可见文字里没有 ·台词 / ·心理）', !r || !/·台词|·心理|·动作|·感官|·旁白/.test(String(r.html).replace(/<[^>]*>/g, '')));
+    /* 正常写法不受影响 */
+    const normal = '甲·动作 我按住她。';
+    eq('★ 正常一行写法原样通过', mergeSplitTags(normal), normal);
+    /* 标签后面本来就没内容、且下面是空行 ⇒ 不改 */
+    eq('★ 标签后无内容且到底 ⇒ 不改', mergeSplitTags('甲·台词'), '甲·台词');
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
