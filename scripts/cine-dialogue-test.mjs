@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.0.4');
+eq('version 与 manifest 一致', VERSION, '1.0.5');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2117,6 +2117,15 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 带名字的 染·动作: 写法完全不受影响', z5.kind === 'row' && z5.name === '染' && z5.layer === '动作');
     const z6 = parseLine('染·行动 我抬手把门关上，指节压得发白。', L9, false);
     ok('★ 带名字的别名写法（染·行动）仍然认', z6.kind === 'row' && z6.layer === '动作');
+}
+
+/* ★★ 字数指令冲突要点名（🤖自定义（字数）/⚡️字数加强 与我们打架） */
+{
+    ok('★★ 点名了自定义字数条目', LENGTH_SPEC.indexOf('自定义（字数）') >= 0);
+    ok('★★ 点名了字数加强', LENGTH_SPEC.indexOf('字数加强') >= 0);
+    ok('★★ 明说一律以本条为准', LENGTH_SPEC.indexOf('一律以本条为准') >= 0);
+    ok('★ 明说宁可写长不要写短', LENGTH_SPEC.indexOf('宁可写长，不要写短') >= 0);
+    ok('★ 最低要求仍在', LENGTH_SPEC.indexOf('至少写满 8 个回合') >= 0 && LENGTH_SPEC.indexOf('不少于 6000 字') >= 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
