@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.9.1';
+export const VERSION = '1.9.2';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -360,6 +360,11 @@ export const PANEL_FIELDS = [
     { key: 'roleBlueColor', group: '基本', kind: 'text', label: '蓝名单用的颜色', note: '十六进制色号，例 #3B82F6' },
     { key: 'rolePurpleColor', group: '基本', kind: 'text', label: '紫名单用的颜色', note: '十六进制色号，例 #A855F7' },
     { key: 'transformUserMessages', group: '基本', kind: 'bool', label: '也渲染用户消息', note: '默认关：你打的是大白话，通常不是分镜格式' },
+    /* ★★ 1.9.2（自检发现：这两个开关以前没有面板 UI ✗ —— 你偏好"可开关" ✓） */
+    { key: 'respectCardFrontend', group: '基本', kind: 'bool', label: '卡自带的选项块原样保留',
+      note: '默认开：卡里的 <options> / [OPTIONS] 原样留给卡自己的渲染器（避免双重显示、也不跟卡的美化打架）。关掉 = 用我们自己的选项按钮' },
+    { key: 'autoOffCardFrontend', group: '性能', kind: 'bool', label: '带前端的卡自动让位',
+      note: '默认关：所有卡都渲染我们的分镜。开 = 卡内检出占位符 / TavernHelper / MVU 时对那张卡完全不动作（想强行用就按发送栏「本卡生效/不生效」）' },
     { key: 'streamLiveFormat', group: '性能', kind: 'bool', label: '流式边出边排版',
       note: '开：生成过程中边出边变分镜（每 120ms 一次）；关（默认）：等生成完再整体变。只在认得出分镜行时才接管，认不出保留 ST 原样' },
     { key: 'indentOnlyWrapped', group: '排版', kind: 'bool', label: '首行缩进只给换行的段落', note: '关掉 = 除台词外全部缩进' },

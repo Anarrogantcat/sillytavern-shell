@@ -1,5 +1,44 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v1.9.2 (2026-10-14) — 本体更新到 **1.19.0** 的适配（并发现官方有了正式的格式钩子 ✓）
+
+用户：「更新本体了，检查插件有没有失效…三个插件都进行检查」+ 给了 1.19.0 的 release 链接 ✓
+
+**本体兼容性检查结论（三个插件一起查）** ✓：
+```
+① manifest.json 三个插件都有 ✓ —— 1.19 起「无 manifest 的扩展目录不再被发现」
+   （card-compat 0.33.1 / cine-dialogue / plot-pilot 0.2.2 ✓）⇒ 不受影响 ✓
+② ESM 链接：三个插件从本体 import 的名字**全部还在** ✓（1.18→1.19 只"挪"了 deleteMessage，没有真删）
+③ 事件：引用的 event_types 全部还在 ✓（event_types 定义在 public/scripts/events.js）
+④ DOM id：三个插件引用的本体 id 全部还在 ✓
+⑤ messageFormatting 签名 1.18 = 1.19 逐字一致 ✓ ⇒ 补丁 #001 仍安全 ✓
+⑥ STREAM_TOKEN_RECEIVED 仍 emit（script.js:3919）· messageTextDom.innerHTML 仍写（3752）
+   ⇒ 1.9.0 的"流式边出边排版"安全 ✓
+⑦ 三个插件各自的夹具全绿 ✓（cine 796/0 · card-compat ✓ · plot-pilot 67/67）
+```
+
+**★ 最大发现：1.19 加了官方 `MessageFormatter`** ✓（release notes 的 Extensions 段第一条）：
+> Added `MessageFormatter`, allowing extensions to transform message content
+> before regex processing, after regex processing, or after Markdown conversion.
+
+它正是我们**核内补丁 #001** 干的事（在 regex / markdown / DOMPurify **之前**改文本 ✓）
+⇒ **本版改用官方 API** ✓：
+· `getContext().messageFormatter.addHook(fn, { stage: BEFORE_REGEX, order: LATE })` ✓
+· 同时设 `window.__cdMessageFormattingHook = true`（与补丁**同一个接线标记** ✓）
+  ⇒ `hookActive()` 为真 ⇒ 走同一条"标签永不进 DOM"的主路径 ✓
+· 幂等 + 出错原样返回（永不吞消息 ✓）
+⇒ **于是核内补丁变成可选**：打了照常工作（formatHook 幂等 ✓），不打也能拿到完整体验 ✓
+   （补丁是否撤掉见当轮汇报的"未决"✓ 属于 §二 #2 改本体，需要你拍板 ✓）
+
+**顺带**：自检发现 `respectCardFrontend` / `autoOffCardFrontend` **以前没有面板 UI** ✗
+⇒ 本版补上两个勾选框（「卡自带的选项块原样保留」/「带前端的卡自动让位」✓）
+
+**新增两个可复用的检查脚本** ✓（以后每次本体更新都能一条命令跑完）：
+```
+node scripts/st-compat-check.mjs   # 本体更新后的兼容性检查（三个扩展一起）
+node scripts/cine-selfcheck.mjs    # 全面自检（版本/清单/已装/三套测试/本体补丁/发包闸门/开关/正则）
+```
+说明：只改扩展 + 脚本 → 不升套壳版本号、不打 tag、不发包（AGENTS 1.1）
 ## v1.9.1 (2026-10-14) — 修 1.8.4 弄坏的按钮布局（**回退**挂载优先级）
 
 用户截图：按钮被**撑大、压到输入框上** ✗ —— 是我 1.8.4 把按钮塞进 ST 官方

@@ -638,6 +638,39 @@ function exposeApi() {
     /* ★ 核内补丁 #001 的挂钩点 —— messageFormatting() 开头会调它（没打补丁时无人调用，无副作用） */
     window.CineDialogueFormat = formatHook;
 
+    /* ★★ 1.9.2：改用 **ST 1.19 的官方 `MessageFormatter`** ✓（这样**不再需要核内补丁** ✓）
+       由来：1.19 的更新日志 Extensions 段 ——
+         「Added MessageFormatter, allowing extensions to transform message content
+           before regex processing, after regex processing, or after Markdown conversion.」
+       这正是补丁 #001 干的事 ⇒ 用官方 API 就能达到同样效果：
+         · 阶段 BEFORE_REGEX（= 我们的诉求：regex / markdown / DOMPurify 都还没跑 ✓）
+         · 同时设 `window.__cdMessageFormattingHook = true` ⇒ 与补丁路径**同一个接线标记** ✓
+           ⇒ 于是 hookActive() 为真、走同一条"标签永不进 DOM"的主路径 ✓
+       两条路可以并存（打了补丁也不会重复转换：补丁先调一次，本钩子再调一次 —— 幂等 ✓
+       因为 formatHook 对**已经转换过**的文本（含 <div class="custom-cd-…>>）认不出分镜行 ⇒ 原样返回 ✓）
+    */
+    try {
+        const mf = (typeof getContext === 'function') ? getContext().messageFormatter : null;
+        if (mf && typeof mf.addHook === 'function' && !window.__cdMsgHookAdded) {
+            window.__cdMsgHookAdded = true;
+            mf.addHook((mes, hookCtx) => {
+                try {
+                    if (typeof mes !== 'string' || !mes) return mes;
+                    const out = formatHook(mes, hookCtx || {});
+                    if (typeof out === 'string' && out !== mes) {
+                        window.__cdMessageFormattingHook = true;   /* 与补丁同一个接线标记 ✓ */
+                        return out;
+                    }
+                    return mes;
+                } catch (e) {
+                    try { console.warn('[cine-dialogue] MessageFormatter 钩子失败（原样返回）', e); } catch (_) { }
+                    return mes;
+                }
+            }, { stage: mf.stage.BEFORE_REGEX, order: mf.order.LATE });
+            console.info('[cine-dialogue] 已挂 ST 官方 MessageFormatter 钩子（BEFORE_REGEX / LATE）—— 不再需要核内补丁 ✓');
+        }
+    } catch (e) { try { console.warn('[cine-dialogue] MessageFormatter 注册失败（会退回 DOM 后处理）', e); } catch (_) { } }
+
     window.CineDialogue = {
         version: VERSION,
         get config() { return { ...cfg() }; },

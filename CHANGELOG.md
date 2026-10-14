@@ -1,5 +1,10 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.9.2：适配 ST 1.19.0 + 改用官方 MessageFormatter
+
+三个插件兼容性检查全通过（manifest/ESM/事件/DOM id/签名/夹具）。
+1.19 新增官方 MessageFormatter ⇒ 改用官方 API，核内补丁 #001 变成可选。
+新增 st-compat-check.mjs / cine-selfcheck.mjs 两个可复用检查脚本。
 ## 未发版（2026-10-14）— cine-dialogue 1.9.1：修按钮被撑大压住输入框
 
 1.8.4 把按钮塞进 ST 官方 #rightSendForm 导致撑大/溢出 ⇒ 回退到优先 #cc-var-bar，

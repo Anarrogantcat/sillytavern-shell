@@ -31,7 +31,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.9.1');
+eq('version 与 manifest 一致', VERSION, '1.9.2');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2363,6 +2363,16 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 只在认得出我们的行时才接管（认不出保留 ST 原样 ✓）', src.indexOf('if (!hasOurLines(text)) return false;') >= 0);
     ok('★★ 生成开始的每个新实例都会重新包', src.indexOf('event_types.GENERATION_STARTED') >= 0 && src.indexOf('cdArmStreamLive()') >= 0);
     ok('★ 只动 messageTextDom.innerHTML（不碰别的节点）', /dom\.innerHTML = r\.html;/.test(src));
+}
+
+/* ★★ 1.9.2：改用 ST 1.19 官方 MessageFormatter（⇒ 不再需要核内补丁 ✓） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 挂了官方 MessageFormatter 钩子（BEFORE_REGEX）', /mf\.addHook\(/.test(src) && /stage: mf\.stage\.BEFORE_REGEX/.test(src));
+    ok('★★ 接线标记与补丁路径一致（__cdMessageFormattingHook）', src.indexOf('window.__cdMessageFormattingHook = true;') >= 0);
+    ok('★★ 幂等（只注册一次）', /__cdMsgHookAdded/.test(src));
+    ok('★★ 钩子出错时原样返回（永不吞消息）', /return mes;/.test(src));
+    ok('★ 两个新面板开关存在（自检发现以前没有 UI ✗）', PANEL_FIELDS.some((f) => f.key === 'respectCardFrontend') && PANEL_FIELDS.some((f) => f.key === 'autoOffCardFrontend'));
 }
 
 /* ---------------------------- 汇总 ---------------------------- */
