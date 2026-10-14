@@ -2005,8 +2005,26 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★ 没有连续三个换行', LENGTH_SPEC.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(10)) < 0);
 }
 
+/* ★★ 发送栏三个按钮（用户 2026-10-14：「在这里增加功能按钮」） */
+{
+    const btn = fs.readFileSync(new URL('../extensions/cine-dialogue/buttons.js', import.meta.url), 'utf8');
+    const ix2 = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    const css2 = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8');
+    ok('★★ 三个按钮 id 都在', ['cd-btn-rerender', 'cd-btn-diagnose', 'cd-btn-off'].every((k) => btn.indexOf(k) >= 0));
+    ok('★★ 优先追加进 #cc-var-bar（不改它的代码）', btn.indexOf("'cc-var-bar'") >= 0);
+    ok('★★ 容器不在时自建 #cd-bar', btn.indexOf("'cd-bar'") >= 0 && /send\.appendChild\(host\)/.test(btn));
+    ok('★★ 幂等（已存在就跳过）', btn.indexOf('if (document.getElementById(id)) continue;') >= 0);
+    ok('★★ index.js 里 import 并启动了', ix2.indexOf("from './buttons.js'") >= 0 && ix2.indexOf('cdStartButtons({') >= 0);
+    ok('★ 重渲染走 updateMessageBlock + rerenderMessage', /updateMessageBlock\(id, ctx\.chat\[id\], \{ rerenderMessage: true \}\)/.test(btn));
+    ok('★ 诊断用了 mergeSplitTags 与 renderMessageHTML', btn.indexOf('mergeSplitTags(raw)') >= 0 && btn.indexOf('renderMessageHTML(raw') >= 0);
+    ok('★★ 本卡开关写 perCard[key].off 并保存', btn.indexOf('cur.off = !cur.off;') >= 0 && btn.indexOf('saveSettingsDebounced()') >= 0);
+    ok('★★ CSS 全自有前缀（.cd-bar / .cd-bar-btn）', /\.cd-bar\s*\{/.test(css2) && /\.cd-bar-btn\s*\{/.test(css2));
+    ok('★ 我们没有写 card-compat 的前缀样式', !/\.cc-var[^\s]*\s*\{/.test(css2));
+    ok('★ 按钮文案是中文且不空', ['重渲染本楼', '诊断本楼', '本卡生效/不生效'].every((s) => btn.indexOf(s) >= 0));
+}
+
 /* ---------------------------- 汇总 ---------------------------- */
-/* ---------------------------- 汇总 ---------------------------- */
+
 console.log('cine-dialogue 夹具：通过 ' + pass + ' / 失败 ' + failures.length);
 if (failures.length) {
     failures.forEach(f => console.log('  ✗ ' + f));
