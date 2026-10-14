@@ -1,5 +1,26 @@
 # 分镜对话 Cine Dialogue · 更新日志
 
+## v1.9.3 (2026-10-14) — 「通用版」预设补上思维链 / Progress 正则（真机验证发现）
+
+**真机证据**（自有 Edge + CDP 驱动 ST 1.19.0）：通用版预设下，思考链与旧 Progress **全部裸露** ——
+9 层里 4 层带裸 `<konatan_planning~>…</konatan_planning~>`，`wrap=0 / leak=4 / prog=4`。
+
+**根因（对照实验）**：干净版底稿是 ST 官方 `Default.json` ⇒ `extensions.regex_scripts` = **0 条**；
+而所有工作正常的预设都带 9~16 条启用（`Izumi 0828.tailfree` 27/9 · `专属适配 v1.9.2` 27/10 · `Izumi_0914` 30/16）。
+⇒ 不是插件坏了，是**通用版没把那一套正则带上**。
+
+**改动**
+- `scripts/cine-preset.mjs`：干净版构建时，从素材预设（默认 `Izumi 0828.tailfree.json`）**搬入 `regex_scripts`** ——
+  只补缺的、保持原启用状态；正则本体来自用户本机那份原预设，**不进仓库**（许可：可以二改、禁止二传）。
+- 位置在 `applyPresetRecipe` **之前** ⇒ 配方第 ④ 步同时生效：思维链正则 `maxDepth` 2 → **20**。
+- `VERSION` 1.9.2 → 1.9.3（`logic.js` / `manifest.json` / 夹具预期三处同步）。
+
+**结果**：`分镜对话（通用版）v1.9.3.json` = `regex_scripts` **26 条 / 启用 9 条**，含
+`1美化最近二层思维链(流式夜间)-修复换行`（maxDepth=20）· `9只保留Progress(11楼后)` ·
+`10隐藏近期旧Progress(4-10楼)` · `12美化事件（夜间-护眼版）`。
+
+**夹具**：`cine-full-test` 801/0 · `st-compat-check` 0 项 · `cine-selfcheck` 0 项。
+
 ## 未发版 · 决定记录（2026-10-14，纯文档，不升版本号）
 
 **核内补丁 #001 的去留** —— 我按项目规则「改本体必须问」提问，你的选择是：

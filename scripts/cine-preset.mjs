@@ -76,6 +76,35 @@ const orig = JSON.parse(srcBuf.toString('utf8'));
 /* 关键：**以磁盘上现有的派生文件为基础**再套配方（而不是每次从原版重做），
    这样用户在派生文件里自己做的额外调整不会被抹掉。 */
 const base = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : orig;
+
+/* ★★ 1.9.3（2026-10-14）：干净版（通用版）**也要带上思维链 / Progress 那一套正则**。
+   起因（真机实证）：通用版底稿 = ST 官方 Default.json ⇒ extensions.regex_scripts = **0 条**
+   ⇒ 思考块没人折叠、旧 Progress 也没人隐藏（实测：wrap=0 / leak=4 / prog=4）。
+   做法照抄本文件已有的「从素材预设搬条目」套路：来源固定 DEFAULT_SRC、**只补缺的**、
+   **保持原启用状态** ✓。为什么必须从文件搬而不是写死：那些正则属第三方预设内容
+   （许可：可以二改、禁止二传）⇒ 仓库里只留配方，正则本体永远来自用户本机那份原预设 ✓
+   位置放在 applyPresetRecipe **之前**：这样配方第 ④ 步（把思维链正则的 maxDepth 对齐）也能覆盖到它们 ✓ */
+if (clean) {
+    let pool = null;
+    try { pool = JSON.parse(fs.readFileSync(DEFAULT_SRC, 'utf8')); } catch (_) { }
+    const poolRx = pool && pool.extensions && pool.extensions.regex_scripts;
+    if (Array.isArray(poolRx) && poolRx.length) {
+        base.extensions = base.extensions || {};
+        const have = new Set((base.extensions.regex_scripts || []).map((s) => String(s.scriptName || '').trim()));
+        const mine = base.extensions.regex_scripts = base.extensions.regex_scripts || [];
+        let got = 0, gotOn = 0;
+        for (const s of poolRx) {
+            const nm = String(s.scriptName || '').trim();
+            if (!nm || have.has(nm)) continue;
+            const copy = JSON.parse(JSON.stringify(s));
+            mine.push(copy); have.add(nm); got++;
+            if (!copy.disabled) gotOn++;
+        }
+        console.log('=== 干净版：从「' + path.basename(DEFAULT_SRC) + '」搬入正则 ' + got + ' 条（启用 ' + gotOn + ' 条）===');
+    } else {
+        console.log('⚠ 素材预设里没有 regex_scripts ⇒ 干净版不带正则');
+    }
+}
 const r = applyPresetRecipe(base, { srcName: path.basename(SRC), srcHash, clean });
 
 /* ★★ 1.5.0：干净版还要带上用户**点名**的那些条目（2026-10-14「这些加上」）

@@ -1,5 +1,12 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.9.3：通用版预设补上思维链 / Progress 正则
+
+真机验证发现通用版预设下思考链与旧 Progress 裸露（wrap=0/leak=4/prog=4）；
+根因 = 干净版底稿（ST 官方 Default.json）不带 regex_scripts（0 条），而正常预设带 9~16 条启用。
+生成器改为干净版也**从素材预设搬入 regex_scripts**（只补缺的、保持原启用状态、本体不进仓库），
+并把思维链正则 maxDepth 对齐到 20。结果：通用版 v1.9.3 = 26 条 / 启用 9 条。夹具 801/0。
+
 ## 未发版（2026-10-14）— cine-dialogue 1.9.2：适配 ST 1.19.0 + 改用官方 MessageFormatter
 
 三个插件兼容性检查全通过（manifest/ESM/事件/DOM id/签名/夹具）。
