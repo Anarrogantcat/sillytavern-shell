@@ -141,12 +141,22 @@ const DEFS = [
     ['cd-btn-off', '本卡生效/不生效', cdToggleCardOff],
 ];
 
-/** 幂等挂载：优先追加进 #cc-var-bar，否则自建 #cd-bar */
+/**
+ * 幂等挂载。
+ * ★★ 1.8.4：**优先挂 ST 官方的发送栏按钮位** ✓（`#rightSendForm` —— 本体 index.html:8094）
+ *   为什么改：原来优先挂 card-compat 的 `#cc-var-bar` ✗ —— 那是**别的扩展的 DOM** ✗，
+ *   它改名/改结构我们就挂不上（也会显得像在依赖它 ✓）。现在：
+ *     ① ST 原生 `#rightSendForm`（官方按钮位 ✓ 最稳 ✓）
+ *     ② 退回 `#cc-var-bar`（card-compat ✓ 兼容旧版）
+ *     ③ 都没有 ⇒ 自建 `#cd-bar` 挂在 `#send_form` 里 ✓
+ *   ⇒ 全程只用 ST 的公开 DOM，**不需要动本体** ✓（本体授权仍在，见 AGENTS §0.5 ✓）
+ */
 export function cdApplyButtons() {
     try {
         if (typeof document === 'undefined') return;
-        let host = document.getElementById('cc-var-bar');
+        let host = document.getElementById('rightSendForm');   /* ① ST 原生按钮位 ✓ */
         let own = false;
+        if (!host) host = document.getElementById('cc-var-bar'); /* ② card-compat ✓ */
         if (!host) {
             host = document.getElementById('cd-bar');
             if (!host) {
@@ -158,6 +168,16 @@ export function cdApplyButtons() {
                 host.className = 'cd-bar';
                 send.appendChild(host);
             }
+        } else if (host.id === 'rightSendForm') {
+            /* 原生栏里的按钮要套一层自有容器（免得和官方按钮样式打架 ✓） */
+            let wrap = document.getElementById('cd-bar');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.id = 'cd-bar';
+                wrap.className = 'cd-bar cd-bar-native';
+                host.insertBefore(wrap, host.firstChild);
+            }
+            host = wrap;
         }
         for (const [id, label, fn] of DEFS) {
             if (document.getElementById(id)) continue;

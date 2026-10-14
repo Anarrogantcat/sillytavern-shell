@@ -31,7 +31,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.8.3');
+eq('version 与 manifest 一致', VERSION, '1.8.4');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2029,8 +2029,9 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const ix2 = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
     const css2 = fs.readFileSync(new URL('../extensions/cine-dialogue/style.css', import.meta.url), 'utf8');
     ok('★★ 三个按钮 id 都在', ['cd-btn-rerender', 'cd-btn-diagnose', 'cd-btn-off'].every((k) => btn.indexOf(k) >= 0));
-    ok('★★ 优先追加进 #cc-var-bar（不改它的代码）', btn.indexOf("'cc-var-bar'") >= 0);
-    ok('★★ 容器不在时自建 #cd-bar', btn.indexOf("'cd-bar'") >= 0 && /send\.appendChild\(host\)/.test(btn));
+    ok('★★ 优先挂 ST 官方按钮位 #rightSendForm（不依赖别的扩展 ✓ 也不动本体 ✓）', btn.indexOf("'rightSendForm'") >= 0 && btn.indexOf("'rightSendForm'") < btn.indexOf("'cc-var-bar'"));
+    ok('★★ 都拿不到时自建 #cd-bar（挂进 #send_form）', btn.indexOf("'cd-bar'") >= 0 && /send\.appendChild\(host\)/.test(btn));
+    ok('★★ 原生栏里套自有容器（不与官方按钮样式打架 ✓）', /cd-bar-native/.test(btn) && /cd-bar-native/.test(css2));
     ok('★★ 幂等（已存在就跳过）', btn.indexOf('if (document.getElementById(id)) continue;') >= 0);
     ok('★★ index.js 里 import 并启动了', ix2.indexOf("from './buttons.js'") >= 0 && ix2.indexOf('cdStartButtons({') >= 0);
     ok('★ 重渲染走 updateMessageBlock + rerenderMessage', /updateMessageBlock\(id, ctx\.chat\[id\], \{ rerenderMessage: true \}\)/.test(btn));

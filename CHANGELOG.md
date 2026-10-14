@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.8.4：按钮改挂 ST 官方发送栏
+
+优先 #rightSendForm，退回 #cc-var-bar / 自建 #cd-bar；不再依赖别的扩展的 DOM。
+附"动本体对表"：唯一真收益是流式逐 token 排版。
 ## 未发版（2026-10-14）— cine-dialogue 1.8.3：默认都渲染 + 判定权交给用户
 
 autoOffCardFrontend 默认 false；<options> 一律原样留给卡（respectCardFrontend=true）；

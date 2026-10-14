@@ -549,3 +549,19 @@
     filter: brightness(1.25);
 }
 
+/* ★★ 1.8.4：挂在 ST 官方发送栏（#rightSendForm）里的那一版 ✓
+   官方栏是横排紧凑布局 ⇒ 我们的容器要**不换行、靠右、贴合**，别把官方按钮挤走 ✓ */
+.cd-bar-native {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 .35em 0 0;
+    gap: .3em;
+    flex-wrap: nowrap;
+}
+
+.cd-bar-native .cd-bar-btn {
+    font-size: .8em;
+    padding: .1em .55em;
+    line-height: 1.5;
+}
+
