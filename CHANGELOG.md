@@ -1,5 +1,9 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.6.1：角色卡端到端测试
+
+补上 scripts/cine-card-test.mjs：107 张真卡 / 271 条真消息，6 条断言全绿。
+74/107 张卡的前端支撑是卡自带的 ⇒ 换预设不会丢状态栏。
 ## 未发版（2026-10-14）— cine-dialogue 1.6.0：C3 通用版 + merge-from + 修篇幅条目永不更新
 
 通用版正名；新增 --merge-from 并入卡前端条目；修「篇幅条目靠措辞匹配 ⇒ 永不更新」的真 bug；
