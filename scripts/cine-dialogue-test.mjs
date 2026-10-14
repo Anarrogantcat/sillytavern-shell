@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+
     VERSION, EXT_ID, LAYERS, LAYER_CLS, PALETTE, DEFAULT_CONFIG, PANEL_FIELDS, PANEL_GROUPS,
     FORMAT_SPEC, REGEX_DEFS, SLASH_COMMAND,
     MARK_OPTIONS, DEFAULT_LAYER_STYLES, EXPORT_SCHEMA, configKeys,
@@ -17,6 +18,10 @@ import {
     applyPresetRecipe, PRESET_UPSTREAM, PRESET_RECIPE, presetNoteText, canonLayer,
 UPSTREAM_LENGTH_FIXES, fixUpstreamLength, normalizeSpeechQuotes, mergeSplitTags, stampSpec, LENGTH_SPEC, narratePlain, guessGenderFromText, } from '../extensions/cine-dialogue/logic.js';
 
+/* ★★ 1.8.3：默认 respectCardFrontend=true ⇒ <options> 原样留给卡（用户选定 ✓）
+   下面这些「选项转换成我们自己的按钮」的夹具，显式关掉该开关继续测这个功能 ✓ */
+const CONV_CFG = { ...DEFAULT_CONFIG, respectCardFrontend: false };
+
 let pass = 0;
 const failures = [];
 function ok(name, cond, extra) {
@@ -26,7 +31,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.8.2');
+eq('version 与 manifest 一致', VERSION, '1.8.3');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -206,7 +211,7 @@ ok('正文里不再含 <htmlcontent>', !hSec.body.includes('<htmlcontent>'));
 ok('正文里不再含 <options>', !hSec.body.includes('<options>'));
 
 eq('renderMessageHTML：没有我们的行 → null（一个字节不改）', renderMessageHTML('就是一段普通散文。'), null);
-const hRes = renderMessageHTML(hRaw, {}, DEFAULT_CONFIG);
+const hRes = renderMessageHTML(hRaw, {}, CONV_CFG);
 ok('钩子产出网格', !!hRes && hRes.html.includes('cd-grid'));
 ok('钩子产出：前端 HTML 未被转义（原样拼回）', hRes.html.includes('<div>前端</div>'));
 ok('钩子产出：选项按钮已渲染', hRes.html.includes('data-cd-text="吻她"'));
@@ -1698,14 +1703,14 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 {
     const NL = String.fromCharCode(10);
     const blk = ['<options>', 'A. 用字母写的选项甲，内容要保留。', 'B. 用字母写的选项乙，内容也要保留。', '</options>'].join(NL);
-    const html = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk, {}, DEFAULT_CONFIG).html);
+    const html = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk, {}, CONV_CFG).html);
     eq('★★ A./B. 被识别成选项按钮（2 个）', (html.match(/class="cd-opt"/g) || []).length, 2);
     ok('★★ 字母选项的正文也在（不丢字）', html.indexOf('内容要保留') >= 0 || html.replace(/<[^>]*>/g, '').indexOf('内容要保留') >= 0);
     const blk2 = ['<options>', '完全不像选项的一段说明，也必须留下。', '</options>'].join(NL);
     const vis2 = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk2, {}, DEFAULT_CONFIG).html).replace(/<[^>]*>/g, '');
     ok('★★ 认不出的行**还回正文**（永不丢字）', vis2.indexOf('完全不像选项的一段说明') >= 0);
     const blk3 = ['<options>', '>选项一：老写法', '2. 数字写法', '</options>'].join(NL);
-    const h3 = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk3, {}, DEFAULT_CONFIG).html);
+    const h3 = String(renderMessageHTML('染·动作 我按住她的手腕。' + NL + blk3, {}, CONV_CFG).html);
     eq('★ 原有两种写法仍是 2 个按钮（不回归）', (h3.match(/class="cd-opt"/g) || []).length, 2);
 }
 
@@ -1714,12 +1719,12 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 {
     const N2 = String.fromCharCode(10);
     const onlyOpts = ['染推开门，走廊很安静。', '<options>', '>选项一：甲', '>选项二：乙', '</options>'].join(N2);
-    const r = renderMessageHTML(onlyOpts, {}, DEFAULT_CONFIG);
+    const r = renderMessageHTML(onlyOpts, {}, CONV_CFG);
     ok('★★ 只有选项的楼会接手（不是 null）', !!r);
     eq('★★ 选项正常变成 2 个按钮', ((String(r && r.html).match(/class=\"cd-opt\"/g)) || []).length, 2);
     ok('★★ 选项被包进 cd-root（拿到主题变量，避免白底按钮）', String(r && r.html).indexOf('cd-root') >= 0);
     ok('★ 正文一个字没丢', String(r && r.html).indexOf('走廊很安静') >= 0);
-    const r2 = renderMessageHTML('染·动作 我按住她的手腕。' + N2 + '<options>' + N2 + '>选项一：甲' + N2 + '</options>', {}, DEFAULT_CONFIG);
+    const r2 = renderMessageHTML('染·动作 我按住她的手腕。' + N2 + '<options>' + N2 + '>选项一：甲' + N2 + '</options>', {}, CONV_CFG);
     eq('★ 有行又有选项时不重复渲染（仍 1 个按钮）', ((String(r2.html).match(/class=\"cd-opt\"/g)) || []).length, 1);
     ok('★ 纯散文（无选项）仍不接手（原行为不变）', renderMessageHTML('染推开门，走廊很安静。', {}, DEFAULT_CONFIG) === null);
 }
@@ -2305,22 +2310,22 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
 {
     const NLq = String.fromCharCode(10);
     const msg = ['染·动作 我推门进去，冷风灌进领口。', '<options>', '1. 选项一：走过去。', '2. 选项二：站着不动。', '</options>'].join(NLq);
-    const conv = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, cardHasFrontend: false }).html);
-    const keep = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, cardHasFrontend: true }).html);
+    const conv = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, respectCardFrontend: false }).html);
+    const keep = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, respectCardFrontend: true }).html);
     ok('★★ 卡无前端 ⇒ 渲染我们自己的选项按钮', (conv.match(/class="cd-opt[ "]/g) || []).length >= 2);
     eq('★★ 卡有前端 ⇒ 一个自己的按钮都不画', (keep.match(/class="cd-opt[ "]/g) || []).length, 0);
     ok('★★ 卡有前端 ⇒ <options> 原样保留（交给卡的渲染器）', keep.indexOf('<options>') >= 0 && keep.indexOf('</options>') >= 0);
     ok('★★ 卡有前端 ⇒ 选项文字仍在（不丢字）', keep.indexOf('走过去') >= 0 && keep.indexOf('站着不动') >= 0);
     const sec = splitSections(msg, { keepOptions: true });
     ok('★ splitSections keepOptions ⇒ 不解析成 options、也不进 frontend（frontend 是整段跳过 ✗）', sec.options.length === 0 && sec.frontend.length === 0 && sec.keptOptions === true);
-    ok('★★ 默认开关 respectCardFrontend = true', DEFAULT_CONFIG.respectCardFrontend === true);
+    ok('★★ 默认开关 respectCardFrontend = true（<options> 原样留 给卡 ✓）', DEFAULT_CONFIG.respectCardFrontend === true);
 }
 
 /* ★★ 1.8.0：卡自带前端 ⇒ 默认对这张卡完全不动作（用户：89/107 张卡自带美化） */
 {
     const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
-    ok('★★ 默认开关 autoOffCardFrontend = true', DEFAULT_CONFIG.autoOffCardFrontend === true);
-    ok('★★ 卡自带前端时翻成 enabled:false（autoOff 标记）', /autoOffCardFrontend !== false && fe && !\(merged\.force === true\)/.test(src) && /autoOff: true/.test(src));
+    ok('★★ 默认 autoOffCardFrontend = false（用户定：都渲染，黑名单自己维护 ✓）', DEFAULT_CONFIG.autoOffCardFrontend === false);
+    ok('★ 自动让位的开关仍在（想用时设回 true ✓）', /autoOffCardFrontend === true && fe && !\(merged\.force === true\)/.test(src) && /autoOff: true/.test(src));
     ok('★★ 用户强制启用可绕过（perCard[key].force）', /merged\.force === true/.test(src));
     const bs = fs.readFileSync(new URL('../extensions/cine-dialogue/buttons.js', import.meta.url), 'utf8');
     ok('★★ 按钮在自带前端的卡上改成「强制启用」语义', bs.indexOf('强制在这张卡上启用') >= 0);
@@ -2335,6 +2340,15 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ CSS 文本**不算**（没有渲染器就等于没生效 ✓ 用户：「我怎么没看出来有美化」）', src.indexOf('CSS_RE') < 0 && src.indexOf('MD_RE') < 0);
     ok('★ 只用 RENDER_RE 判定', /const val = RENDER_RE\.test\(s\);/.test(src));
     ok('★ 仍然按卡缓存', src.indexOf('cardFECache.key === key') >= 0);
+}
+
+/* ★★ 1.8.3：默认都渲染；黑名单走现成的逐卡开关（用户选定 ✓） */
+{
+    const src = fs.readFileSync(new URL('../extensions/cine-dialogue/index.js', import.meta.url), 'utf8');
+    ok('★★ 黑名单入口是现成的（面板「这张卡不生效」）', src.indexOf('id="cd-card-off"') >= 0 && src.indexOf('这张卡不生效') >= 0);
+    ok('★★ 发送栏按钮也是同一个开关', fs.readFileSync(new URL('../extensions/cine-dialogue/buttons.js', import.meta.url), 'utf8').indexOf('cdToggleCardOff') >= 0);
+    ok('★ off 仍然只在 effectiveConfig 一个点翻 enabled:false', /if \(merged\.off\) return \{ \.\.\.merged, enabled: false, off: true \};/.test(src));
+    ok('★ respectCardFrontend 仍为 true（占位符/<options> 原样保留 ✓）', DEFAULT_CONFIG.respectCardFrontend === true);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

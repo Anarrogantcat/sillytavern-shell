@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.8.2';
+export const VERSION = '1.8.3';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -77,21 +77,28 @@ export const DEFAULT_CONFIG = {
      *   运行时会由 index.js 注入 `cardHasFrontend` ✓
      */
     respectCardFrontend: true,
-    /** 运行期注入：当前角色卡是否自带前端（index.js 算 ✓） */
+    /**
+     * ★★ 1.8.3（你选的：「**我自己维护黑名单**」）—— 规则是**静的、可预测的** ✓
+     *   ① 默认**都渲染**我们的分镜 ✓
+     *   ② `respectCardFrontend`（默认 true）= **`<options>` / `[OPTIONS]` 一律原样留给卡** ✓
+     *      （不转换、不画我们自己的选项按钮 ✓ 卡自己画或交给它的渲染器 ✓）
+     *      想用我们自己的选项 UI ⇒ 面板里把它关掉即可 ✓
+     *   ③ 哪张卡不合适 ⇒ **你自己判定**：「这张卡不生效（自带美化的卡用它）」面板按钮 /
+     *      发送栏「本卡生效/不生效」✓（写 `perCard[key].off` ✓ = 你的黑名单 ✓）
+     */
+    respectCardFrontend: true,
+    /** 运行期注入：本卡是否自带前端（index.js 算 ✓ 仅用于"自动让位"那个可选开关 ✓） */
     cardHasFrontend: false,
     /**
-     * ★★ 1.8.0（用户要求 + 107 张卡实测）：
-     *   「插件的选择状态栏**不要影响到角色卡自带的前端和选择状态栏**，
-     *     有自己美化的是明显不兼容的」✓
-     *   实测：**89 / 107 张卡自带美化**（`<style>` / CSS 规则 / TavernHelper `<%…%>` 脚本；
-     *         有的卡上千个 `<%` ⇒ 整个界面都是卡自己画的：画像框 / 状态栏 / 推进输入行…）
-     *   ⇒ 这种卡我们**一动手就可能破坏它的布局** ✗
-     *   ⇒ 默认 autoOffCardFrontend = true：卡自带前端时**对这张卡完全不动作** ✓
-     *     （等同面板里的「本卡不生效」✓）
-     *   ⇒ 想在这种卡上用我们：按「本卡生效/不生效」会写 `perCard[key].force = true`
-     *     （= 你明确要求强制启用 ✓ 我们照办 ✓ 但可能和卡的美化打架 ⚠）
+     * ★★ 1.8.3：**默认 false = 不自动让位** ✓（都渲染 ✓）判定权交给你 ✓
+     *   想让"带前端的卡"自动让位就设成 true ✓（那段代码留着 ✓ 那时可用「强制启用」绕过 ✓）
+     *   为什么默认不让位：实测「卡自带美化」有两类 ——
+     *     卡内（占位符 / TavernHelper `<%` / MVU）⇒ 能扫到 ✓
+     *     卡外（**全局用户脚本**：`unified_statusbar 统一状态栏` / `shujuku 数据库`）⇒
+     *       与卡无关、**对所有卡生效** ✗ 扫不到 ⇒ 自动判定会又漏又误 ✗
+     *   而且卡外那类画在**消息外部**，与我们在**消息内部**的分镜行**并不冲突** ✓
      */
-    autoOffCardFrontend: true,
+    autoOffCardFrontend: false,
     /** 用户楼要不要也渲染（默认否 —— 用户打的是大白话，不是分镜格式） */
     transformUserMessages: false,
     /** auto=按最长名字 | left | right | fixed */
@@ -1092,7 +1099,7 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     /* ★ 先合并「标签独占一行」的写法（模型换写法会这样 ✗ ⇒ 不合并就标签全裸露） */
     const merged = normalizeSpeechQuotes(mergeSplitTags(text));
     /* ★ 1.7.0：卡自带前端时不抢它的选项/状态栏（用户要求 ✓） */
-    const keepOptions = !!cfg.respectCardFrontend && !!cfg.cardHasFrontend;
+    const keepOptions = !!cfg.respectCardFrontend;   /* ★ 1.8.3：静态规则 —— <options> 一律原样留给卡 ✓ */
     const sections = splitSections(merged, { keepOptions });
 
     /* ★ 判据必须用「切完之后」的正文，不能用整条原文。

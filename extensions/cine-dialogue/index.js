@@ -1171,16 +1171,16 @@ function effectiveConfig() {
     /* ★★ 逐卡「本卡不生效」（面板里那个按钮）：在这里把它翻成 enabled:false。
        为什么只在这一个点做：**所有**已有的 enabled 检查点（渲染钩子 / run / 提示词注入 /
        Alt+↑↓ / 宽表格处理 / 交互绑定 / 恢复原文）都会自动跟着失效，不必逐处再加判断 ✓
-       —— 卡自带美化的时候，你按一下这个按钮，插件对**这张卡**就完全不动作了。 */
+       —— 这就是**你自己判定**的开关 ✓ */
     let merged = base;
     if (key && base.perCard && base.perCard[key]) merged = { ...base, ...base.perCard[key] };
     /* 运行期注入：本卡是否自带前端（决定要不要抢它的选项栏 ✓） */
     merged = { ...merged, cardHasFrontend: fe };
-    /* ★★ 1.8.0：卡自带前端 ⇒ **默认对这张卡完全不动作** ✓
-       用户要求：「不要影响到角色卡自带的前端和选择状态栏，有自己美化的是明显不兼容的」✓
-       实测 89/107 张卡自带美化（含上千个 TavernHelper `<%` 脚本的整屏 UI）✗
-       ⇒ 除非用户在面板里明确「强制启用」（perCard[key].force = true），否则一律不动作 ✓ */
-    if (merged.autoOffCardFrontend !== false && fe && !(merged.force === true)) {
+    /* ★★ 1.8.3（你选的「我自己维护黑名单」）：
+       **默认不自动让位** ✓（`autoOffCardFrontend` 默认 false ⇒ 都渲染 ✓）
+       这段自动让位的代码**留着** ✓ —— 你想用时把开关设成 true 即可（那时可用「强制启用」绕过 ✓）
+       ⇒ 平时判定权在你：面板「这张卡不生效（自带美化的卡用它）」/ 发送栏「本卡生效/不生效」✓ */
+    if (merged.autoOffCardFrontend === true && fe && !(merged.force === true)) {
         return { ...merged, enabled: false, off: true, autoOff: true };
     }
     if (merged.off) return { ...merged, enabled: false, off: true };
