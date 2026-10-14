@@ -53,6 +53,16 @@ info('版本 ' + V + (regen ? '（--regen：先重新生成两份预设）' : ''
     if (allOk) ok('B1 语法 6 个文件全通过');
 }
 /* ============ 可选：重新生成 ============ */
+/* ★ 1.7.0：**缺当前版本的预设就自动生成** ✓
+   （之前升版本后忘了重新生成 ⇒ 套件直接崩 ENOENT ✗ —— 测试脚本自己该健壮 ✓） */
+{
+    const need = !fs.existsSync(DIR + '/' + DER) || !fs.existsSync(DIR + '/' + UNI);
+    if (need && !regen) {
+        info('D0 当前版本的预设缺失 ⇒ 自动重新生成（派生版 + 通用版）');
+        for (const k of [1, 2]) run('node', [path.join(R, 'scripts/cine-preset.mjs')]);
+        run('node', [path.join(R, 'scripts/cine-preset.mjs'), '--clean']);
+    }
+}
 if (regen) {
     for (const f of fs.readdirSync(DIR)) if (/^分镜对话.*\.json$/.test(f)) fs.unlinkSync(DIR + '/' + f);
     for (const k of [1, 2]) run('node', [path.join(R, 'scripts/cine-preset.mjs')]);

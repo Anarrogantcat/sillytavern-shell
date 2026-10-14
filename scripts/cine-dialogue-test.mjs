@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.6.1');
+eq('version 与 manifest 一致', VERSION, '1.7.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -395,7 +395,9 @@ ok('导入：类型不对的键被丢弃', (() => {
 })());
 
 /* 配置面覆盖度：加了配置键却忘了给 UI —— 这里会拦下来 */
-const CODE_MANAGED = ['palette', 'layerStyles', 'charColors', 'perCard', 'customLayers', 'onlyChar', 'highlight'];
+/* ★ 1.7.0 追加两个：respectCardFrontend（默认 true，意图就是"别抢卡的选项栏"✓）
+   cardHasFrontend（运行期注入的只读标记 ✓）—— 都是代码管理，暂无面板字段 */
+const CODE_MANAGED = ['palette', 'layerStyles', 'charColors', 'perCard', 'customLayers', 'onlyChar', 'highlight', 'respectCardFrontend', 'cardHasFrontend'];
 ok('每个 DEFAULT_CONFIG 键要么有面板字段、要么登记为代码管理',
     Object.keys(DEFAULT_CONFIG).every(k => PANEL_FIELDS.some(f => f.key === k) || CODE_MANAGED.indexOf(k) >= 0),
     Object.keys(DEFAULT_CONFIG).filter(k => !PANEL_FIELDS.some(f => f.key === k) && CODE_MANAGED.indexOf(k) < 0));
@@ -2297,6 +2299,21 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 用归一化精确匹配（剥 emoji/变体选择符，不用包含匹配）', sc.indexOf('normName(x.name) === normName(nm)') >= 0 && sc.indexOf('n.indexOf(nm) >= 0') < 0);
     ok('★ 从 DEFAULT_SRC 取素材（不是 ST 默认预设）', sc.indexOf('fs.readFileSync(DEFAULT_SRC') >= 0);
     ok('★ 保持原启用状态', sc.indexOf('poolEn.get(String(src.identifier)) === true') >= 0);
+}
+
+/* ★★ 1.7.0：卡自带前端时不抢它的选项栏（用户：「不要影响到角色卡自带的前端…」） */
+{
+    const NLq = String.fromCharCode(10);
+    const msg = ['染·动作 我推门进去，冷风灌进领口。', '<options>', '1. 选项一：走过去。', '2. 选项二：站着不动。', '</options>'].join(NLq);
+    const conv = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, cardHasFrontend: false }).html);
+    const keep = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, cardHasFrontend: true }).html);
+    ok('★★ 卡无前端 ⇒ 渲染我们自己的选项按钮', (conv.match(/class="cd-opt[ "]/g) || []).length >= 2);
+    eq('★★ 卡有前端 ⇒ 一个自己的按钮都不画', (keep.match(/class="cd-opt[ "]/g) || []).length, 0);
+    ok('★★ 卡有前端 ⇒ <options> 原样保留（交给卡的渲染器）', keep.indexOf('<options>') >= 0 && keep.indexOf('</options>') >= 0);
+    ok('★★ 卡有前端 ⇒ 选项文字仍在（不丢字）', keep.indexOf('走过去') >= 0 && keep.indexOf('站着不动') >= 0);
+    const sec = splitSections(msg, { keepOptions: true });
+    ok('★ splitSections keepOptions ⇒ 不解析成 options、也不进 frontend（frontend 是整段跳过 ✗）', sec.options.length === 0 && sec.frontend.length === 0 && sec.keptOptions === true);
+    ok('★★ 默认开关 respectCardFrontend = true', DEFAULT_CONFIG.respectCardFrontend === true);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

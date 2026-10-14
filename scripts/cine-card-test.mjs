@@ -49,9 +49,9 @@ const cards = fs.readdirSync(CH).filter((f) => f.endsWith('.png'));
 const rows = [];
 let nCard = 0, nParsed = 0, nWithBook = 0, nWithFE = 0, nChatMatched = 0;
 let tagLost = 0, leak = 0, crash = 0, notTaken = 0, msgs = 0;
-let optLost = 0, shrink = 0;
+let optLost = 0, shrink = 0, respectBad = 0, respectPass = 0;
 const problems = [];
-const optEx = [], shrinkEx = [];
+const optEx = [], shrinkEx = [], respectEx = [];
 
 for (const f of cards) {
     nCard++;
@@ -115,6 +115,22 @@ for (const f of cards) {
             }
             const vis2 = html.replace(/<[^>]*>/g, '');
             if (/[^\s]{1,10}(·|・)(动作|感官|台词|心理|旁白)/.test(vis2)) { localLeak++; leak++; }
+            /* ④ ★ 1.7.0：卡自带前端时，我们**不该**再画自己的选项栏，且 `<options>` 要原样保留 ✓ */
+            if (marks.length) {
+                let r2 = null;
+                try { r2 = m.renderMessageHTML(mes, {}, { ...m.DEFAULT_CONFIG, cardHasFrontend: true }); } catch { }
+                /* ★ r2 === null ⇒ 我们**根本没接手**（原样放行给卡的渲染器 ✓）
+                   —— 这是**最彻底的不干扰** ✓ 不是违规 ✗（我第一版把它当违规 ⇒ 误报 ✗） */
+                if (r2) {
+                    const h2 = String(r2.html);
+                    const ourOpts = (h2.match(/class="cd-opt[ "]/g) || []).length;
+                    const rawOpts = /<options>/i.test(mes) ? (h2.indexOf('<options>') >= 0) : true;
+                    if (ourOpts > 0 || !rawOpts) {
+                        respectBad++;
+                        if (respectEx.length < 3) respectEx.push({ name, ourOpts, rawOpts });
+                    }
+                } else respectPass++;
+            }
         }
     }
     rows.push({ name, book, marks: marks.length, msgs: localMsgs, lost: localLost, leak: localLeak, crash: localCrash, not: localNot, opt: localOpt, shrink: localShrink });
@@ -135,6 +151,8 @@ console.log('   ' + (shrink ? 'FAIL' : 'OK  ') + ' ③ 可见文字不塌陷（�
 console.log('   ' + (leak ? 'FAIL' : 'OK  ') + ' ④ 标签零裸露：裸露 ' + leak + ' 条');
 console.log('   ' + (crash ? 'FAIL' : 'OK  ') + ' ⑤ 渲染不崩溃：崩溃 ' + crash + ' 条');
 console.log('   ' + (notTaken ? 'FAIL' : 'OK  ') + ' ⑥ 该接手的都接手：未接手 ' + notTaken + ' 条');
+console.log('   ' + (respectBad ? 'FAIL' : 'OK  ') + ' ⑦ 卡有前端时不抢它的选项栏：违规 ' + respectBad + ' 条（另有 ' + respectPass + ' 条我们原样放行 ✓）');
+if (respectEx.length) { console.log('  ⑦ 违规例子：'); respectEx.forEach((x) => console.log('   · ' + x.name.slice(0, 20) + '  我们画了 ' + x.ourOpts + ' 个按钮 · <options> 保留=' + x.rawOpts)); }
 console.log('');
 if (optEx.length) { console.log('  选项文字丢失的例子：'); optEx.forEach((x) => console.log('   · ' + x.name.slice(0, 20) + '  ' + JSON.stringify(x.line))); }
 if (shrinkEx.length) { console.log('  文字塌陷的例子：'); shrinkEx.forEach((x) => console.log('   · ' + x.name.slice(0, 20) + '  原文 ' + x.src + ' → 可见 ' + x.vis)); }
@@ -156,4 +174,4 @@ console.log('  · ①类标签（占位符 / TavernHelper / MVU）**必须原样
 console.log('  · ②类 `<options>` 我们有自己的选项 UI ⇒ 允许替换，但**文字必须还在**');
 console.log('  · ③守恒检查 = 防止再出现"静默丢字"（本轮就是这么抓到 splitSections 疑点的）');
 console.log('  · 本题**与用哪份预设无关**：卡自带的支撑跟着卡走 ✓');
-process.exit((tagLost || leak || crash || notTaken || optLost || shrink) ? 1 : 0);
+process.exit((tagLost || leak || crash || notTaken || optLost || shrink || respectBad) ? 1 : 0);

@@ -1057,6 +1057,39 @@ function migrateSeparators() {
     } catch (e) { console.warn('[' + EXT_ID + '] 分隔线迁移失败（不影响渲染）', e); }
 }
 
+/**
+ * ★ 1.7.0 一次性迁移：**关掉我们自己的 R2 / R3 两条正则**
+ *   用户要求：「插件的选择状态栏不要影响到角色卡自带的前端和选择状态栏」✓
+ *   为什么必须关：
+ *     · R3「选项区包成 [OPTIONS]」会在**钩子之前**把卡的 `<options>…</options>`
+ *       改写成 `[OPTIONS]…[/OPTIONS]` ✗ ⇒ **卡自己的渲染器找不到 `<options>`** ⇒
+ *       卡自带的选项栏就画不出来 ✗（真机实测确认 ✓）
+ *     · R2 同理：把前端区包成 `[FRONTEND]`，而 `[FRONTEND]` 在我们这里是**整段跳过**的 ✗
+ *   为什么可以关：我们的 `splitSections` **直接认** `<htmlcontent>` / `<options>` 原形 ✓
+ *     （两条路都支持 ✓）⇒ R2/R3 **本来就多余** ✗
+ *   只跑一次（stamp）⇒ 之后你手动打开也不会被翻回去 ✓
+ */
+function migrateRegexR23() {
+    try {
+        const st = (typeof extension_settings === 'object' && extension_settings) || null;
+        if (!st) return;
+        const list = Array.isArray(st.regex) ? st.regex : (st.regex && typeof st.regex === 'object' ? Object.values(st.regex) : []);
+        if (!list.length) return;
+        let n = 0;
+        for (const r of list) {
+            const nm = String((r && (r.scriptName || r.name)) || '');
+            if (!/【分镜】R[23]\b/.test(nm) && !/R2 前端区包成|R3 选项区包成/.test(nm)) continue;
+            if (r.disabled) continue;
+            r.disabled = true;
+            n++;
+        }
+        if (n) {
+            saveSettingsDebounced();
+            console.info('[' + EXT_ID + '] 已关闭 ' + n + ' 条会改写卡标签的自家正则（R2/R3）—— 保护卡自带的前端 ✓');
+        }
+    } catch (e) { console.warn('[' + EXT_ID + '] R2/R3 迁移失败（不影响渲染）', e); }
+}
+
 function migrateRowGap() {
     try {
         const c = cfg();
@@ -1092,16 +1125,43 @@ function cardKey() {
     } catch (_) { return ''; }
 }
 
+/**
+ * ★ 1.7.0：当前角色卡是否**自带前端**（状态栏 / 选项栏 / MVU / TavernHelper）
+ *   用户要求：「插件的选择状态栏不要影响到角色卡自带的前端和选择状态栏，
+ *             有自己美化的是明显不兼容的」✓
+ *   ⇒ 卡自带前端时，我们**不渲染自己的选项栏**，把 `<options>` 块原样透传给卡 ✓
+ *   判据（扫描这张卡的 JSON：描述 / 首条 / 世界书条目 / 扩展字段）：
+ *     StatusPlaceHolderImpl · <option · <StatusBar> · UpdateVariable · TavernHelper · stat_data · <%
+ *   带缓存（按卡 avatar 作键）✓ —— 卡的世界书可能有几百条，不能每条消息都 JSON.stringify ✗
+ */
+let cardFECache = { key: '', val: false };
+function cardHasFrontend() {
+    try {
+        const ctx = getContext();
+        const c = ctx.characters && ctx.characters[ctx.characterId];
+        if (!c) return false;
+        const key = String(c.avatar || c.name || '');
+        if (cardFECache.key === key) return cardFECache.val;
+        const s = JSON.stringify(c);
+        const val = /StatusPlaceHolderImpl|<option|<StatusBar|UpdateVariable|TavernHelper|stat_data|<%/i.test(s);
+        cardFECache = { key, val };
+        return val;
+    } catch (_) { return false; }
+}
+
 /** 当前生效配置 = 全局配置 + 本卡覆盖 */
 function effectiveConfig() {
     const base = cfg();
     const key = cardKey();
-    if (!key || !base.perCard || !base.perCard[key]) return base;
-    const merged = { ...base, ...base.perCard[key] };
+    const fe = cardHasFrontend();
     /* ★★ 逐卡「本卡不生效」（面板里那个按钮）：在这里把它翻成 enabled:false。
        为什么只在这一个点做：**所有**已有的 enabled 检查点（渲染钩子 / run / 提示词注入 /
        Alt+↑↓ / 宽表格处理 / 交互绑定 / 恢复原文）都会自动跟着失效，不必逐处再加判断 ✓
        —— 卡自带美化的时候，你按一下这个按钮，插件对**这张卡**就完全不动作了。 */
+    let merged = base;
+    if (key && base.perCard && base.perCard[key]) merged = { ...base, ...base.perCard[key] };
+    /* 运行期注入：本卡是否自带前端（决定要不要抢它的选项栏 ✓） */
+    merged = { ...merged, cardHasFrontend: fe };
     if (merged.off) return { ...merged, enabled: false, off: true };
     return merged;
 }
@@ -2322,6 +2382,7 @@ function start() {
     try { migrateColorStamp(); } catch (_) { }
     try { migrateRowGap(); } catch (_) { }
     try { migrateSeparators(); } catch (_) { }
+    try { migrateRegexR23(); } catch (_) { }
     try { cdStartButtons({ getContext, effectiveConfig, hasOurLines, allLayers, parseLine, mergeSplitTags, renderMessageHTML, cardKey, cfg, saveSettingsDebounced, EXT_ID }); } catch (_) { }
     /* ★★ 每一步单独兜错：任何一步失败都**不该让整个扩展哑掉**。
        这个坑踩过两次：

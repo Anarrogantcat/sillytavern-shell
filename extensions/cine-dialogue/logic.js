@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.6.1';
+export const VERSION = '1.7.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -68,6 +68,17 @@ export const PALETTE = [
 
 export const DEFAULT_CONFIG = {
     enabled: true,
+    /**
+     * ★ 1.7.0（用户要求）：「插件的选择状态栏不要影响到角色卡自带的前端和选择状态栏，
+     *   有自己美化的是明显不兼容的」✓
+     *   true（默认）= 卡**自带前端**时，我们**不渲染自己的选项栏** ✓
+     *     `<options>` / `[OPTIONS]` 块**原样透传**给卡的渲染器（Tai/TavernHelper 等）✓
+     *   卡没有前端时才用我们自己的选项 UI（兜底 ✓）
+     *   运行时会由 index.js 注入 `cardHasFrontend` ✓
+     */
+    respectCardFrontend: true,
+    /** 运行期注入：当前角色卡是否自带前端（index.js 算 ✓） */
+    cardHasFrontend: false,
     /** 用户楼要不要也渲染（默认否 —— 用户打的是大白话，不是分镜格式） */
     transformUserMessages: false,
     /** auto=按最长名字 | left | right | fixed */
@@ -645,8 +656,15 @@ export function mergeSplitTags(text) {
     return out.join('\n');
 }
 
-export function splitSections(raw) {
+export function splitSections(raw, opts = {}) {
     const text = String(raw == null ? '' : raw);
+    /* ★★ 1.7.0（用户要求）：「插件的选择状态栏不要影响到角色卡自带的前端和选择状态栏，
+       有自己美化的是明显不兼容的」✓
+       ⇒ 卡**自带前端**时，我们**不把 `<options>` 转成自己的按钮** ✗，
+         而是把它当**原样透传**（塞进 frontend 段 ✓）交给卡自己的渲染器 ✓
+         —— 避免双重显示、也避免和卡的美化打架 ✓
+       ⇒ 卡**没有**前端时才渲染我们自己的选项 UI（兜底 ✓） */
+    const keepOptions = !!opts.keepOptions;
 
     const frontend = [];
     const grab = (src, re, sink) => String(src).replace(re, (_m, inner) => { sink.push(inner); return '\n'; });
@@ -656,6 +674,13 @@ export function splitSections(raw) {
     rest = grab(rest, RE_HTMLCONTENT_BLOCK, frontend);
 
     const optionsRaw = [];
+    if (keepOptions) {
+        /* 原样透传 ✓ —— **什么都不抓**：让 `<options>` 块留在正文里（当普通文本渲染 ✓）
+           ★ 别塞进 frontend 段 ✗ —— 那条路是「整段跳过」的（R2 正则包出来的区域 ✓）
+             塞进去就等于把卡的选项栏**删掉** ✗（实测踩到 ✓）
+           正文里的 HTML 标签会**逐字保留**（和 `<StatusPlaceHolderImpl/>` 一样 ✓ 实测过 ✓） */
+        return { body: rest, frontend, options: [], keptOptions: true };
+    }
     rest = grab(rest, RE_OPTIONS_BLOCK, optionsRaw);
     rest = grab(rest, RE_OPTIONS_TAG_BLOCK, optionsRaw);
 
@@ -1053,7 +1078,9 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     const text = String(rawText == null ? '' : rawText);
     /* ★ 先合并「标签独占一行」的写法（模型换写法会这样 ✗ ⇒ 不合并就标签全裸露） */
     const merged = normalizeSpeechQuotes(mergeSplitTags(text));
-    const sections = splitSections(merged);
+    /* ★ 1.7.0：卡自带前端时不抢它的选项/状态栏（用户要求 ✓） */
+    const keepOptions = !!cfg.respectCardFrontend && !!cfg.cardHasFrontend;
+    const sections = splitSections(merged, { keepOptions });
 
     /* ★ 判据必须用「切完之后」的正文，不能用整条原文。
        反例：标签只出现在 <htmlcontent> / [FRONTEND] 里时，对整条原文 hasOurLines 为真，
@@ -1075,7 +1102,7 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     if (!seg.hasOurs && !hasOpts) return null;
 
     /* 选项按钮放进**最后一个** ours 段的 .cd-root 内部（否则拿不到主题变量 → 白底默认按钮） */
-    const optHTML = sections.options.length ? renderOptions(sections.options, cfg) : '';
+    const optHTML = (!keepOptions && sections.options.length) ? renderOptions(sections.options, cfg) : '';
     const lastOurs = seg.segments.map(s => s.kind).lastIndexOf('ours');
 
     const parts = seg.segments.map((s, i) => {
