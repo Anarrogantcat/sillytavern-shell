@@ -26,7 +26,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.2.0');
+eq('version 与 manifest 一致', VERSION, '1.3.0');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -1744,7 +1744,8 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
         (od.find((x) => String(x.identifier) === String(r.preset.prompts.find((p) => p.name === PRESET_RECIPE.lengthName).identifier)) || {}).enabled === true);
     ok('★ 最末那条是我们写的条目之一',
         [PRESET_RECIPE.lengthName, PRESET_RECIPE.dbl50Name].indexOf(String(r.preset.prompts.find((p) => p.identifier === lastOn.identifier).name)) >= 0);
-    eq('★ order 里共 6 条（原有 2 + 格式说明 + 篇幅 + 50% + 停用的派生说明）', od.length, 6);
+    eq('★ order 里共 7 条（原有 2 + 铁律 + 格式说明 + 篇幅 + 50% + 停用的派生说明）', od.length, 7);
+    ok('★ 铁律在 order 里（位置由「指南」决定，这里只断言存在）', od.some((x) => String(x.identifier) === 'cine-dialogue-iron'));
     ok('★ 原有的两条仍启用（没被挤掉）', od[0].enabled === true && od[1].enabled === true);
 }
 
@@ -2208,6 +2209,28 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     ok('★★ 思维链那句指向我们的条目', fake.prompts[1].content.indexOf('篇幅与节奏') >= 0);
     eq('★ 无关条目不动', fake.prompts[2].content, '与字数无关的条目');
     ok('★★ applyPresetRecipe 里确实调用了', /fixUpstreamLength\(out\)/.test(fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8')));
+}
+
+/* ★★ 1.3.0：铁律条目 —— 实测动作行含「我」0%、含他/她 100% ✗ */
+{
+    const lgx = fs.readFileSync(new URL('../extensions/cine-dialogue/logic.js', import.meta.url), 'utf8');
+    ok('★★ 有铁律条目名', lgx.indexOf('【分镜】铁律（先读）') >= 0);
+    ok('★★ 铁律讲第一人称「我」', lgx.indexOf('一律用第一人称「我」') >= 0);
+    ok('★ 铁律写明不许第三人称叙述', lgx.indexOf('不许写「他/她/角色名 + 动作」') >= 0);
+    ok('★ 铁律引用了真机数据', lgx.indexOf('含「我」的只有 0%') >= 0);
+    ok('★ 铁律也讲了台词与旁白', lgx.indexOf('一律用中文引号「」包住，10–80 字') >= 0 && lgx.indexOf('每个回合都要有一条') >= 0);
+    const fake2 = {
+        prompts: [{ identifier: 'g', name: '🔴指南（可改）', content: 'x' }],
+        prompt_order: [{ character_id: 1, order: [{ identifier: 'g', enabled: true }] }],
+        extensions: {},
+    };
+    const r2 = applyPresetRecipe(fake2, { srcName: 't', srcHash: 'h' });
+    const ord2 = r2.preset.prompt_order[0].order;
+    eq('★★ 铁律排在第 2 位（紧跟指南）', String(ord2[1].identifier), 'cine-dialogue-iron');
+    eq('★★ 铁律是启用状态', ord2[1].enabled, true);
+    const ironP = (r2.preset.prompts || []).find((x) => String(x.name) === '【分镜】铁律（先读）');
+    ok('★ 铁律文本带版本盖章', String(ironP.content).indexOf('（分镜对话 v') === 0);
+    ok('★ 铁律文本不含星号', String(ironP.content).indexOf('*') < 0);
 }
 
 /* ---------------------------- 汇总 ---------------------------- */

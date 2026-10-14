@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1851,6 +1851,55 @@ export function applyPresetRecipe(srcObj, opts = {}) {
         changes.push('说明条目改为停用（只留痕，不进提示词）');
     } else {
         changes.push('说明条目已是停用状态');
+    }
+
+    /* ★★ 1.3.0：铁律条目 —— 真机实测（2026-10-14）：
+       动作行含「我」的 0%、含他/她/角色名的 100% ✗（感官只有 13%）
+       原因：我们那两条格式条目被放在 prompt_order 的**最末尾**（190/192 位），
+             而卡的写作指南在**第 44 位** ⇒ 模型优先听前面的 ⇒ 人称要求被盖过 ✗
+       对策：**最前面再插一条短铁律**（前后夹击），只讲人称 / 台词 / 旁白 ✓ */
+    const IRON_NAME = '【分镜】铁律（先读）';
+    const IRON_TEXT = [
+        '（分镜对话 v' + VERSION + ' 生成）以下三条优先于其它任何写法要求，冲突时以本条目为准：',
+        '1. 人称：名字·动作 / 名字·感官 / 名字·心理 一律用第一人称「我」，',
+        '   主语必须是「我」—— 不许写「他/她/角色名 + 动作」这种第三人称叙述 ✗',
+        '   （真机数据：动作行含「我」的只有 0%、含他/她的 100% ⇒ 必须纠正）',
+        '2. 台词：一律用中文引号「」包住，10–80 字，短句为主 ✓',
+        '3. 旁白：第三人称（不许出现「我」），每个回合都要有一条，格式 旁白·内容 ✓',
+        '   （每个回合之间空一行；同一个回合内部不要空行）',
+    ].join('\n');
+    let iron = prompts.find(x => String(x.name || '').trim() === IRON_NAME);
+    if (!iron) {
+        iron = {
+            identifier: 'cine-dialogue-iron', name: IRON_NAME, system_prompt: false, role: 'system',
+            content: IRON_TEXT, injection_position: 0, injection_depth: 4,
+        };
+        prompts.push(iron);
+        changes.push('新增铁律条目「' + IRON_NAME + '」');
+    } else if (String(iron.content || '') !== IRON_TEXT) {
+        iron.content = IRON_TEXT;
+        changes.push('更新铁律条目「' + IRON_NAME + '」');
+    } else {
+        changes.push('铁律条目已是最新');
+    }
+    {
+        let ie = order.find(o => String(o.identifier) === String(iron.identifier));
+        if (!ie) {
+            let at = 1;
+            const gi = order.findIndex(o => {
+                const pp = prompts.find(y => String(y.identifier) === String(o.identifier));
+                return pp && /指南/.test(String(pp.name || ''));
+            });
+            if (gi >= 0) at = gi + 1;
+            ie = { identifier: iron.identifier, enabled: true };
+            order.splice(at, 0, ie);
+            changes.push('铁律插进 prompt_order 第 ' + at + ' 位（紧跟指南）');
+        } else if (ie.enabled !== true) {
+            ie.enabled = true;
+            changes.push('铁律条目改为启用');
+        } else {
+            changes.push('铁律条目已在 prompt_order 里且启用');
+        }
     }
 
     stats.promptsTo = prompts.length;
