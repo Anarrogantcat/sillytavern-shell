@@ -653,6 +653,10 @@ function exposeApi() {
         const mf = (typeof getContext === 'function') ? getContext().messageFormatter : null;
         if (mf && typeof mf.addHook === 'function' && !window.__cdMsgHookAdded) {
             window.__cdMsgHookAdded = true;
+        /* ★★ 1.9.4：官方钩子路径**也**置接线标记 —— 实测该标记原先只有核内补丁会设，
+           撤掉补丁后它会一直是 false ⇒ 扩展会悄悄退化到 DOM 后处理兜底路径 ✗。
+           真机验证（撤补丁 + 强制重渲染）：钩子路径 rows=62 / leak=0，与兜底路径结构一致 ✓ */
+        window.__cdMessageFormattingHook = true;
             mf.addHook((mes, hookCtx) => {
                 try {
                     if (typeof mes !== 'string' || !mes) return mes;

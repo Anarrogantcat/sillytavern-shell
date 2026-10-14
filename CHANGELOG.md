@@ -1,5 +1,11 @@
 # SillyTavern Desktop Shell 更新日志
 
+## 未发版（2026-10-14）— cine-dialogue 1.9.4：撤补丁后接线标记改由官方钩子路径设置
+
+真机验证撤掉核内补丁 #001 后渲染照常（rows=62/leak=0）；但 `__cdMessageFormattingHook` 原先只有补丁会设，
+撤掉后扩展会退化到 DOM 兜底路径 ⇒ 官方钩子路径也置该标记（已验证钩子路径结构一致）。
+两个检查脚本的补丁口径同步改为「未应用=合规」。夹具 801/0。
+
 ## 未发版（2026-10-14）— cine-dialogue 1.9.3：通用版预设补上思维链 / Progress 正则
 
 真机验证发现通用版预设下思考链与旧 Progress 裸露（wrap=0/leak=4/prog=4）；

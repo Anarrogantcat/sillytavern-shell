@@ -89,12 +89,18 @@ for (const [label, args] of [['夹具', ['scripts/cine-dialogue-test.mjs']], ['�
              之前正则写成 `public\/img\/$`（要求行尾结束）⇒ 匹配不上 `public/img/cg/` ⇒ 假报 ✗ */
         const KNOWN_INSTALLER = /(\?\?|M)\s+(\.git-head$|public\/index\.html\.bak$|public\/img\/|default\/config\.yaml$|public\/index\.html$)/;
         const patches = fs.existsSync(path.join(R, 'patches')) ? fs.readdirSync(path.join(R, 'patches')).filter((f) => f.endsWith('.patch')) : [];
-        let appliedOk = 0, appliedBad = [];
+        let appliedOk = 0, appliedBad = [], revertedOk = [];
         for (const p of patches) {
             try { execFileSync('git', ['-C', ST, 'apply', '--check', '--reverse', path.join(R, 'patches', p)], { stdio: 'pipe' }); appliedOk++; }
-            catch { appliedBad.push(p); }
+            catch {
+                /* ★ 1.9.4：补丁「未应用但可正向应用」= 合规（1.9.2 起官方钩子接管，用户已决定撤除）；
+                   只有「既不适用也未应用」才算异常（本体改动过大 ⇒ 要按锚点手工重做） */
+                let forward = false;
+                try { execFileSync('git', ['-C', ST, 'apply', '--check', path.join(R, 'patches', p)], { stdio: 'pipe' }); forward = true; } catch { }
+                if (forward) revertedOk.push(p); else appliedBad.push(p);
+            }
         }
-        info('6 ST 本体改动 ' + dirty.length + ' 项 · 已应用且逐字节一致的补丁 ' + appliedOk + '/' + patches.length + (appliedBad.length ? '（不一致：' + appliedBad.join(',') + '）' : ''));
+        info('6 ST 本体改动 ' + dirty.length + ' 项 · 已应用且逐字节一致的补丁 ' + appliedOk + '/' + patches.length + (revertedOk.length ? '（已按决定撤除·合规：' + revertedOk.join(',') + '）' : '') + (appliedBad.length ? '（不一致：' + appliedBad.join(',') + '）' : ''));
         const unexpected = core.filter((d) => !KNOWN_INSTALLER.test(d) && !d.includes('public/script.js'));
         if (!dirty.length) ok('6 ST 本体工作区干净（未动本体）');
         else if (!unexpected.length && !appliedBad.length) {

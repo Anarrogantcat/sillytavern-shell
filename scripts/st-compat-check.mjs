@@ -133,7 +133,7 @@ for (const e of exts) {
             try { execFileSync('git', ['-C', ST, 'apply', '--check', path.join(pdir, p)], { stdio: 'pipe' }); forward = true; } catch { }
             try { execFileSync('git', ['-C', ST, 'apply', '--check', '--reverse', path.join(pdir, p)], { stdio: 'pipe' }); reverse = true; } catch { }
             if (reverse) ok('本体补丁 ' + p + '：**已应用且原样** ✓');
-            else if (forward) bad('本体补丁 ' + p + '：**未应用** ✗（本体更新冲掉了 ⇒ 执行：git -C "' + ST + '" apply "' + path.join(pdir, p) + '"）');
+            else if (forward) ok('本体补丁 ' + p + '：未应用 = **合规** ✓（1.9.2 起官方 MessageFormatter 接管，补丁按用户决定撤除；要打回：git -C "' + ST + '" apply "' + path.join(pdir, p) + '"）');
             else bad('本体补丁 ' + p + '：**既不适用也未应用** ✗（本体改动过大 ⇒ 要按锚点手工重做）');
         }
     }
