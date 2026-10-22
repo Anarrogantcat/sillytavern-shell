@@ -236,7 +236,10 @@ function formatHook(mes, ctx) {
         if (!hasOurLines(mergedMes)) return mes;                  // 合并后仍没有我们的行 → 一个字不改
 
         const mid = (ctx && Number.isFinite(Number(ctx.messageId))) ? Number(ctx.messageId) : -1;
-        if (CD_FE_MARKER.test(mergedMes)) {   /* 1.9.6：卡的节点保持原样 ⇒ 放行 */
+        /* ★★ 1.9.8：**只对「真有前端」的卡放行** —— 1.9.6 只按标记（<options> 等）放行，结果连
+           cardHasFrontend=false 的卡（人妻牛）也被放行 ⇒ 生成结束后的 messageFormatting 直接返回原文
+           ⇒ 真机现象：「流式时正常、生成完美化丢失」✗。没有卡前端的卡必须走我们自己的渲染 ✓ */
+        if (cardHasFrontend() && CD_FE_MARKER.test(mergedMes)) {   /* 卡的节点保持原样 ⇒ 放行 */
             if (mid >= 0) cdPassthrough.add(mid);
             return mes;
         }
