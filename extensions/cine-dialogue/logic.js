@@ -15,7 +15,7 @@
  *   其它任何内容               原样保留
  */
 
-export const VERSION = '1.9.6';
+export const VERSION = '1.9.7';
 export const EXT_ID = 'cine-dialogue';
 
 /** 五种层 */
@@ -1115,7 +1115,11 @@ export function renderMessageHTML(rawText, colorMap = {}, config = DEFAULT_CONFI
     /* ★ 先合并「标签独占一行」的写法（模型换写法会这样 ✗ ⇒ 不合并就标签全裸露） */
     const merged = normalizeSpeechQuotes(mergeSplitTags(text));
     /* ★ 1.7.0：卡自带前端时不抢它的选项/状态栏（用户要求 ✓） */
-    const keepOptions = !!cfg.respectCardFrontend;   /* ★ 1.8.3：静态规则 —— <options> 一律原样留给卡 ✓ */
+    /* ★★ 1.9.7：**只有「真的有前端」的卡才让位** —— 原来只看 respectCardFrontend（默认 true）⇒
+       连 cardHasFrontend=false 的卡（人妻牛 实测 false；JK/灯火幽微/欲妈群 才是 true）也把 <options>
+       原样留在正文里，结果**谁都不画** ⇒ 选项变纯文本、点不动 ✗（真机：同一条楼 .cd-opt=0）。
+       没有卡前端时，选项栏是**插件提供的功能** ✓ */
+    const keepOptions = !!cfg.respectCardFrontend && !!cfg.cardHasFrontend;
     const sections = splitSections(merged, { keepOptions });
 
     /* ★ 判据必须用「切完之后」的正文，不能用整条原文。

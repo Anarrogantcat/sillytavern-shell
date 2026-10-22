@@ -183,7 +183,12 @@ invariants(UNI, '通用版');
             let r; try { r = m.renderMessageHTML(mes, {}, m.DEFAULT_CONFIG); } catch { crash++; continue; }
             if (!r) { nul++; continue; }
             take++;
-            const vis = String(r.html).replace(/<[^>]*>/g, '');
+            /* ★ 1.9.7：折叠块（<details>，思考块/事件块）里的文字**不算可见文字** —— DOM 的 innerText 不含它们。
+               模型常在思考里写「名字·动作/感官/… 格式」这类**说明**，旧口径把它当标签裸露 ⇒ 误报 ✗ */
+            const vis = String(r.html)
+                .replace(/<details[\s\S]*?<\/details>/gi, ' ')                                   /* 折叠块 */
+                .replace(/<konatan_planning~>[\s\S]*?<\/konatan_planning~>/gi, ' ')              /* 思考块原文（模型在里面写格式说明）*/ 
+                .replace(/<[^>]*>/g, '');
             if (/[^\s]{1,10}(·|・)(动作|感官|台词|心理|旁白)/.test(vis)) leak++;
         }
     }

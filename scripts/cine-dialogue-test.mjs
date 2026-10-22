@@ -31,7 +31,7 @@ function ok(name, cond, extra) {
 function eq(name, actual, expected) { ok(name, JSON.stringify(actual) === JSON.stringify(expected), { actual, expected }); }
 
 /* ---------------------------- 基础 ---------------------------- */
-eq('version 与 manifest 一致', VERSION, '1.9.6');
+eq('version 与 manifest 一致', VERSION, '1.9.7');
 eq('extension id', EXT_ID, 'cine-dialogue');
 eq('五层齐全', LAYERS, ['台词', '动作', '感官', '心理', '旁白']);
 ok('每层都有 CSS 类且带 cd- 前缀', LAYERS.every(l => LAYER_CLS[l] && LAYER_CLS[l].startsWith('cd-L-')));
@@ -2313,7 +2313,9 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const NLq = String.fromCharCode(10);
     const msg = ['染·动作 我推门进去，冷风灌进领口。', '<options>', '1. 选项一：走过去。', '2. 选项二：站着不动。', '</options>'].join(NLq);
     const conv = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, respectCardFrontend: false }).html);
-    const keep = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, respectCardFrontend: true }).html);
+    /* ★ 1.9.7：区分「开关」与「卡**真的**有前端」—— 只有 cardHasFrontend=true 才让位 ✓ */
+    const keep = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, respectCardFrontend: true, cardHasFrontend: true }).html);
+    const noFe = String(renderMessageHTML(msg, {}, { ...DEFAULT_CONFIG, respectCardFrontend: true, cardHasFrontend: false }).html);
     ok('★★ 卡无前端 ⇒ 渲染我们自己的选项按钮', (conv.match(/class="cd-opt[ "]/g) || []).length >= 2);
     eq('★★ 卡有前端 ⇒ 一个自己的按钮都不画', (keep.match(/class="cd-opt[ "]/g) || []).length, 0);
     ok('★★ 卡有前端 ⇒ <options> 原样保留（交给卡的渲染器）', keep.indexOf('<options>') >= 0 && keep.indexOf('</options>') >= 0);
@@ -2321,6 +2323,9 @@ eq('★ 人称-第三人称 关（用户要求全关）', r.preset.prompt_order[
     const sec = splitSections(msg, { keepOptions: true });
     ok('★ splitSections keepOptions ⇒ 不解析成 options、也不进 frontend（frontend 是整段跳过 ✗）', sec.options.length === 0 && sec.frontend.length === 0 && sec.keptOptions === true);
     ok('★★ 默认开关 respectCardFrontend = true（<options> 原样留 给卡 ✓）', DEFAULT_CONFIG.respectCardFrontend === true);
+    /* ★ 1.9.7 新语义：没有卡前端的卡（人妻牛 实测 false）即使开关是 in（true）也要我们画按钮 ——
+       否则卡不画、我们也不画 ⇒ 选项变纯文本点不动（真机事故）✗ */
+    ok('★★ 没有卡前端 ⇒ 即使 respectCardFrontend=true 我们也画按钮（1.9.7）', (noFe.match(/class="cd-opt[ " ]/g) || []).length >= 2);
 }
 
 /* ★★ 1.8.0：卡自带前端 ⇒ 默认对这张卡完全不动作（用户：89/107 张卡自带美化） */

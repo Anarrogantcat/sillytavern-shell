@@ -113,7 +113,11 @@ for (const f of cards) {
                 localShrink++;
                 if (shrinkEx.length < 3) shrinkEx.push({ name, src: srcAll.length, vis: visAll.length });
             }
-            const vis2 = html.replace(/<[^>]*>/g, '');
+            /* ★ 1.9.7：同 cine-full-test —— 折叠块里的文字不算可见文字（思考块里写着格式说明 ⚠ 会误报） */
+            const vis2 = String(html)
+                .replace(/<details[\s\S]*?<\/details>/gi, ' ')
+                .replace(/<konatan_planning~>[\s\S]*?<\/konatan_planning~>/gi, ' ')
+                .replace(/<[^>]*>/g, '');
             if (/[^\s]{1,10}(·|・)(动作|感官|台词|心理|旁白)/.test(vis2)) { localLeak++; leak++; }
             /* ④ ★ 1.7.0：卡自带前端时，我们**不该**再画自己的选项栏，且 `<options>` 要原样保留 ✓ */
             if (marks.length) {
